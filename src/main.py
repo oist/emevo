@@ -4,12 +4,9 @@ from typing import Optional
 
 import numpy as np
 
+from agents import make_initial_agents
 from config import Config
 from environments import make_environment
-
-
-def make_initial_agents(config: Config):
-    pass
 
 
 @dataclasses.dataclass()
@@ -29,7 +26,7 @@ def main_loop() -> None:
     # Each agent observes the initial state
     previous_obs_and_actions = {}
     for agent in agent_manager.available_agents():
-        initial_obs = environment.assign_agent_randomly(agent.agent_id)
+        initial_obs = environment.place_agent(agent.agent_id)
         previous_obs_and_actions[agent.agent_id] = ObsAndAction(initial_obs)
 
     for _ in range(config.max_environmental_steps):
@@ -43,19 +40,24 @@ def main_loop() -> None:
             environment.append_pending_action(agent.agent_id, action)
             previous_obs_and_actions[agent.agent_id].action = action
         agent_manager.remove_dead_agents()
+
         # If an agent survives, then he/she learns from the previous experience
         for agent in agent_manager.available_agents():
             prev_obs, action = dataclasses.astuple(
                 previous_obs_and_actions[agent.agent_id]
             )
-            observation, reward = environment.get_observation(agent.agent_id)
+            observation, reward = environment.give_observation(agent.agent_id)
             agent.learn(prev_obs, action, observation, reward)
             previous_obs_and_actions[agent.agent_id] = ObsAndAction(observation)
+
         # Create new agents if there are some suceessful matings
         successful_matings = environment.execute_pending_actions()
         for mating in successful_matings:
             agent = agent_manager.create_new_agent(mating.gene)
-            initial_obs = environment.assign_agent_based_on_position(mating.position)
+            initial_obs = environment.place_agent(
+                agent.agend_id,
+                mating.positional_info,
+            )
             previous_obs_and_actions[agent.agent_iid] = ObsAndAction(observation)
 
         # Some logging and visualization stuffs? I'm not sure now.
