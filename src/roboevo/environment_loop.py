@@ -5,7 +5,6 @@ from typing import Optional
 import numpy as np
 
 from agents import make_initial_agents
-from config import Config
 from environments import make_environment
 
 
