@@ -1,5 +1,8 @@
 """
 Abstract environment APIs of emevo-gym.
+These APIs define the environment and how an agent interacts with the environment.
+Other specific things (e.g., asexual mating or sexual mating) are defiend in actual
+environment implementations.
 """
 import dataclasses
 
@@ -11,7 +14,8 @@ import numpy as np
 
 @dataclasses.dataclass()
 class AgentBody:
-    """A unique agent body.
+    """A unique interface of an agent to interact with the environment.
+    Or, the physical presence of the agent.
     Attributes:
     """
 
@@ -33,7 +37,7 @@ class Child(ABC):
 
     @abstractmethod
     def is_ready(self) -> bool:
-        """Return if the child is ready to born or not."""
+        """Return if the child is ready to be born or not."""
         pass
 
     def step(self) -> None:
@@ -43,7 +47,7 @@ class Child(ABC):
 
 @dataclasses.dataclass()
 class Oviparous(Child):
-    """A child stays in an egg, then get a birth. """
+    """A child stays in an egg for a while and will be born. """
 
     gene: np.ndarray
     positional_info: Any
@@ -71,7 +75,7 @@ class Virtual(Child):
 
 @dataclasses.dataclass()
 class Viviparous(Child):
-    """A child stays in a parent's body for a while, then get a birth. """
+    """A child stays in a parent's body for a while and will be born. """
 
     gene: np.ndarray
     parent: AgentBody
@@ -87,8 +91,6 @@ class Viviparous(Child):
 
 
 class Environment(ABC):
-    mating_type: ClassVar[MatingType]
-
     @abstractmethod
     def append_pending_action(self, body: AgentBody, action: np.ndarray) -> None:
         pass
