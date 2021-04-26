@@ -1,3 +1,3 @@
 from setuptools import setup
 
-setup(name="roboevo", install_requires=["gym"])
+setup(name="emevo_gym", install_requires=["gym"])

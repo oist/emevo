@@ -1,5 +1,5 @@
 """
-Roboevo is a simulation platform for evolutionary robotics, inspired by OpenAI gym.
+EmEvo-Gym is a simulation platform for evolutionary robotics, inspired by OpenAI gym.
 This package contains API definitions and some environment implementations.
 """
 
