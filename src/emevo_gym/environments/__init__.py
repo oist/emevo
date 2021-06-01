@@ -1,2 +1,0 @@
-""" emevo-gym environments
-"""

@@ -1,4 +1,4 @@
-.s9y-env
+.*env
 .tox/
 *.pyc
 **/__pycache__/

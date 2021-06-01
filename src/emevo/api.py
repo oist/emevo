@@ -1,13 +1,12 @@
 """
-Abstract environment APIs of emevo-gym.
+Abstract environment APIs.
 These APIs define the environment and how an agent interacts with the environment.
 Other specific things (e.g., asexual mating or sexual mating) are defiend in actual
 environment implementations.
 """
+import abc
 import dataclasses
-
-from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Dict, List, NoReturn, Optional, Type, Union
+import typing as t
 
 import numpy as np
 
@@ -19,23 +18,23 @@ class AgentBody:
     Attributes:
     """
 
-    actuator: Optional[Any]
+    actuator: t.Optional[t.Any]
     identifier: int
     is_dead: bool
-    sensor: Optional[Any]
+    sensor: t.Optional[t.Any]
 
-    def __deepcopy__(self) -> NoReturn:
+    def __deepcopy__(self) -> t.NoReturn:
         raise RuntimeError(
             "To ensure the uniqueness, deepcopy is not allowed for AgentBody."
         )
 
 
-class Child(ABC):
+class Child(abc.ABC):
     """A class contains information of birth type."""
 
     gene: np.ndarray
 
-    @abstractmethod
+    @abc.abstractmethod
     def is_ready(self) -> bool:
         """Return if the child is ready to be born or not."""
         pass
@@ -47,10 +46,10 @@ class Child(ABC):
 
 @dataclasses.dataclass()
 class Oviparous(Child):
-    """A child stays in an egg for a while and will be born. """
+    """A child stays in an egg for a while and will be born."""
 
     gene: np.ndarray
-    positional_info: Any
+    position: np.ndarray
     time_to_birth: int
 
     def is_ready(self) -> bool:
@@ -64,7 +63,7 @@ class Oviparous(Child):
 
 @dataclasses.dataclass()
 class Virtual(Child):
-    """Virtually replace a parent's mind, reusing the body. """
+    """Virtually replace a parent's mind, reusing the body."""
 
     gene: np.ndarray
     parent: AgentBody
@@ -75,7 +74,7 @@ class Virtual(Child):
 
 @dataclasses.dataclass()
 class Viviparous(Child):
-    """A child stays in a parent's body for a while and will be born. """
+    """A child stays in a parent's body for a while and will be born."""
 
     gene: np.ndarray
     parent: AgentBody
@@ -90,24 +89,43 @@ class Viviparous(Child):
         self.time_to_birth -= 1
 
 
-class Environment(ABC):
-    @abstractmethod
+class MetricSpace(abc.ABC):
+    """
+    To represent physical contact of two robots, the  environment should consist
+    of a metric space.
+    In such a space, we can calculate a distance between two different elements.
+    """
+
+    @abc.abstractmethod
+    @staticmethod
+    def distance(a: np.ndarray, b: np.ndarray) -> float:
+        pass
+
+
+class EuclidSpace(MetricSpace):
+    @staticmethod
+    def distance(a: np.ndarray, b: np.ndarray) -> float:
+        pass
+
+
+class Environment(abc.ABC):
+    @abc.abstractmethod
     def append_pending_action(self, body: AgentBody, action: np.ndarray) -> None:
         pass
 
-    @abstractmethod
-    def execute_pending_actions(self) -> List[Child]:
+    @abc.abstractmethod
+    def execute_pending_actions(self) -> t.List[Child]:
         pass
 
-    @abstractmethod
+    @abc.abstractmethod
     def give_observation(self, body: AgentBody) -> np.ndarray:
         pass
 
-    @abstractmethod
+    @abc.abstractmethod
     def place_agent(
         self,
         body: AgentBody,
-        positional_info: Optional[Any] = None,
+        position: t.Optional[t.Any] = None,
     ) -> None:
         pass
 
@@ -115,12 +133,12 @@ class Environment(ABC):
 class _EnvironmentRegistory:
     """An internal class to register and make environments."""
 
-    registered_envs: ClassVar[Dict[str, Type[Environment]]] = {}
+    registered_envs: t.ClassVar[t.Dict[str, t.Type[Environment]]] = {}
 
     @classmethod
     def make(
         cls,
-        env_class: Union[str, Type[Environment]],
+        env_class: t.Union[str, t.Type[Environment]],
         *args,
         **kwargs,
     ) -> Environment:
@@ -132,12 +150,12 @@ class _EnvironmentRegistory:
 
 
 def make(
-    env_class: Union[str, Type[Environment]],
+    env_class: t.Union[str, t.Type[Environment]],
     *args,
     **kwargs,
 ) -> Environment:
     return _EnvironmentFactory.make(env_class, *args, **kwargs)
 
 
-def register(name: str, env_class: Type[Environment]) -> None:
+def register(name: str, env_class: t.Type[Environment]) -> None:
     _EnvironmentFactory.registered_envs[name] = env_class
