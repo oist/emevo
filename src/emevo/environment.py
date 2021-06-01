@@ -1,92 +1,15 @@
 """
-Abstract environment APIs.
+Abstract environment API.
 These APIs define the environment and how an agent interacts with the environment.
 Other specific things (e.g., asexual mating or sexual mating) are defiend in actual
 environment implementations.
 """
 import abc
-import dataclasses
 import typing as t
 
 import numpy as np
 
-
-@dataclasses.dataclass()
-class AgentBody:
-    """A unique interface of an agent to interact with the environment.
-    Or, the physical presence of the agent.
-    Attributes:
-    """
-
-    actuator: t.Optional[t.Any]
-    identifier: int
-    is_dead: bool
-    sensor: t.Optional[t.Any]
-
-    def __deepcopy__(self) -> t.NoReturn:
-        raise RuntimeError(
-            "To ensure the uniqueness, deepcopy is not allowed for AgentBody."
-        )
-
-
-class Child(abc.ABC):
-    """A class contains information of birth type."""
-
-    gene: np.ndarray
-
-    @abc.abstractmethod
-    def is_ready(self) -> bool:
-        """Return if the child is ready to be born or not."""
-        pass
-
-    def step(self) -> None:
-        """Notify the child that the timestep has moved on."""
-        pass
-
-
-@dataclasses.dataclass()
-class Oviparous(Child):
-    """A child stays in an egg for a while and will be born."""
-
-    gene: np.ndarray
-    position: np.ndarray
-    time_to_birth: int
-
-    def is_ready(self) -> bool:
-        return self.time_to_birth == 0
-
-    def step(self) -> None:
-        if self.time_to_birth == 0:
-            raise RuntimeError("Child.step is called when it's ready")
-        self.time_to_birth -= 1
-
-
-@dataclasses.dataclass()
-class Virtual(Child):
-    """Virtually replace a parent's mind, reusing the body."""
-
-    gene: np.ndarray
-    parent: AgentBody
-
-    def is_ready(self) -> bool:
-        return self.parent.is_dead
-
-
-@dataclasses.dataclass()
-class Viviparous(Child):
-    """A child stays in a parent's body for a while and will be born."""
-
-    gene: np.ndarray
-    parent: AgentBody
-    time_to_birth: int
-
-    def is_ready(self) -> bool:
-        return self.time_to_birth == 0 or self.parent.is_dead
-
-    def step(self) -> None:
-        if self.time_to_birth == 0:
-            raise RuntimeError("Child.step is called when it's ready")
-        self.time_to_birth -= 1
+from emevo.types import Observation
 
 
 class MetricSpace(abc.ABC):
@@ -105,12 +28,12 @@ class MetricSpace(abc.ABC):
 class EuclidSpace(MetricSpace):
     @staticmethod
     def distance(a: np.ndarray, b: np.ndarray) -> float:
-        pass
+        return np.linalg.norm(a - b)
 
 
 class Environment(abc.ABC):
     @abc.abstractmethod
-    def append_pending_action(self, body: AgentBody, action: np.ndarray) -> None:
+    def append_pending_action(self, agent: Agent, action: np.ndarray) -> None:
         pass
 
     @abc.abstractmethod
@@ -118,15 +41,20 @@ class Environment(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def give_observation(self, body: AgentBody) -> np.ndarray:
+    def observed_by(self, agent: Agent) -> np.ndarray:
         pass
 
     @abc.abstractmethod
     def place_agent(
         self,
-        body: AgentBody,
+        agent: Agent,
         position: t.Optional[t.Any] = None,
-    ) -> None:
+    ) -> Observation:
+        pass
+
+    def reset(self) -> None:
+        """Want to do something before agents are placed?
+        Put some funcitonalities here."""
         pass
 
 

@@ -1,70 +1,50 @@
-import dataclasses
-
-from typing import Optional
-
-import numpy as np
-
-from agents import make_initial_agents
-from environments import make_environment
+from emevo.agent import AgentManager
+from emevo.environment import Environment
 
 
-@dataclasses.dataclass()
-class ObsAndAction:
-    observation: np.ndarray
-    action: Optional[np.ndarray] = None
-
-
-def main_loop() -> None:
-    config = Config()
-
-    # Create agents and an environment based on the configuration
-    agent_manager = make_initial_agents(config)
-    environment = make_environment(config)
+def main_loop(
+    agent_manager: AgentManager,
+    environment: Environment,
+    max_steps: int,
+) -> None:
     environment.reset()
 
     # Each agent observes the initial state
-    previous_obs_and_actions = {}
-    for agent in agent_manager.available_agents():
-        initial_obs = environment.place_agent(agent.agent_id)
-        previous_obs_and_actions[agent.agent_id] = ObsAndAction(initial_obs)
+    previous_observations = {}
 
-    for _ in range(config.max_environmental_steps):
+    for agent in agent_manager.available_agents():
+        previous_observations[agent.agend_id] = environment.place_agent(agent)
+
+    for _ in range(max_steps):
+        taken_actions = {}
+
         # Each agent acts in the environment
         for agent in agent_manager.available_agents():
-            prev_obs = previous_obs_and_actions[agent.agent_id].observation
+            prev_obs = previous_observations[agent.agent_id]
             action = agent.select_action(prev_obs)
-            if action is None:  # This agent is dead!
-                del previous_obs_and_actions[agent.agent_id]
-                continue
             environment.append_pending_action(agent.agent_id, action)
-            previous_obs_and_actions[agent.agent_id].action = action
-        agent_manager.remove_dead_agents()
+            taken_actions[agent.agend_id] = action
 
-        # If an agent survives, then he/she learns from the previous experience
+        # Execute pending actions
+        children = environment.execute_pending_actions()
+
+        # Each agent observe the state. Then it dies or learns from the experience.
         for agent in agent_manager.available_agents():
-            prev_obs, action = dataclasses.astuple(
-                previous_obs_and_actions[agent.agent_id]
-            )
-            observation, reward = environment.give_observation(agent.agent_id)
-            agent.learn(prev_obs, action, observation, reward)
-            previous_obs_and_actions[agent.agent_id] = ObsAndAction(observation)
+            prev_obs = previous_observations[agent.agent_id]
+            obs = environment.observed_by(agent)
+            # TODO: Do logging here?
+            agent.observe(prev_obs, action, obs)
+            previous_observations[agent.agend_id] = obs
 
-        # Create new agents if there are some suceessful matings
-        successful_matings = environment.execute_pending_actions()
-        for mating in successful_matings:
-            agent = agent_manager.create_new_agent(mating.gene)
+        for dead_agent_id in agent_manager.remove_dead_agents():
+            del previous_observations[dead_agent_id]
+
+        for child in children:
+            agent = agent_manager.create_new_agent(child.gene)
             initial_obs = environment.place_agent(
-                agent.agend_id,
+                agent,
                 mating.positional_info,
             )
-            previous_obs_and_actions[agent.agent_iid] = ObsAndAction(observation)
+            previous_observations[agent.agend_id] = initial_obs
 
-        # Some logging and visualization stuffs? I'm not sure now.
-
-
-def main() -> None:
-    pass
-
-
-if __name__ == "__main___":
-    main()
+        # Some logging and visualization stuffs?
