@@ -12,25 +12,6 @@ import numpy as np
 from emevo.types import Observation
 
 
-class MetricSpace(abc.ABC):
-    """
-    To represent physical contact of two robots, the  environment should consist
-    of a metric space.
-    In such a space, we can calculate a distance between two different elements.
-    """
-
-    @abc.abstractmethod
-    @staticmethod
-    def distance(a: np.ndarray, b: np.ndarray) -> float:
-        pass
-
-
-class EuclidSpace(MetricSpace):
-    @staticmethod
-    def distance(a: np.ndarray, b: np.ndarray) -> float:
-        return np.linalg.norm(a - b)
-
-
 class Environment(abc.ABC):
     @abc.abstractmethod
     def append_pending_action(self, agent: Agent, action: np.ndarray) -> None:
