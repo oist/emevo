@@ -12,11 +12,12 @@ as part of `MADRL`_ library.
 import typing as t
 
 import numpy as np
-import pygame
-from scipy.spatial import distance as spd
 
 from gym import spaces
 from gym.utils import seeding
+from scipy.spatial import distance as spd
+
+from emevo.body import Body
 
 
 class Archea:
@@ -25,55 +26,17 @@ class Archea:
         idx: int,  # TODO(kngwyu): replace this?
         *,
         radius: float,
-        n_sensors: int,
         max_accel: float,
-        sensor_range: float = 0.0,
-        speed_features: bool = True,
     ) -> None:
         # Public members
         self.radius = radius
-        self.sensor_range = sensor_range
+        self.max_accel = max_accel
 
         # Hidden members
         self._idx = idx
-        self._n_sensors = n_sensors
-        self._max_accel = max_accel
-        # Number of observation coordinates from each sensor
-        self._sensor_obscoord = 5
-        if speed_features:
-            self._sensor_obscoord += 3
-        self._sensor_obs_coord = self._n_sensors * self._sensor_obscoord
-        # +1 for is_colliding_evader, +1 for is_colliding_poison
-        self._obs_dim = self._sensor_obs_coord + 2
 
         self._position = None
         self._velocity = None
-
-        # Generate self._n_sensors angles, evenly spaced from 0 to 2pi
-        # We generate 1 extra angle and remove it
-        # because linspace[0] = 0 = 2pi = linspace[-1]
-        angles = np.linspace(0.0, 2.0 * np.pi, self._n_sensors + 1)[:-1]
-        # Convert angles to x-y coordinates
-        sensor_vectors = np.c_[np.cos(angles), np.sin(angles)]
-        self._sensors = sensor_vectors
-
-    @property
-    def observation_space(self) -> spaces.Box:
-        return spaces.Box(
-            low=np.float32(-np.sqrt(2)),
-            high=np.float32(2 * np.sqrt(2)),
-            shape=(self._obs_dim,),
-            dtype=np.float32,
-        )
-
-    @property
-    def action_space(self) -> spaces.Box:
-        return spaces.Box(
-            low=np.float32(-self._max_accel),
-            high=np.float32(self._max_accel),
-            shape=(2,),
-            dtype=np.float32,
-        )
 
     @property
     def position(self) -> np.ndarray:
@@ -93,6 +56,55 @@ class Archea:
         assert velocity.shape == (2,)
         self._velocity = velocity
 
+
+class Pursuer(Archea):
+    def __init__(
+        self,
+        idx: int,
+        *,
+        radius: float,
+        max_accel: float,
+        n_sensors: int,
+        sensor_range: float,
+        speed_features: bool = True,
+    ) -> None:
+        super().__init__(idx, radius=radius, max_accel=max_accel)
+
+        self.sensor_range = sensor_range
+
+        # Number of observation coordinates from each sensor
+        if speed_features:
+            self._sensor_obs_coord = 8 * n_sensors
+        else:
+            self._sensor_obs_coord = 5 * n_sensors
+        # +1 for is_colliding_evader, +1 for is_colliding_poison
+        self._obs_dim = self._sensor_obs_coord + 2
+        # Generate self._n_sensors angles, evenly spaced from 0 to 2pi
+        # We generate 1 extra angle and remove it
+        # because linspace[0] = 0 = 2pi = linspace[-1]
+        angles = np.linspace(0.0, 2.0 * np.pi, n_sensors + 1)[:-1]
+        # Convert angles to x-y coordinates
+        sensor_vectors = np.c_[np.cos(angles), np.sin(angles)]
+        self._sensors = sensor_vectors
+
+    @property
+    def observation_space(self) -> spaces.Box:
+        return spaces.Box(
+            low=np.float32(-np.sqrt(2)),
+            high=np.float32(2 * np.sqrt(2)),
+            shape=(self._obs_dim,),
+            dtype=np.float32,
+        )
+
+    @property
+    def action_space(self) -> spaces.Box:
+        return spaces.Box(
+            low=np.float32(-self.max_accel),
+            high=np.float32(self.max_accel),
+            shape=(2,),
+            dtype=np.float32,
+        )
+
     @property
     def sensors(self) -> np.ndarray:
         assert self._sensors is not None
@@ -103,7 +115,7 @@ class Archea:
         object_coord: np.ndarray,
         object_radius: np.ndarray,
         same: bool = False,
-    ) -> None:
+    ) -> np.ndarray:
         """Whether object would be sensed by the pursuers"""
         relative_coord = object_coord - np.expand_dims(self.position, 0)
         # Projection of object coordinate in direction of sensor
@@ -196,7 +208,7 @@ class WaterWorld:
         n_sensors: number of sensors on all pursuing archea (agents)
         sensor_range: length of sensor dendrite on all pursuing archea (agents)
         pursuer_radius: radius of pursuers.
-        evador_radius_ratio: ratio of evador's radius to pursuer's radious
+        evader_radius_ratio: ratio of evader's radius to pursuer's radious
         poison_radius_ratio: ratio of poison's radius to pursuer's radious
         obstacle_radius: radius of obstacle object
         obstacle_coord: coordinate of obstacle object.
@@ -234,15 +246,10 @@ class WaterWorld:
                 )
         self.initial_obstacle_coords = obstacle_coords
         self.pursuer_max_accel = pursuer_max_accel
-        self.evader_speed = evader_speed
-        self.poison_speed = poison_speed
         self.pursuer_radius = pursuer_radius
         self.evader_radius = pursuer_radius * evader_radius_ratio
         self.poison_radius = pursuer_radius * poison_radius_ratio
         self.n_sensors = n_sensors
-        self.sensor_range = np.ones(self.n_pursuers) * min(
-            sensor_range, np.ceil(np.sqrt(2) * 100) / 100.0
-        )
         self.poison_reward = poison_reward
         self.food_reward = food_reward
         self.thrust_penalty = thrust_penalty
@@ -257,14 +264,13 @@ class WaterWorld:
         self._speed_features = speed_features
         self.max_cycles = max_cycles
         self.seed()
-        # TODO: Look into changing hardcoded radius ratios
         self._pursuers = [
-            Archea(
+            Pursuer(
                 pursuer_idx + 1,
                 radius=self.pursuer_radius,
                 n_sensors=self.n_sensors,
-                sensor_range=sensor_range,
                 max_accel=self.pursuer_max_accel,
+                sensor_range=sensor_range,
                 speed_features=self._speed_features,
             )
             for pursuer_idx in range(self.n_pursuers)
@@ -273,8 +279,7 @@ class WaterWorld:
             Archea(
                 evader_idx + 1,
                 radius=self.evader_radius,
-                n_sensors=self.n_pursuers,
-                max_accel=self.evader_speed,
+                max_accel=evader_speed,
             )
             for evader_idx in range(self.n_evaders)
         ]
@@ -282,15 +287,10 @@ class WaterWorld:
             Archea(
                 poison_idx + 1,
                 radius=self.poison_radius,
-                n_sensors=self.n_poison,
-                max_accel=self.poison_speed,
+                max_accel=poison_speed,
             )
             for poison_idx in range(self.n_poison)
         ]
-
-        self.num_agents = self.n_pursuers
-        self.action_space = [agent.action_space for agent in self._pursuers]
-        self.observation_space = [agent.observation_space for agent in self._pursuers]
 
         self.pixel_scale = 30 * 25
 
@@ -340,37 +340,28 @@ class WaterWorld:
         # Initialize evaders
         for evader in self._evaders:
             evader.set_position(self._generate_coord(evader.radius))
-            # Generate velocity such that speed <= self.evader_speed
+            # Generate velocity such that speed <= evader.max_accel
             velocity = self.np_random.rand(2) - 0.5
             speed = np.linalg.norm(velocity)
-            if speed > self.evader_speed:
-                # Limit speed to self.evader_speed
-                velocity = velocity / speed * self.evader_speed
+            if speed > evader.max_accel:
+                # Limit speed to evader.max_accel
+                velocity = velocity / speed * evader.max_accel
             evader.set_velocity(velocity)
 
         # Initialize poisons
         for poison in self._poisons:
             poison.set_position(self._generate_coord(poison.radius))
             # Generate both velocity components
-            # from range [-self.poison_speed, self.poison_speed)
-            # Generate velocity such that speed <= self.poison_speed
+            # from range [-poison.max_accel, poison.max_accel)
+            # Generate velocity such that speed <= poison.max_accel
             velocity = self.np_random.rand(2) - 0.5
             speed = np.linalg.norm(velocity)
-            if speed > self.poison_speed:
-                # Limit speed to self.poison_speed
-                velocity = velocity / speed * self.poison_speed
+            if speed > poison.max_accel:
+                # Limit speed to poison.max_accel
+                velocity = velocity / speed * poison.max_accel
             poison.set_velocity(velocity)
 
-        rewards = np.zeros(self.n_pursuers)
-        (
-            sensor_features,
-            collided_pursuer_evader,
-            collided_pursuer_poison,
-            rewards,
-        ) = self._collision_handling_impl(rewards)
-        obs_list = self.observe_list(
-            sensor_features, collided_pursuer_evader, collided_pursuer_poison
-        )
+        obs_list = self._collision_handling_impl()
         self.last_rewards = [np.float64(0) for _ in range(self.n_pursuers)]
         self.control_rewards = [0 for _ in range(self.n_pursuers)]
         self.last_dones = [False for _ in range(self.n_pursuers)]
@@ -442,10 +433,7 @@ class WaterWorld:
 
         return speed_features
 
-    def _collision_handling_impl(
-        self,
-        rewards: np.ndarray,
-    ) -> t.Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def _collision_handling_impl(self) -> t.Tuple[t.List[np.ndarray]]:
         # Stop pursuers upon hitting a wall
         for pursuer in self._pursuers:
             clipped_coord = np.clip(pursuer.position, 0, 1)
@@ -603,26 +591,31 @@ class WaterWorld:
         # If object collided with required number of players,
         # reset its position and velocity
         # Effectively the same as removing it and adding it back
-        def reset_caught_objects(caught_objects, objects, speed):
-            if caught_objects.size:
-                for object_idx in caught_objects:
-                    objects[object_idx].set_position(
-                        self._generate_coord(objects[object_idx].radius)
-                    )
-                    # Generate both velocity components from range
-                    # [-self.evader_speed, self.evader_speed)
-                    objects[object_idx].set_velocity(
-                        (self.np_random.rand(2) - 0.5) * 2 * speed
-                    )
+        def reset_caught_archeas(
+            caught_archeas: np.ndarray,
+            archeas: t.List[Archea],
+        ) -> None:
+            if len(caught_archeas) == 0:
+                return
 
-        reset_caught_objects(caught_evaders, self._evaders, self.evader_speed)
-        reset_caught_objects(caught_poisons, self._poisons, self.poison_speed)
+            for archea_idx in caught_archeas:
+                archea = archeas[archea_idx]
+                archea.set_position(self._generate_coord(archea.radius))
+                # Generate both velocity components from range
+                # [-archea.max_accel, archea.max_accel)
+                archea.set_velocity(
+                    (self.np_random.rand(2) - 0.5) * 2 * archea.max_accel
+                )
+
+        reset_caught_archeas(caught_evaders, self._evaders)
+        reset_caught_archeas(caught_poisons, self._poisons)
 
         pursuer_evader_encounters, pursuer_evader_encounter_matrix = self._caught(
             collisions_pursuer_evader, 1
         )
 
-        # Update reward based on these collisions
+        # TODO(kngwyu): How to use rewards?
+        rewards = np.zeros(self.n_pursuers)
         rewards[pursuer_evader_catches] += self.food_reward
         rewards[pursuer_poison_collisions] += self.poison_reward
         rewards[pursuer_evader_encounter_matrix] += self.encounter_reward
@@ -648,14 +641,13 @@ class WaterWorld:
                 pursuer_distance_features,
             ]
 
-        return (
+        return self._observation_list(
             sensorfeatures,
             collisions_pursuer_evader,
             collisions_pursuer_poison,
-            rewards,
         )
 
-    def observe_list(
+    def _observation_list(
         self,
         sensor_feature: np.ndarray,
         is_colliding_evader: np.ndarray,
@@ -716,19 +708,10 @@ class WaterWorld:
         move_objects(self._evaders)
         move_objects(self._poisons)
 
-        rewards = np.zeros(self.n_pursuers)
-        (
-            sensorfeatures,
-            collisions_pursuer_evader,
-            collisions_pursuer_poison,
-            rewards,
-        ) = self._collision_handling_impl(rewards)
-        obs_list = self.observe_list(
-            sensorfeatures, collisions_pursuer_evader, collisions_pursuer_poison
-        )
+        obs_list = self._collision_handling_impl()
         self.last_obs = obs_list
 
-        local_reward = rewards
+        local_reward = np.zeros(self.n_pursuers)
         global_reward = local_reward.mean()
         # Distribute local and global rewards according to local_ratio
         self.last_rewards = local_reward * self.local_ratio + global_reward * (
@@ -745,12 +728,17 @@ class WaterWorld:
             raise ValueError(f"Invalid mode: {mode}")
 
         if self._viewer is None:
+            try:
+                import pygame
+            except ImportError as e:
+                raise ImportError("Rendering waterworld needs pygame") from e
+
             if mode == "human":
                 pygame.display.init()
                 screen = pygame.display.set_mode((self.pixel_scale, self.pixel_scale))
             else:
                 screen = pygame.Surface((self.pixel_scale, self.pixel_scale))
-            self._viewer = _Viewer(screen, self.pixel_scale)
+            self._viewer = _Viewer(screen, self.pixel_scale, pygame)
 
         self._viewer.draw_background()
         self._viewer.draw_obstacles(self.obstacle_coords, self.obstacle_radius)
@@ -759,20 +747,22 @@ class WaterWorld:
         self._viewer.draw_archeas(self._poisons, (145, 250, 116))
 
         if mode == "human":
-            pygame.display.flip()
+            self._viewer.pygame.display.flip()
         else:
-            observation = pygame.surfarray.pixels3d(self.screen)
+            observation = self._viewer.pygame.surfarray.pixels3d(self.screen)
             return np.transpose(observation.copy(), axes=(1, 0, 2))
 
 
 class _Viewer:
-    def __init__(self, screen: t.Any, pixel_scale: int) -> None:
+    def __init__(self, screen: t.Any, pixel_scale: int, pygame: "module") -> None:
+        self.pygame = pygame
+
         self._pixel_scale = pixel_scale
         self._screen = screen
 
     def close(self) -> None:
-        pygame.display.quit()
-        pygame.quit()
+        self.pygame.display.quit()
+        self.pygame.quit()
 
     def draw_archeas(
         self,
@@ -782,25 +772,28 @@ class _Viewer:
         for archea in archeas:
             x, y = archea.position
             center = int(self._pixel_scale * x), int(self._pixel_scale * y)
-            if archea.sensor_range > 0.01:
+            if isinstance(archea, Pursuer):
                 for sensor in archea._sensors:
                     start = center
                     end = center + self._pixel_scale * (archea.sensor_range * sensor)
-                    pygame.draw.line(self._screen, (0, 0, 0), start, end, 1)
-            pygame.draw.circle(
-                self._screen, color, center, self._pixel_scale * archea.radius
+                    self.pygame.draw.line(self._screen, (0, 0, 0), start, end, 1)
+            self.pygame.draw.circle(
+                self._screen,
+                color,
+                center,
+                self._pixel_scale * archea.radius,
             )
 
     def draw_background(self) -> None:
         # -1 is building pixel flag
-        rect = pygame.Rect(0, 0, self._pixel_scale, self._pixel_scale)
-        pygame.draw.rect(self._screen, (255, 255, 255), rect)
+        rect = self.pygame.Rect(0, 0, self._pixel_scale, self._pixel_scale)
+        self.pygame.draw.rect(self._screen, (255, 255, 255), rect)
 
     def draw_obstacles(self, obstacle_coords: np.ndarray, radius: float) -> None:
         for obstacle in obstacle_coords:
             x, y = obstacle
             center = int(self._pixel_scale * x), int(self._pixel_scale * y)
-            pygame.draw.circle(
+            self.pygame.draw.circle(
                 self._screen,
                 (120, 176, 178),
                 center,
@@ -812,13 +805,9 @@ if __name__ == "__main__":
     env = WaterWorld()
     env.reset()
 
-    def policy():
-        return env.action_space[0].sample()
-
     for i in range(100):
         for agent in env._pursuers:
-            act = policy()
-            env.step(act, agent._idx - 1)
+            env.step(agent.action_space.sample(), agent._idx - 1)
         env.execute_pending_actions()
         env.render()
     env.close()

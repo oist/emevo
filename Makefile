@@ -1,5 +1,5 @@
 test:
-	python -m pytest $(ARGS)
+	python -m pytest tests/*
 fmt:
 	black src/*
-	isort src/*
+	isort src/* --virtual-env=.emevo-venv

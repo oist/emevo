@@ -2,7 +2,7 @@ from emevo.agent import AgentManager
 from emevo.environment import Environment
 
 
-def main_loop(
+def environment_loop(
     agent_manager: AgentManager,
     environment: Environment,
     max_steps: int,

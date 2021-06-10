@@ -1,16 +1,44 @@
 """
-Abstract API for agents and children.
+Abstract API for bodily existance of agents
 """
 
 import abc
+import dataclasses
+import datetime as dt
 import typing as t
+import uuid
 
 import numpy as np
 
 from emevo.types import Action, Observation
 
 
-class Agent(ABC):
+@dataclasses.dataclass()
+class BodyID:
+    """Unique id for an agent."""
+
+    generation: int
+    name: str
+    birthtime: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
+    uuid_: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4)
+
+    def __deepcopy__(self) -> t.NoReturn:
+        raise RuntimeError("BodyID cannot be copied")
+
+
+class Body(abc.ABC):
+    """Bodily existance of the agent"""
+
+    def __init__(self, generation: int, name: str = "NoName") -> None:
+        self.bodyid = BodyID(generation, name)
+
+    @abc.abstractmethod
+    def is_dead(self) -> bool:
+        """Is this body dead?"""
+        pass
+
+
+class Agent(abc.ABC):
     agent_id: int
     is_dead: bool
 
