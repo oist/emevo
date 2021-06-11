@@ -7,35 +7,35 @@ environment implementations.
 import abc
 import typing as t
 
-import numpy as np
 
-from emevo.types import Observation
+from emevo.body import Body
+from emevo.types import Action, Observation
 
 
 class Environment(abc.ABC):
     @abc.abstractmethod
-    def append_pending_action(self, agent: Agent, action: np.ndarray) -> None:
+    def act(self, body: Body, action: Action) -> None:
         pass
 
     @abc.abstractmethod
-    def execute_pending_actions(self) -> t.List[Child]:
+    def step(self) -> t.List[Child]:
         pass
 
     @abc.abstractmethod
-    def observed_by(self, agent: Agent) -> np.ndarray:
+    def observe(self, body: Body) -> Observation:
         pass
 
     @abc.abstractmethod
     def place_agent(
         self,
-        agent: Agent,
-        position: t.Optional[t.Any] = None,
+        agent: Body,
     ) -> Observation:
         pass
 
     def reset(self) -> None:
         """Want to do something before agents are placed?
-        Put some funcitonalities here."""
+        Put some funcitonalities here.
+        """
         pass
 
 
