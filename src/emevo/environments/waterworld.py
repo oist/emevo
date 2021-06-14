@@ -106,9 +106,6 @@ class Pursuer(Archea, Body):
     def observation_space(self) -> spaces.Box:
         return self._observation_space
 
-    def is_dead(self) -> bool:
-        return False
-
     @property
     def sensors(self) -> np.ndarray:
         assert self._sensors is not None
@@ -308,11 +305,14 @@ class WaterWorld:
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
+    def _check_coord_is_ok(self, radius: float, coord: np.ndarray) -> bool:
+        threshold = radius * 2 + self.obstacle_radius
+        return threshold > spd.cdist(coord.reshape(1, 2), self.obstacle_coords).max()
+
     def _generate_coord(self, radius: float) -> np.ndarray:
         coord = self.np_random.rand(2)
-        collide = radius * 2 + self.obstacle_radius
         # Create random coordinate that avoids obstacles
-        while spd.cdist(coord.reshape(1, 2), self.obstacle_coords).max() <= collide:
+        while not self._check_coord_is_ok(radius, coord):
             coord = self.np_random.rand(2)
         return coord
 

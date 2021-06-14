@@ -11,7 +11,7 @@ import uuid
 from gym import spaces
 
 
-@dataclasses.dataclass()
+@dataclasses.dataclass(frozen=True)
 class Profile:
     """Unique id for an agent."""
 
@@ -49,11 +49,6 @@ class Body(abc.ABC):
     @property
     @abc.abstractmethod
     def observation_space(self) -> spaces.Space:
-        pass
-
-    @abc.abstractmethod
-    def is_dead(self) -> bool:
-        """Is this body dead?"""
         pass
 
     def __repr__(self) -> str:

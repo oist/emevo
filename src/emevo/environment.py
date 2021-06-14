@@ -12,24 +12,48 @@ from emevo.body import Body
 from emevo.types import Action, Observation
 
 
+class Events(abc.ABC):
+    """Global events happend in the enviroment"""
+
+    pass
+
+
+class Status(abc.ABC):
+    """Bodily status of an agent"""
+
+    pass
+
+
 class Environment(abc.ABC):
+    """Abstract API for emevo environments"""
+
     @abc.abstractmethod
     def act(self, body: Body, action: Action) -> None:
+        """An agent does a bodily action to the enviroment"""
         pass
 
     @abc.abstractmethod
-    def step(self) -> t.List[Child]:
+    def available_bodies(self) -> t.Iterable[Body]:
+        """Returns all bodies available in the environment"""
+        pass
+
+    @abc.abstractmethod
+    def step(self) -> Events:
+        """Steps the simulation one-step, according to the agents' actions."""
         pass
 
     @abc.abstractmethod
     def observe(self, body: Body) -> Observation:
+        """Objective observation of environment"""
         pass
 
     @abc.abstractmethod
-    def place_agent(
-        self,
-        agent: Body,
-    ) -> Observation:
+    def status(self, body: Body) -> Status:
+        """Check personal statuses"""
+        pass
+
+    @abc.abstractmethod
+    def place(self, body: Body) -> None:
         pass
 
     def reset(self) -> None:

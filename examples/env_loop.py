@@ -2,18 +2,22 @@ from emevo.agent import AgentManager
 from emevo.environment import Environment
 
 
-def environment_loop(
-    agent_manager: AgentManager,
-    environment: Environment,
-    max_steps: int,
-) -> None:
+class Agent:
+    def __init__(self, body: Body) -> None:
+        self.body = body
+
+
+def env_loop(environment: Environment, max_steps: int) -> None:
     environment.reset()
 
     # Each agent observes the initial state
-    previous_observations = {}
+    previous_observations = WeakKeyDictionary()
 
-    for agent in agent_manager.available_agents():
-        previous_observations[agent.agend_id] = environment.place_agent(agent)
+    agents = []
+    for body in environment.available_bodies():
+        agents.append(Agent(body))
+        observation = environment.observe(body)
+        previous_observations[body] = observation
 
     for _ in range(max_steps):
         taken_actions = {}

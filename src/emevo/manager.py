@@ -4,6 +4,15 @@ import dataclasses
 import numpy as np
 
 
+class Manager:
+    def __init__(self) -> None:
+        self.next_agent_id = 0
+
+    def create_new_agent(self, gene: np.ndarray) -> Agent:
+        """TODO: more information to pas"""
+        pass
+
+
 class Child(abc.ABC):
     """A class contains information of birth type."""
 
@@ -62,13 +71,3 @@ class Viviparous(Child):
         if self.time_to_birth == 0:
             raise RuntimeError("Child.step is called when it's ready")
         self.time_to_birth -= 1
-
-
-class AgentManager:
-    def __init__(self, agent_cls: t.Type[Agent]) -> None:
-        self.agent_cls = agent_cls
-        self.next_agent_id = 0
-
-    def create_new_agent(self, gene: np.ndarray) -> Agent:
-        """TODO: more information to pas"""
-        pass
