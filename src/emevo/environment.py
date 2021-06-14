@@ -5,6 +5,7 @@ Other specific things (e.g., asexual mating or sexual mating) are defiend in act
 environment implementations.
 """
 import abc
+import dataclasses
 import typing as t
 
 
@@ -12,16 +13,32 @@ from emevo.body import Body
 from emevo.types import Action, Observation
 
 
-class Events(abc.ABC):
-    """Global events happend in the enviroment"""
+@dataclasses.dataclass(frozen=True)
+class Encount:
+    bodies: t.Tuple[Body, Body]
+    distance: float
 
-    pass
+
+@dataclasses.dataclass(frozen=True)
+class Events:
+    """
+    Events that should be notified globally.
+    """
+
+    encounts: t.List[Encount]
 
 
-class Status(abc.ABC):
-    """Bodily status of an agent"""
+@dataclasses.dataclass()
+class Status:
+    """
+    Bodily status of an agent.
+    Note that this is a 'default' implementation and downstreams environments
+    should customize this for each usage.
+    """
 
-    pass
+    energy: float
+    injury: float
+    lifetime: float
 
 
 class Environment(abc.ABC):
@@ -49,17 +66,15 @@ class Environment(abc.ABC):
 
     @abc.abstractmethod
     def status(self, body: Body) -> Status:
-        """Check personal statuses"""
+        """Check a personal status"""
         pass
 
     @abc.abstractmethod
-    def place(self, body: Body) -> None:
+    def place(self, body: Body, place: np.ndarray) -> None:
         pass
 
     def reset(self) -> None:
-        """Want to do something before agents are placed?
-        Put some funcitonalities here.
-        """
+        """Do some initialization"""
         pass
 
 
