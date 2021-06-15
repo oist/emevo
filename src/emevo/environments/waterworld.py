@@ -295,43 +295,10 @@ class WaterWorld:
         self.cycle_time = 1.0
         self.frames = 0
         self._viewer = None
+        self.seed()
         self.reset()
 
-    def close(self) -> None:
-        if self._viewer is not None:
-            self._viewer.close()
-
-    def seed(self, seed: t.Optional[int] = None) -> t.List[int]:
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
-
-    def _check_coord_is_ok(self, radius: float, coord: np.ndarray) -> bool:
-        threshold = radius * 2 + self.obstacle_radius
-        return threshold > spd.cdist(coord.reshape(1, 2), self.obstacle_coords).max()
-
-    def _generate_coord(self, radius: float) -> np.ndarray:
-        coord = self.np_random.rand(2)
-        # Create random coordinate that avoids obstacles
-        while not self._check_coord_is_ok(radius, coord):
-            coord = self.np_random.rand(2)
-        return coord
-
-    def _sample_velocity(self, max_norm: float) -> np.ndarray:
-        """Sample velocity from standard normal distribution and
-        truncate it if necessary.
-        """
-        velocity = self.np_random.rand(2) - 0.5
-        speed = np.linalg.norm(velocity)
-        if speed > max_norm:
-            # Limit speed
-            return velocity / speed * max_norm
-        else:
-            return velocity
-
-    def place_pursuer(self) -> None:
-        pass
-
-    def reset(self) -> None:
+   def reset(self) -> None:
         """
         Reset the state and returns the observation of the first agent.
         """
@@ -362,6 +329,43 @@ class WaterWorld:
         self.last_rewards = [np.float64(0) for _ in range(self.n_pursuers)]
         self.control_rewards = [0 for _ in range(self.n_pursuers)]
         self.last_obs = self._collision_handling_impl()
+
+    def close(self) -> None:
+        if self._viewer is not None:
+            self._viewer.close()
+
+    def seed(self, seed: t.Optional[int] = None) -> int:
+        self.np_random, seed = seeding.np_random(seed)
+        return seed
+
+    def place(self, body: Pursuer, place: np.ndarray) -> None:
+        if self._check_coord_is_ok(body.radius, place):
+            self.body.set_position(place)
+        else:
+            raise ValueError(f"Failed to set coordinate")
+
+    def _check_coord_is_ok(self, radius: float, coord: np.ndarray) -> bool:
+        threshold = radius * 2 + self.obstacle_radius
+        return threshold > spd.cdist(coord.reshape(1, 2), self.obstacle_coords).max()
+
+    def _generate_coord(self, radius: float) -> np.ndarray:
+        coord = self.np_random.rand(2)
+        # Create random coordinate that avoids obstacles
+        while not self._check_coord_is_ok(radius, coord):
+            coord = self.np_random.rand(2)
+        return coord
+
+    def _sample_velocity(self, max_norm: float) -> np.ndarray:
+        """Sample velocity from standard normal distribution and
+        truncate it if necessary.
+        """
+        velocity = self.np_random.rand(2) - 0.5
+        speed = np.linalg.norm(velocity)
+        if speed > max_norm:
+            # Limit speed
+            return velocity / speed * max_norm
+        else:
+            return velocity
 
     def _caught(
         self,

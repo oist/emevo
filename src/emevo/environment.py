@@ -77,6 +77,13 @@ class Environment(abc.ABC):
         """Do some initialization"""
         pass
 
+    def close(self) -> None:
+        """Close visualizer or so"""
+        pass
+
+    def seed(self, seed: t.Optional[int] = None) -> int:
+        pass
+
 
 class _EnvironmentRegistory:
     """An internal class to register and make environments."""
