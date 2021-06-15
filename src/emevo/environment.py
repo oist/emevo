@@ -8,37 +8,18 @@ import abc
 import dataclasses
 import typing as t
 
+import numpy as np
 
 from emevo.body import Body
-from emevo.types import Action, Observation
+from emevo.types import Action, Observation, Rewards
 
 
 @dataclasses.dataclass(frozen=True)
 class Encount:
+    """Two agents encount!"""
+
     bodies: t.Tuple[Body, Body]
     distance: float
-
-
-@dataclasses.dataclass(frozen=True)
-class Events:
-    """
-    Events that should be notified globally.
-    """
-
-    encounts: t.List[Encount]
-
-
-@dataclasses.dataclass()
-class Status:
-    """
-    Bodily status of an agent.
-    Note that this is a 'default' implementation and downstreams environments
-    should customize this for each usage.
-    """
-
-    energy: float
-    injury: float
-    lifetime: float
 
 
 class Environment(abc.ABC):
@@ -55,18 +36,16 @@ class Environment(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def step(self) -> Events:
-        """Steps the simulation one-step, according to the agents' actions."""
+    def step(self) -> t.List[Encount]:
+        """
+        Steps the simulation one-step, according to the agents' actions.
+        Returns all encounts.
+        """
         pass
 
     @abc.abstractmethod
-    def observe(self, body: Body) -> Observation:
+    def observe(self, body: Body) -> t.Tuple[Observation, Rewards]:
         """Objective observation of environment"""
-        pass
-
-    @abc.abstractmethod
-    def status(self, body: Body) -> Status:
-        """Check a personal status"""
         pass
 
     @abc.abstractmethod
@@ -82,6 +61,11 @@ class Environment(abc.ABC):
         pass
 
     def seed(self, seed: t.Optional[int] = None) -> int:
+        """Set seed"""
+        pass
+
+    def render(self, mode: str) -> t.Union[None, np.ndarray]:
+        """Render something to GUI or file"""
         pass
 
 

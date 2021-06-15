@@ -29,7 +29,7 @@ class Profile:
     def __ne__(self, other: t.Any) -> bool:
         return self.uuid_ != other.uuid_ or self.birthtime != other.birthtime
 
-    def __hash__(self, other: t.Any) -> bool:
+    def __hash__(self) -> bool:
         return hash(self.uuid_)
 
 
@@ -53,7 +53,7 @@ class Body(abc.ABC):
 
     def __repr__(self) -> str:
         name, gen, birthtime, uuid_ = dataclasses.astuple(self.profile)
-        birthtime = birthtime.strftime("%d %h %H:%M:%S")
+        birthtime = birthtime.strftime("%d,%h %H:%M:%S")
         return f"{name} (gen: {gen} birth: {birthtime})"
 
     def __eq__(self, other: t.Any) -> bool:
@@ -62,5 +62,5 @@ class Body(abc.ABC):
     def __ne__(self, other: t.Any) -> bool:
         return self.profile != other.profile
 
-    def __hash__(self, other: t.Any) -> bool:
+    def __hash__(self) -> bool:
         return hash(self.profile)
