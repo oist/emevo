@@ -267,16 +267,9 @@ class WaterWorld(Environment):
         self._n_sensors = n_sensors
         self._n_obstacles = n_obstacles
         self._speed_features = speed_features
-        self._pursuers = [
-            Pursuer(
-                radius=self._pursuer_radius,
-                n_sensors=self._n_sensors,
-                max_accel=pursuer_max_accel,
-                sensor_range=sensor_range,
-                speed_features=self._speed_features,
-            )
-            for _ in range(self._n_pursuers)
-        ]
+        self._pursuer_max_accel = pursuer_max_accel
+        self._pursuer_sensor_range = sensor_range
+        self._pursuers = [self._generate_pursuer() for _ in range(self._n_pursuers)]
         self._evaders = [
             Archea(
                 radius=self._evader_radius,
@@ -293,7 +286,9 @@ class WaterWorld(Environment):
         ]
 
         # Observational informations for each agent
-        self._last_observations: t.Optional[t.List[np.ndarray]] = None
+        self._last_observations: t.List[t.Optional[np.ndarray]] = [
+            None for _ in range(self._n_pursuers)
+        ]
         self._last_collisions: t.Optional[_Collisions] = None
         self._consumed_energy = [0.0 for _ in range(self._n_pursuers)]
 
@@ -343,20 +338,41 @@ class WaterWorld(Environment):
         self._n_steps += 1
         return self._last_collisions.pursuer.listup(self._pursuers)
 
-    def observe(self, body: Body) -> t.Tuple[np.ndarray, Rewards]:
+    def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Rewards]]:
         idx = self._idx(body)
-        obs = np.array(self._last_observations[idx], dtype=np.float32)
+        obs = self._last_observations[idx]
+        if obs is None:
+            # If obs is None, then the agent is a newborn and have observed nothing.
+            return None
         rewards = {
             "food": float(self._last_collisions.evader.n_caught(idx)),
             "poison": -float(self._last_collisions.poison.n_caught(idx)),
         }
         return obs, rewards
 
-    def place(self, body: Pursuer, place: np.ndarray) -> None:
-        if self._check_coord_is_ok(body.radius, place):
-            self.body.set_position(place)
+    def born(self, generation: int = 0, place: t.Optional[np.ndarray] = None) -> Body:
+        if place is not None:
+            if not self._check_coord_is_ok(self._pursuer_radius, place):
+                raise ValueError(f"Failed to set the agent to {place}")
         else:
-            raise ValueError(f"Failed to set the agent to {place}")
+            place = self._generate_coord(self._pursuer_radius)
+        body = self._generate_pursuer(generation)
+        body.set_position(place)
+        body.set_velocity(np.zeros(2))
+        self._pursuers.append(body)
+        self._consumed_energy.append(0.0)
+        self._last_observations.append(None)
+        self._n_pursuers += 1
+        # Since we don't touch collisions when obs is None, it's OK to do nothing
+        return body
+
+    def die(self, body: Pursuer) -> bool:
+        idx = self._idx(body)
+        self._pursuers.pop(idx)
+        self._consumed_energy.pop(idx)
+        self._last_observations.pop(idx)
+        self._n_pursuers -= 1
+        return self._n_pursuers == 0
 
     def reset(self) -> None:
         """
@@ -366,7 +382,7 @@ class WaterWorld(Environment):
         self._n_steps = 0
         # Initialize obstacles
         if self._initial_obstacle_coords is None:
-            # Generate obstacle positions in range [0, 1)
+            # Generate xsxfobstacle positions in range [0, 1)
             self._obstacle_coords = self.np_random.rand(self._n_obstacles, 2)
         else:
             self._obstacle_coords = self._initial_obstacle_coords.copy()
@@ -432,6 +448,16 @@ class WaterWorld(Environment):
             return self._pursuers.index(pursuer)
         except ValueError as e:
             raise ValueError(f"Invalid pursuer: {pursuer}") from e
+
+    def _generate_pursuer(self, generation: int = 0) -> Pursuer:
+        return Pursuer(
+            radius=self._pursuer_radius,
+            n_sensors=self._n_sensors,
+            max_accel=self._pursuer_max_accel,
+            sensor_range=self._pursuer_sensor_range,
+            speed_features=self._speed_features,
+            generation=generation,
+        )
 
     def _check_coord_is_ok(self, radius: float, coord: np.ndarray) -> bool:
         threshold = radius * 2 + self._obstacle_radius
@@ -782,12 +808,26 @@ class _Viewer:
 if __name__ == "__main__":
     env = WaterWorld(speed_features=False)
     env.reset()
+    N = 1000
 
-    for i in range(1000):
+    for i in range(N):
         for p in env.available_bodies():
             env.act(p, p.action_space.sample())
         encounts = env.step()
-        # for p in env.available_bodies():
-        #     print(env.observe(p))
+        for p in env.available_bodies():
+            env.observe(p)
+
+        if np.random.randint(N // 10) == 0:
+            bodies = list(env.available_bodies())
+            who_to_die = np.random.choice(bodies)
+            distinction = env.die(who_to_die)
+            print(f"Die! {who_to_die}")
+            if distinction:
+                print("Distinction!")
+                break
+
+        if np.random.randint(N // 20) == 0:
+            new_body = env.born()
+            print(f"Born! {new_body}")
         env.render()
     env.close()

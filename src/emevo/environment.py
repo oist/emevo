@@ -44,12 +44,16 @@ class Environment(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: Body) -> t.Tuple[Observation, Rewards]:
+    def observe(self, body: Body) -> t.Optional[t.Tuple[Observation, Rewards]]:
         """Objective observation of environment"""
         pass
 
     @abc.abstractmethod
-    def place(self, body: Body, place: np.ndarray) -> None:
+    def born(self, generation: int = 0, place: t.Optional[np.ndarray] = None) -> Body:
+        pass
+
+    @abc.abstractmethod
+    def die(self, body: Body) -> None:
         pass
 
     def reset(self) -> None:

@@ -1,12 +1,22 @@
+"""
+This module provides Admin, a utility class to manage birth and death of agents.
+"""
+
 import abc
 import dataclasses
+import typing as t
 
 import numpy as np
 
 
-class Manager:
-    def __init__(self) -> None:
-        self.next_agent_id = 0
+@dataclasses.dataclass()
+class Admin:
+    """
+    Admin is a utility for managing birth and death.
+    This is an optional API and not mandatory.
+    """
+
+    pending_children: t.List[Child] = dataclasses.field(default_factory=list)
 
     def create_new_agent(self, gene: np.ndarray) -> Agent:
         """TODO: more information to pas"""
