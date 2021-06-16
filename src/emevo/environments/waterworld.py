@@ -206,7 +206,7 @@ class _Collisions:
 class WaterWorld(Environment):
     def __init__(
         self,
-        _n_pursuers: int = 5,
+        n_pursuers: int = 5,
         n_evaders: int = 5,
         n_poison: int = 10,
         n_required_pursuers: int = 1,
@@ -224,7 +224,7 @@ class WaterWorld(Environment):
         speed_features: bool = True,
     ) -> None:
         """
-        _n_pursuers: number of pursuing archea (agents)
+        n_pursuers: number of pursuing archea (agents)
         n_evaders: number of evader archea
         n_poison: number of poison archea
         n_required_pursuers: number of pursuing archea (agents) that must be
@@ -244,9 +244,9 @@ class WaterWorld(Environment):
         speed_features: toggles whether pursuing archea (agent) sensors
                         detect speed of other archea
         """
-        self._n_pursuers = _n_pursuers
+        self._n_pursuers = n_pursuers
         self._n_required_pursuers = n_required_pursuers
-        self.obstacle_radius = obstacle_radius
+        self._obstacle_radius = obstacle_radius
         if obstacle_coords is not None:
             if obstacle_coords.ndim > 2 or obstacle_coords.shape[-1] != 2:
                 raise ValueError(
@@ -259,17 +259,18 @@ class WaterWorld(Environment):
                     f"n_obstacles = {n_obstacles}, but obstacles "
                     + f"with shape {obstacle_coords.shape} is given"
                 )
-        self.initial_obstacle_coords = obstacle_coords
-        self.pursuer_radius = pursuer_radius
-        self.evader_radius = pursuer_radius * evader_radius_ratio
-        self.poison_radius = pursuer_radius * poison_radius_ratio
-        self.n_sensors = n_sensors
-        self.n_obstacles = n_obstacles
+        self._initial_obstacle_coords = obstacle_coords
+        self._obstacle_coords: t.Optional[np.ndarray] = None
+        self._pursuer_radius = pursuer_radius
+        self._evader_radius = pursuer_radius * evader_radius_ratio
+        self._poison_radius = pursuer_radius * poison_radius_ratio
+        self._n_sensors = n_sensors
+        self._n_obstacles = n_obstacles
         self._speed_features = speed_features
         self._pursuers = [
             Pursuer(
-                radius=self.pursuer_radius,
-                n_sensors=self.n_sensors,
+                radius=self._pursuer_radius,
+                n_sensors=self._n_sensors,
                 max_accel=pursuer_max_accel,
                 sensor_range=sensor_range,
                 speed_features=self._speed_features,
@@ -278,14 +279,14 @@ class WaterWorld(Environment):
         ]
         self._evaders = [
             Archea(
-                radius=self.evader_radius,
+                radius=self._evader_radius,
                 max_accel=evader_max_speed,
             )
             for _ in range(n_evaders)
         ]
         self._poisons = [
             Archea(
-                radius=self.poison_radius,
+                radius=self._poison_radius,
                 max_accel=poison_max_speed,
             )
             for _ in range(n_poison)
@@ -364,11 +365,11 @@ class WaterWorld(Environment):
 
         self._n_steps = 0
         # Initialize obstacles
-        if self.initial_obstacle_coords is None:
+        if self._initial_obstacle_coords is None:
             # Generate obstacle positions in range [0, 1)
-            self.obstacle_coords = self.np_random.rand(self.n_obstacles, 2)
+            self._obstacle_coords = self.np_random.rand(self._n_obstacles, 2)
         else:
-            self.obstacle_coords = self.initial_obstacle_coords.copy()
+            self._obstacle_coords = self._initial_obstacle_coords.copy()
 
         # Initialize pursuers
         for pursuer in self._pursuers:
@@ -413,7 +414,7 @@ class WaterWorld(Environment):
             self._viewer = _Viewer(screen, self._pixel_scale, pygame)
 
         self._viewer.draw_background()
-        self._viewer.draw_obstacles(self.obstacle_coords, self.obstacle_radius)
+        self._viewer.draw_obstacles(self._obstacle_coords, self._obstacle_radius)
         self._viewer.draw_archeas(self._pursuers, (101, 104, 209))
         self._viewer.draw_archeas(self._evaders, (238, 116, 106))
         self._viewer.draw_archeas(self._poisons, (145, 250, 116))
@@ -433,8 +434,8 @@ class WaterWorld(Environment):
             raise ValueError(f"Invalid pursuer: {pursuer}") from e
 
     def _check_coord_is_ok(self, radius: float, coord: np.ndarray) -> bool:
-        threshold = radius * 2 + self.obstacle_radius
-        return threshold > spd.cdist(coord.reshape(1, 2), self.obstacle_coords).max()
+        threshold = radius * 2 + self._obstacle_radius
+        return threshold > spd.cdist(coord.reshape(1, 2), self._obstacle_coords).max()
 
     def _generate_coord(self, radius: float) -> np.ndarray:
         coord = self.np_random.rand(2)
@@ -491,7 +492,7 @@ class WaterWorld(Environment):
         sensorvals = []
 
         for pursuer_idx in range(self._n_pursuers):
-            sensors = np.arange(self.n_sensors)  # sensor indices
+            sensors = np.arange(self._n_sensors)  # sensor indices
             objects = closest_object_idx[pursuer_idx, ...]  # object indices
             sensorvals.append(input_sensorvals[pursuer_idx, ..., sensors, objects])
 
@@ -510,13 +511,13 @@ class WaterWorld(Environment):
             sensorvals.append(pursuer.sensors.dot(relative_speed.T))
         sensed_speed = np.c_[sensorvals]  # Speeds in direction of each sensor
 
-        speed_features = np.zeros((self._n_pursuers, self.n_sensors))
+        speed_features = np.zeros((self._n_pursuers, self._n_sensors))
 
         sensorvals = []
         for pursuer_idx in range(self._n_pursuers):
             sensorvals.append(
                 sensed_speed[pursuer_idx, :, :][
-                    np.arange(self.n_sensors), object_sensorvals[pursuer_idx, :]
+                    np.arange(self._n_sensors), object_sensorvals[pursuer_idx, :]
                 ]
             )
         # Set sensed values, all others remain 0
@@ -540,22 +541,24 @@ class WaterWorld(Environment):
             # Archeas rebound on hitting an obstacle
             for idx, archea in enumerate(archeas):
                 obstacle_distance = spd.cdist(
-                    np.expand_dims(archea.position, 0), self.obstacle_coords
+                    np.expand_dims(archea.position, 0), self._obstacle_coords
                 )
-                is_colliding = obstacle_distance <= archea.radius + self.obstacle_radius
+                is_colliding = (
+                    obstacle_distance <= archea.radius + self._obstacle_radius
+                )
                 collisions_archea_obstacle[idx] = is_colliding.sum()
                 if collisions_archea_obstacle[idx] > 0:
                     # Rebound the archea that collided with an obstacle
                     velocity_scale = (
                         archea.radius
-                        + self.obstacle_radius
-                        - spd.euclidean(archea.position, self.obstacle_coords)
+                        + self._obstacle_radius
+                        - spd.euclidean(archea.position, self._obstacle_coords)
                     )
-                    pos_diff = archea.position - self.obstacle_coords[0]
+                    pos_diff = archea.position - self._obstacle_coords[0]
                     new_pos = archea.position + velocity_scale * pos_diff
                     archea.set_position(new_pos)
 
-                    collision_normal = archea.position - self.obstacle_coords[0]
+                    collision_normal = archea.position - self._obstacle_coords[0]
                     # project current velocity onto collision normal
                     current_vel = archea.velocity
                     proj_numer = np.dot(current_vel, collision_normal)
@@ -577,7 +580,7 @@ class WaterWorld(Environment):
         evader_collision = self._detect_collision(
             positions_pursuer,
             positions_evader,
-            self.pursuer_radius + self.evader_radius,
+            self._pursuer_radius + self._evader_radius,
             n_required_collisions=self._n_required_pursuers,
         )
 
@@ -585,20 +588,20 @@ class WaterWorld(Environment):
         poison_collision = self._detect_collision(
             positions_pursuer,
             positions_poison,
-            self.pursuer_radius + self.poison_radius,
+            self._pursuer_radius + self._poison_radius,
         )
 
         # Find pursuer collisions
         pursuer_collision = self._detect_collision(
             positions_pursuer,
             positions_pursuer,
-            self.pursuer_radius * 2,
+            self._pursuer_radius * 2,
             x_equal_to_y=True,
         )
 
         # Find sensed obstacles
         sensorvals_pursuer_obstacle = [
-            pursuer.sensed(self.obstacle_coords, self.obstacle_radius)
+            pursuer.sensed(self._obstacle_coords, self._obstacle_radius)
             for pursuer in self._pursuers
         ]
         # Find sensed barriers
@@ -608,20 +611,20 @@ class WaterWorld(Environment):
 
         # Find sensed evaders
         sensorvals_pursuer_evader = [
-            pursuer.sensed(positions_evader, self.evader_radius)
+            pursuer.sensed(positions_evader, self._evader_radius)
             for pursuer in self._pursuers
         ]
 
         # Find sensed poisons
         sensorvals_pursuer_poison = [
-            pursuer.sensed(positions_poison, self.poison_radius)
+            pursuer.sensed(positions_poison, self._poison_radius)
             for pursuer in self._pursuers
         ]
 
         # Find sensed pursuers
         sensorvals_pursuer_pursuer = [
             self._pursuers[idx].sensed(
-                positions_pursuer, self.pursuer_radius, same_idx=idx
+                positions_pursuer, self._pursuer_radius, same_idx=idx
             )
             for idx in range(self._n_pursuers)
         ]
@@ -634,7 +637,7 @@ class WaterWorld(Environment):
             closest_idx_array = np.argmin(sensorvals, axis=2)
             closest_distances = self._closest_dist(closest_idx_array, sensorvals)
             finite_mask = np.isfinite(closest_distances)
-            sensed_distances = np.ones((self._n_pursuers, self.n_sensors))
+            sensed_distances = np.ones((self._n_pursuers, self._n_sensors))
             sensed_distances[finite_mask] = closest_distances[finite_mask]
             return sensed_distances, closest_idx_array, finite_mask
 
