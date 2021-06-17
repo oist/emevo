@@ -7,8 +7,8 @@ to represent various types of birth.
 import dataclasses
 import typing as t
 
-
 from emevo.body import Body
+from emevo.child import Child
 from emevo.environment import Encount
 
 
@@ -50,5 +50,9 @@ class Admin:
         return self._repr_impl(self.sexual_repr_fn, encount)
 
     def step(self) -> t.List[Child]:
+        res = []
         for child in self.pending_children:
-            pass
+            child.step()
+            if child.is_ready():
+                res.append(child)
+        return res

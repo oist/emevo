@@ -2,7 +2,7 @@ import abc
 import dataclasses
 import numpy as np
 
-
+from emevo.body import Body
 from emevo.types import Gene
 
 
