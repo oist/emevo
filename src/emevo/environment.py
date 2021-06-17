@@ -11,7 +11,7 @@ import typing as t
 import numpy as np
 
 from emevo.body import Body
-from emevo.types import Action, Observation, Rewards
+from emevo.types import Action, Observation, Info
 
 
 @dataclasses.dataclass(frozen=True)
@@ -44,7 +44,7 @@ class Environment(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: Body) -> t.Optional[t.Tuple[Observation, Rewards]]:
+    def observe(self, body: Body) -> t.Optional[t.Tuple[Observation, Info]]:
         """Objective observation of environment"""
         pass
 

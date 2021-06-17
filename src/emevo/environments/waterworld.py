@@ -20,7 +20,7 @@ from scipy.spatial import distance as spd
 
 from emevo.body import Body
 from emevo.environment import Encount, Environment
-from emevo.types import Rewards
+from emevo.types import Info
 
 
 class Archea:
@@ -338,7 +338,7 @@ class WaterWorld(Environment):
         self._n_steps += 1
         return self._last_collisions.pursuer.listup(self._pursuers)
 
-    def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Rewards]]:
+    def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Info]]:
         idx = self._idx(body)
         obs = self._last_observations[idx]
         if obs is None:
