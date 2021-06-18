@@ -8,18 +8,15 @@ import dataclasses
 import datetime as dt
 import typing as t
 
-import numpy as np
-
 from emevo.body import Body
 from emevo.environment import Encount
-from emevo.types import Gene
 
 
 @dataclasses.dataclass()
 class Newborn(abc.ABC):
     """A class that contains information of birth type."""
 
-    gene: Gene
+    context: t.Any
 
     @abc.abstractmethod
     def is_ready(self) -> bool:
@@ -35,7 +32,6 @@ class Newborn(abc.ABC):
 class Oviparous(Newborn):
     """A newborn stays in an egg for a while and will be born."""
 
-    position: np.ndarray
     time_to_birth: int
 
     def is_ready(self) -> bool:
@@ -48,26 +44,14 @@ class Oviparous(Newborn):
 
 
 @dataclasses.dataclass()
-class Virtual(Newborn):
-    """Virtually replace a parent's mind, reusing the body."""
-
-    gene: Gene
-    parent: Body
-
-    def is_ready(self) -> bool:
-        return self.parent.is_dead
-
-
-@dataclasses.dataclass()
 class Viviparous(Newborn):
     """A newborn stays in a parent's body for a while and will be born."""
 
-    gene: Gene
     parent: Body
     time_to_birth: int
 
     def is_ready(self) -> bool:
-        return self.time_to_birth == 0 or self.parent.is_dead
+        return self.time_to_birth == 0
 
     def step(self) -> None:
         if self.time_to_birth == 0:
@@ -85,7 +69,7 @@ class Status:
 @dataclasses.dataclass(frozen=True)
 class EncountStatus:
     statuses: t.Tuple[Status, Status]
-    distance: float
+    encount: Encount
 
 
 @dataclasses.dataclass(frozen=True)
@@ -99,7 +83,7 @@ class DeadBody:
 
 IsDeadFn = t.Callable[[Status], bool]
 AsexualReprFn = t.Callable[[Status], t.Optional[Newborn]]
-SexualReprFn = t.Callable[[EncountStatus], t.Optional[Newborn]]
+SexualReprFn = t.Callable[[t.Tuple[Status, Status], Encount], t.Optional[Newborn]]
 
 
 @dataclasses.dataclass()
@@ -124,7 +108,7 @@ class Manager:
         return self.statuses.keys()
 
     def asexual_repr(self, body: Body) -> bool:
-        return self._repr_impl(self.asexual_repr_fn, self.statuses[body])
+        return self._repr_impl(self.asexual_repr_fn, (self.statuses[body],))
 
     def register(self, body: Body, status: t.Optional[Status] = None) -> None:
         if status is None:
@@ -136,7 +120,8 @@ class Manager:
             self.statuses[body].__dict__[name] += value
 
     def sexual_repr(self, encount: Encount) -> bool:
-        return self._repr_impl(self.sexual_repr_fn, encount)
+        statuses = tuple((self.statuses[body] for body in encount.bodies))
+        return self._repr_impl(self.sexual_repr_fn, (statuses, encount))
 
     def step(self) -> t.Tuple[t.List[DeadBody], t.List[Newborn]]:
         deads, newborns = [], []
@@ -154,10 +139,10 @@ class Manager:
                 newborns.append(newborn)
         return deads, newborns
 
-    def _repr_impl(self, fn: t.Optional[callable], arg: t.Any) -> bool:
+    def _repr_impl(self, fn: t.Optional[callable], args: tuple) -> bool:
         if fn is None:
             return False
-        newborn = fn(arg)
+        newborn = fn(*args)
         if newborn is None:
             return False
         else:
