@@ -11,7 +11,7 @@ import typing as t
 import numpy as np
 
 from emevo.body import Body
-from emevo.types import Action, Observation, Info
+from emevo.types import Action, Info, Observation
 
 
 @dataclasses.dataclass(frozen=True)

@@ -2,9 +2,7 @@ import typing as t
 
 import numpy as np
 
-from emevo import birth_and_death as bd
-from emevo import Body
-
+from emevo import Body, birth_and_death as bd
 
 DEFAULT_ENERGY_LEVEL: int = 10
 EMPTY_ARRAY: np.ndarray = np.array(())
@@ -33,13 +31,15 @@ def _get_manager(n_bodies: int = 5, **other_args) -> bd.Manager:
 
 def _oviparous(time_to_birth: int) -> bd.Oviparous:
     return bd.Oviparous(
-        EMPTY_ARRAY,
+        EMPTY_ARRAY,  # Use dummy for gene and positions
         EMPTY_ARRAY,
         time_to_birth=time_to_birth,
     )
 
 
 def test_asexual() -> None:
+    """Test the most basic setting: Asexual reproduction + Oviparous birth"""
+
     # 10 steps to death, 11 steps to birth, 3 steps to newborn
     STEPS_TO_DEATH: int = 10
     STEPS_TO_BIRTH: int = 3
