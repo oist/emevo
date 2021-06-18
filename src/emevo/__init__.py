@@ -2,7 +2,7 @@
 EmEvo is a simulation platform for embodied evolution of robots.
 This package contains API definitions and some environment implementations.
 """
-from emevo.birth_and_death import AsexualReprFn, IsDeadFn, Manager, SexualReprFn
+# birth_and_death is an optional API, so is not imported by default
 from emevo.body import Body, Profile
 from emevo.environment import Encount, Environment, make, register
 
