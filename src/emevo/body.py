@@ -23,15 +23,6 @@ class Profile:
     def __deepcopy__(self) -> t.NoReturn:
         raise RuntimeError("BodyID cannot be copied")
 
-    def __eq__(self, other: t.Any) -> bool:
-        return self.uuid_ == other.uuid_ and self.birthtime == other.birthtime
-
-    def __ne__(self, other: t.Any) -> bool:
-        return self.uuid_ != other.uuid_ or self.birthtime != other.birthtime
-
-    def __hash__(self) -> bool:
-        return hash(self.uuid_)
-
 
 class Body(abc.ABC):
     """

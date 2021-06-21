@@ -67,12 +67,6 @@ class Status:
 
 
 @dataclasses.dataclass(frozen=True)
-class EncountStatus:
-    statuses: t.Tuple[Status, Status]
-    encount: Encount
-
-
-@dataclasses.dataclass(frozen=True)
 class DeadBody:
     """R.I.P."""
 

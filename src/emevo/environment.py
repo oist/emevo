@@ -50,11 +50,12 @@ class Environment(abc.ABC):
 
     @abc.abstractmethod
     def born(self, generation: int = 0, place: t.Optional[np.ndarray] = None) -> Body:
+        """New agent is born in the enviroment. Return the body."""
         pass
 
     @abc.abstractmethod
     def die(self, body: Body) -> None:
-        pass
+        """Notify the environment that the body is dead."""
 
     def reset(self) -> None:
         """Do some initialization"""

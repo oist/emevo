@@ -1,5 +1,9 @@
 import typing as t
 
+import pytest
+
+from gym import spaces
+
 from emevo import Body, Encount, birth_and_death as bd
 
 DEFAULT_ENERGY_LEVEL: int = 10
@@ -10,12 +14,12 @@ class FakeBody(Body):
         super().__init__(name)
 
     @property
-    def action_space(self):
-        return None
+    def action_space(self) -> spaces.Box:
+        return spaces.Box(np.zeros(1, dtype=np.float32), np.ones(1, dtype=np.float32))
 
     @property
-    def observation_space(self):
-        return None
+    def observation_space(self) -> spaces.Box:
+        return spaces.Box(np.zeros(1, dtype=np.float32), np.ones(1, dtype=np.float32))
 
 
 def _get_manager(n_bodies: int = 5, **other_args) -> bd.Manager:
@@ -90,8 +94,9 @@ def test_asexual() -> None:
             assert len(newborns) == 0
 
 
-def test_sexual() -> None:
-    """Test Sexual reproduction + Viviparous birth"""
+@pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
+def test_sexual(newborn_kind: callable) -> None:
+    """Test Sexual reproduction"""
 
     # 10 steps to death, 11 steps to birth, 3 steps to newborn
     STEPS_TO_DEATH: int = 10
@@ -105,7 +110,12 @@ def test_sexual() -> None:
         energy_ok = all(map(lambda status: status.energy_level > threshold, statuses))
         distance_ok = encount.distance < 1.0
         if energy_ok and distance_ok:
-            return _oviparous(STEPS_TO_BIRTH)
+            if newborn_kind == "oviparous":
+                return _oviparous(STEPS_TO_BIRTH)
+            elif newborn_kind == "viviparous":
+                return _viviparous(encount.bodies[0], STEPS_TO_BIRTH)
+            else:
+                raise ValueError(f"Unknown newborn kind {newborn_kind}")
         else:
             return None
 
