@@ -3,10 +3,12 @@ Waterworld environment.
 Taken from `sisl`_ environment in PettingZoo.
 
 Originaly developped by SISL (stanford intelligent system) and open-sourced as
-as part of `MADRL`_ library.
+as part of `MADRL`_ library, which is a modification of the single-agent version
+that appears in `reinforcejs`_.
 
 .. _sisl: https://www.pettingzoo.ml/sisl
 .. _MADRL: https://github.com/sisl/MADRL
+.. _reinforcejs: https://cs.stanford.edu/people/karpathy/reinforcejs/waterworld.html
 """
 
 import dataclasses

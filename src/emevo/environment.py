@@ -72,34 +72,3 @@ class Environment(abc.ABC):
     def render(self, mode: str) -> t.Union[None, np.ndarray]:
         """Render something to GUI or file"""
         pass
-
-
-class _EnvironmentRegistory:
-    """An internal class to register and make environments."""
-
-    registered_envs: t.ClassVar[t.Dict[str, t.Type[Environment]]] = {}
-
-    @classmethod
-    def make(
-        cls,
-        env_class: t.Union[str, t.Type[Environment]],
-        *args,
-        **kwargs,
-    ) -> Environment:
-        if isinstance(env_class, str):
-            env_class = cls.registered_envs.get(env_class.lower(), None)
-        if not isinstance(env_class, type):
-            raise ValueError(f"Invalid environmental class: {env_class}")
-        return env_cls(*args, **kwargs)
-
-
-def make(
-    env_class: t.Union[str, t.Type[Environment]],
-    *args,
-    **kwargs,
-) -> Environment:
-    return _EnvironmentFactory.make(env_class, *args, **kwargs)
-
-
-def register(name: str, env_class: t.Type[Environment]) -> None:
-    _EnvironmentFactory.registered_envs[name] = env_class
