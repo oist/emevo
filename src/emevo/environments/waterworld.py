@@ -183,7 +183,7 @@ class Pursuer(Archea, Body):
 class _Collision:
     distance_mat: np.ndarray
     collision_mat: np.ndarray
-    caught_y: np.ndarray
+    caught_b: np.ndarray
 
     def listup(self, bodies: t.List[Archea]) -> t.List[Encount]:
         n_bodies = len(bodies)
@@ -195,7 +195,7 @@ class _Collision:
         return res
 
     def n_caught(self, idx: int) -> int:
-        return self.collision_mat[idx][self.caught_y].sum()
+        return self.collision_mat[idx][self.caught_b].sum()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -206,6 +206,11 @@ class _Collisions:
 
 
 class WaterWorld(Environment):
+    INFO_DESCR: t.ClassVar[t.Dict[str, str]] = {
+        "food": "Number of foods the pursuer ate",
+        "poison": "Number of poisons the pursuer ate",
+    }
+
     def __init__(
         self,
         n_pursuers: int = 5,
@@ -314,8 +319,8 @@ class WaterWorld(Environment):
             # Limit added thrust to pursuer.max_accel
             action = action / speed * pursuer.max_accel
 
-        pursuer.set_velocity(p.velocity + action)
-        pursuer.set_position(p.position + self._unit_time * p.velocity)
+        pursuer.set_velocity(pursuer.velocity + action)
+        pursuer.set_position(pursuer.position + self._unit_time * pursuer.velocity)
 
         self._consumed_energy[self._idx(pursuer)] = np.linalg.norm(action)
 
@@ -336,9 +341,15 @@ class WaterWorld(Environment):
         move_archeas(self._evaders)
         move_archeas(self._poisons)
 
-        self._last_observations = self._collision_handling_impl()
         self._n_steps += 1
-        return self._last_collisions.pursuer.listup(self._pursuers)
+        if len(self._pursuers) > 0:
+            self._last_observations = self._collision_handling_impl()
+            return self._last_collisions.pursuer.listup(self._pursuers)
+        else:
+            import warnings
+
+            warnings.warn("step is called after pursuers are distinct!")
+            return []
 
     def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Info]]:
         idx = self._idx(body)
@@ -346,11 +357,11 @@ class WaterWorld(Environment):
         if obs is None:
             # If obs is None, then the agent is a newborn and have observed nothing.
             return None
-        rewards = {
+        info = {
             "food": float(self._last_collisions.evader.n_caught(idx)),
             "poison": -float(self._last_collisions.poison.n_caught(idx)),
         }
-        return obs, rewards
+        return obs, info
 
     def born(self, generation: int = 0, place: t.Optional[np.ndarray] = None) -> Body:
         if place is not None:
@@ -462,8 +473,8 @@ class WaterWorld(Environment):
         )
 
     def _check_coord_is_ok(self, radius: float, coord: np.ndarray) -> bool:
-        threshold = radius * 2 + self._obstacle_radius
-        return threshold > spd.cdist(coord.reshape(1, 2), self._obstacle_coords).max()
+        threshold = radius + self._obstacle_radius
+        return threshold < spd.cdist(coord.reshape(1, 2), self._obstacle_coords).max()
 
     def _generate_coord(self, radius: float) -> np.ndarray:
         coord = self.np_random.rand(2)
@@ -486,12 +497,12 @@ class WaterWorld(Environment):
 
     def _detect_collision(
         self,
-        positions_x: np.ndarray,
-        positions_y: np.ndarray,
+        positions_a: np.ndarray,
+        positions_b: np.ndarray,
         threshold: float,
         *,
         n_required_collisions: int = 1,
-        x_equal_to_y: bool = False,
+        a_equal_to_b: bool = False,
     ) -> _Collision:
         """
         Detect collision and check whether it results in catching the object.
@@ -499,17 +510,17 @@ class WaterWorld(Environment):
         with the object to actually catch it.
         """
 
-        distances = spd.cdist(positions_x, positions_y)
-        is_colliding_x_y = distances <= threshold
-        if x_equal_to_y:
-            for i in range(len(positions_x)):
-                is_colliding_x_y[i, i] = False
+        distances = spd.cdist(positions_a, positions_b)
+        is_colliding_a_b = distances <= threshold
+        if a_equal_to_b:
+            indices = np.arange(len(positions_a))
+            is_colliding_a_b[indices, indices] = False
 
         # Number of collisions for each y
-        n_collisions_y = is_colliding_x_y.sum(axis=0)
-        # List of y that have been caught
-        caught_y = np.where(n_collisions_y >= n_required_collisions)[0]
-        return _Collision(distances, is_colliding_x_y, caught_y)
+        n_collisions_b = is_colliding_a_b.sum(axis=0)
+        # List of b that have been caught
+        caught_b = np.where(n_collisions_b >= n_required_collisions)[0]
+        return _Collision(distances, is_colliding_a_b, caught_b)
 
     def _closest_dist(
         self,
@@ -604,6 +615,9 @@ class WaterWorld(Environment):
         positions_evader = np.array([evader.position for evader in self._evaders])
         positions_poison = np.array([poison.position for poison in self._poisons])
 
+        if positions_pursuer.ndim == 1:
+            positions_pursuer = np.expand_dims(positions_pursuer, axis=0)
+
         # Find evader collisions
         evader_collision = self._detect_collision(
             positions_pursuer,
@@ -624,7 +638,7 @@ class WaterWorld(Environment):
             positions_pursuer,
             positions_pursuer,
             self._pursuer_radius * 2,
-            x_equal_to_y=True,
+            a_equal_to_b=True,
         )
 
         # Find sensed obstacles
@@ -694,8 +708,8 @@ class WaterWorld(Environment):
                 # NOTE (kngwyu): Changed from the original code
                 archea.set_velocity(self._sample_velocity(archea.max_accel))
 
-        reset_caught_archeas(evader_collision.caught_y, self._evaders)
-        reset_caught_archeas(poison_collision.caught_y, self._poisons)
+        reset_caught_archeas(evader_collision.caught_b, self._evaders)
+        reset_caught_archeas(poison_collision.caught_b, self._poisons)
 
         # Memonize collisions
         self._last_collisions = _Collisions(

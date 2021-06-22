@@ -16,7 +16,7 @@ from emevo.environment import Encount
 class Newborn(abc.ABC):
     """A class that contains information of birth type."""
 
-    context: t.Any
+    context: t.Dict[str, t.Any]
 
     @abc.abstractmethod
     def is_ready(self) -> bool:
@@ -65,6 +65,9 @@ class Status:
 
     energy_level: float
 
+    def update(self, *, energy_level: float) -> None:
+        self.energy_level += energy_level
+
 
 @dataclasses.dataclass(frozen=True)
 class DeadBody:
@@ -110,8 +113,7 @@ class Manager:
         self.statuses[body] = status
 
     def update(self, body: Body, **updates) -> None:
-        for name, value in updates.items():
-            self.statuses[body].__dict__[name] += value
+        self.statuses[body].update(**updates)
 
     def sexual_repr(self, encount: Encount) -> bool:
         statuses = tuple((self.statuses[body] for body in encount.bodies))
@@ -131,6 +133,9 @@ class Manager:
             newborn.step()
             if newborn.is_ready():
                 newborns.append(newborn)
+
+        for newborn in newborns:
+            self.pending_newborns.remove(newborn)
         return deads, newborns
 
     def _repr_impl(self, fn: t.Optional[callable], args: tuple) -> bool:

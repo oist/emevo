@@ -1,5 +1,6 @@
 import typing as t
 
+import numpy as np
 import pytest
 
 from gym import spaces
@@ -20,6 +21,10 @@ class FakeBody(Body):
     @property
     def observation_space(self) -> spaces.Box:
         return spaces.Box(np.zeros(1, dtype=np.float32), np.ones(1, dtype=np.float32))
+
+    @property
+    def position(self) -> np.ndarray:
+        return np.array(())
 
 
 def _get_manager(n_bodies: int = 5, **other_args) -> bd.Manager:

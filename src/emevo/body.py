@@ -8,6 +8,8 @@ import datetime as dt
 import typing as t
 import uuid
 
+import numpy as np
+
 from gym import spaces
 
 
@@ -40,6 +42,11 @@ class Body(abc.ABC):
     @property
     @abc.abstractmethod
     def observation_space(self) -> spaces.Space:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def position(self) -> np.ndarray:
         pass
 
     def __repr__(self) -> str:

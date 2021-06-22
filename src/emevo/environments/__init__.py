@@ -6,6 +6,7 @@ import typing as t
 import numpy as np
 
 from emevo import Environment
+
 from .waterworld import WaterWorld
 
 
