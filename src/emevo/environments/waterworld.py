@@ -12,6 +12,7 @@ that appears in `reinforcejs`_.
 """
 
 import dataclasses
+import itertools
 import typing as t
 
 import numpy as np
@@ -197,6 +198,10 @@ class _Collision:
     def n_caught(self, idx: int) -> int:
         return self.collision_mat[idx][self.caught_b].sum()
 
+    def caught_archeas(self, archeas: t.List[Archea]) -> t.Iterable[Archea]:
+        for caught_idx in self.caught_b:
+            yield archeas[caught_idx]
+
 
 @dataclasses.dataclass(frozen=True)
 class _Collisions:
@@ -251,6 +256,7 @@ class WaterWorld(Environment):
         speed_features: toggles whether pursuing archea (agent) sensors
                         detect speed of other archea
         """
+        self._initial_n_pursuers = n_pursuers
         self._n_pursuers = n_pursuers
         self._n_required_pursuers = n_required_pursuers
         self._obstacle_radius = obstacle_radius
@@ -365,13 +371,11 @@ class WaterWorld(Environment):
 
     def born(self, generation: int = 0, place: t.Optional[np.ndarray] = None) -> Body:
         if place is not None:
-            if not self._check_coord_is_ok(self._pursuer_radius, place):
-                raise ValueError(f"Failed to set the agent to {place}")
-        else:
-            place = self._generate_coord(self._pursuer_radius)
+            if any(map(lambda p: p < 0 or 1 < p, place)):
+                raise ValueError("Place {place} is out of the field")
         body = self._generate_pursuer(generation)
-        body.set_position(place)
-        body.set_velocity(np.zeros(2))
+        self._initialize_archea(body, position=place, velocity=np.zeros(2))
+        self._maybe_rebound_archea(body)
         self._pursuers.append(body)
         self._consumed_energy.append(0.0)
         self._last_observations.append(None)
@@ -401,19 +405,15 @@ class WaterWorld(Environment):
             self._obstacle_coords = self._initial_obstacle_coords.copy()
 
         # Initialize pursuers
+        if len(self._pursuers) != self._initial_n_pursuers:
+            self._pursuers = [self._generate_pursuer() for _ in range(self._n_pursuers)]
+
         for pursuer in self._pursuers:
-            pursuer.set_position(self._generate_coord(pursuer.radius))
-            pursuer.set_velocity(np.zeros(2))
+            self._initialize_archea(pursuer, velocity=np.zeros(2))
 
-        # Initialize evaders
-        for evader in self._evaders:
-            evader.set_position(self._generate_coord(evader.radius))
-            evader.set_velocity(self._sample_velocity(evader.max_accel))
-
-        # Initialize poisons
-        for poison in self._poisons:
-            poison.set_position(self._generate_coord(poison.radius))
-            poison.set_velocity(self._sample_velocity(poison.max_accel))
+        # Initialize evaders and poisons
+        for archea in itertools.chain(self._evaders, self._poisons):
+            self._initialize_archea(archea)
 
         self._last_observations = self._collision_handling_impl()
 
@@ -472,16 +472,44 @@ class WaterWorld(Environment):
             generation=generation,
         )
 
-    def _check_coord_is_ok(self, radius: float, coord: np.ndarray) -> bool:
-        threshold = radius + self._obstacle_radius
-        return threshold < spd.cdist(coord.reshape(1, 2), self._obstacle_coords).max()
+    def _initialize_archea(
+        self,
+        archea: Archea,
+        *,
+        position: t.Optional[np.ndarray] = None,
+        velocity: t.Optional[np.ndarray] = None,
+    ) -> None:
+        if position is None:
+            position = self.np_random.rand(2)
+            while self._detect_collision_to_obs(archea.radius, position) is not None:
+                position = self.np_random.rand(2)
+            rebound = False
+        else:
+            rebound = True
+        if velocity is None:
+            velocity = self._sample_velocity(archea.max_accel)
+        archea.set_position(position)
+        archea.set_velocity(velocity)
+        if rebound:
+            self._maybe_rebound_archea(archea)
 
-    def _generate_coord(self, radius: float) -> np.ndarray:
-        coord = self.np_random.rand(2)
-        # Create random coordinate that avoids obstacles
-        while not self._check_coord_is_ok(radius, coord):
-            coord = self.np_random.rand(2)
-        return coord
+    def _detect_collision_to_obs(
+        self,
+        radius: float,
+        coord: np.ndarray,
+    ) -> t.Optional[int]:
+        """Return index of the obstalce if the archea collides"""
+        dists = spd.cdist(coord.reshape(1, 2), self._obstacle_coords).ravel()
+        (collision_indices,) = np.where(dists < radius + self._obstacle_radius)
+        n_collisions = len(collision_indices)
+        if n_collisions == 0:
+            return None
+        else:
+            assert n_collisions == 1, (
+                "Multiple collision to obstacles are detected.\n"
+                + "Please place obstacles more sparsely"
+            )
+            return collision_indices.item()
 
     def _sample_velocity(self, max_norm: float) -> np.ndarray:
         """Sample velocity from standard normal distribution and
@@ -564,6 +592,31 @@ class WaterWorld(Environment):
 
         return speed_features
 
+    def _rebound_archea(self, obstacle_coord: np.ndarray, archea: Archea) -> None:
+        center_to_archea = archea.position - obstacle_coord
+        ctoa_norm = np.linalg.norm(center_to_archea)
+        # ratio of the vector from center to archea
+        ratio_of_ca = ctoa_norm / (self._obstacle_radius + archea.radius)
+        # ratio of the vector from archea to edge
+        ratio_of_ae = 1.0 - ratio_of_ca
+        new_pos = archea.position + center_to_archea * (ratio_of_ae / ratio_of_ca) * 2.0
+        archea.set_position(new_pos)
+
+        # project current velocity onto collision normal
+        current_vel = archea.velocity
+        collision_normal = new_pos - obstacle_coord
+        proj_numer = np.dot(current_vel, collision_normal)
+        cllsn_mag = np.dot(collision_normal, collision_normal)
+        proj_vel = (proj_numer / cllsn_mag) * collision_normal
+        perp_vel = current_vel - proj_vel
+        total_vel = perp_vel - proj_vel
+        archea.set_velocity(total_vel)
+
+    def _maybe_rebound_archea(self, archea: Archea) -> None:
+        collision_idx = self._detect_collision_to_obs(archea.radius, archea.position)
+        if collision_idx is not None:
+            self._rebound_archea(self._obstacle_coords[collision_idx], archea)
+
     def _collision_handling_impl(self) -> t.List[np.ndarray]:
         # Stop pursuers upon hitting a wall
         for pursuer in self._pursuers:
@@ -575,46 +628,15 @@ class WaterWorld(Environment):
             pursuer.set_velocity(clipped_velocity)
             pursuer.set_position(clipped_coord)
 
-        def rebound_archeas(archeas: t.List[Archea]) -> None:
-            collisions_archea_obstacle = np.zeros(len(archeas))
-            # Archeas rebound on hitting an obstacle
-            for idx, archea in enumerate(archeas):
-                obstacle_distance = spd.cdist(
-                    np.expand_dims(archea.position, 0), self._obstacle_coords
-                )
-                is_colliding = (
-                    obstacle_distance <= archea.radius + self._obstacle_radius
-                )
-                collisions_archea_obstacle[idx] = is_colliding.sum()
-                if collisions_archea_obstacle[idx] > 0:
-                    # Rebound the archea that collided with an obstacle
-                    velocity_scale = (
-                        archea.radius
-                        + self._obstacle_radius
-                        - spd.euclidean(archea.position, self._obstacle_coords)
-                    )
-                    pos_diff = archea.position - self._obstacle_coords[0]
-                    new_pos = archea.position + velocity_scale * pos_diff
-                    archea.set_position(new_pos)
-
-                    collision_normal = archea.position - self._obstacle_coords[0]
-                    # project current velocity onto collision normal
-                    current_vel = archea.velocity
-                    proj_numer = np.dot(current_vel, collision_normal)
-                    cllsn_mag = np.dot(collision_normal, collision_normal)
-                    proj_vel = (proj_numer / cllsn_mag) * collision_normal
-                    perp_vel = current_vel - proj_vel
-                    total_vel = perp_vel - proj_vel
-                    archea.set_velocity(total_vel)
-
-        rebound_archeas(self._pursuers)
-        rebound_archeas(self._evaders)
-        rebound_archeas(self._poisons)
+        # Rebound an archea if it hits an obstacle
+        for archea in itertools.chain(self._pursuers, self._evaders, self._poisons):
+            self._maybe_rebound_archea(archea)
 
         positions_pursuer = np.array([pursuer.position for pursuer in self._pursuers])
         positions_evader = np.array([evader.position for evader in self._evaders])
         positions_poison = np.array([poison.position for poison in self._poisons])
 
+        # If there's only one archea, expand the dimension of positions
         if positions_pursuer.ndim == 1:
             positions_pursuer = np.expand_dims(positions_pursuer, axis=0)
 
@@ -697,19 +719,11 @@ class WaterWorld(Environment):
 
         # If object collided with required number of players,
         # reset its position and velocity
-        # Effectively the same as removing it and adding it back
-        def reset_caught_archeas(
-            caught_indices: np.ndarray,
-            archeas: t.List[Archea],
-        ) -> None:
-            for archea_idx in caught_indices:
-                archea = archeas[archea_idx]
-                archea.set_position(self._generate_coord(archea.radius))
-                # NOTE (kngwyu): Changed from the original code
-                archea.set_velocity(self._sample_velocity(archea.max_accel))
-
-        reset_caught_archeas(evader_collision.caught_b, self._evaders)
-        reset_caught_archeas(poison_collision.caught_b, self._poisons)
+        for caught_archea in itertools.chain(
+            evader_collision.caught_archeas(self._evaders),
+            poison_collision.caught_archeas(self._poisons),
+        ):
+            self._initialize_archea(caught_archea)
 
         # Memonize collisions
         self._last_collisions = _Collisions(
