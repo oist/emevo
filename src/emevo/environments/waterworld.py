@@ -364,8 +364,8 @@ class WaterWorld(Environment):
             # If obs is None, then the agent is a newborn and have observed nothing.
             return None
         info = {
-            "food": float(self._last_collisions.evader.n_caught(idx)),
-            "poison": -float(self._last_collisions.poison.n_caught(idx)),
+            "food": self._last_collisions.evader.n_caught(idx),
+            "poison": self._last_collisions.poison.n_caught(idx),
         }
         return obs, info
 

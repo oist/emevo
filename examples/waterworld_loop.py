@@ -40,11 +40,11 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
             return None
 
     def energy_update(info: t.Dict[str, float]) -> float:
-        return info["food"] - info["poison"]
+        return float(info["food"] - info["poison"])
 
     manager = bd.Manager(
         default_status=bd.Status(3.0),
-        is_dead=lambda status: status.energy_level < 1.5,
+        is_dead=lambda status: status.energy_level < 0.5,
         sexual_repr_fn=repr_fn,
     )
 
@@ -117,5 +117,5 @@ if __name__ == "__main__":
         help="Disable rendering by pygame",
     )
     args = parser.parse_args()
-    env = make("Waterworld-v0", n_poison=20)
+    env = make("Waterworld-v0", n_poison=12)
     env_loop(env, args.max_steps, render=not args.no_render)
