@@ -1,3 +1,6 @@
+"""Simulate random agents with birth and death
+"""
+
 import typing as t
 
 import numpy as np
