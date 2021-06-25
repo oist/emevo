@@ -14,6 +14,7 @@ that appears in `reinforcejs`_.
 import dataclasses
 import itertools
 import typing as t
+import warnings
 
 import numpy as np
 
@@ -45,16 +46,18 @@ class Archea:
         assert self._position is not None
         return self._position
 
+    @position.setter
+    def position(self, pos: np.ndarray) -> None:
+        assert pos.shape == (2,)
+        self._position = pos
+
     @property
     def velocity(self) -> np.ndarray:
         assert self._velocity is not None
         return self._velocity
 
-    def set_position(self, pos: np.ndarray) -> None:
-        assert pos.shape == (2,)
-        self._position = pos
-
-    def set_velocity(self, velocity: np.ndarray) -> None:
+    @velocity.setter
+    def velocity(self, velocity: np.ndarray) -> None:
         assert velocity.shape == (2,)
         self._velocity = velocity
 
@@ -325,8 +328,8 @@ class WaterWorld(Environment):
             # Limit added thrust to pursuer.max_accel
             action = action / speed * pursuer.max_accel
 
-        pursuer.set_velocity(pursuer.velocity + action)
-        pursuer.set_position(pursuer.position + self._unit_time * pursuer.velocity)
+        pursuer.velocity = pursuer.velocity + action
+        pursuer.position += self._unit_time * pursuer.velocity
 
         self._consumed_energy[self._idx(pursuer)] = np.linalg.norm(action)
 
@@ -337,7 +340,7 @@ class WaterWorld(Environment):
         def move_archeas(archeas: t.List[Archea]) -> None:
             for archea in archeas:
                 # Move archeaects
-                archea.set_position(archea.position + self._unit_time * archea.velocity)
+                archea.position += self._unit_time * archea.velocity
                 # Bounce archeaect if it hits a wall
                 for i in range(len(archea.position)):
                     if archea.position[i] >= 1 or archea.position[i] <= 0:
@@ -352,8 +355,6 @@ class WaterWorld(Environment):
             self._last_observations = self._collision_handling_impl()
             return self._last_collisions.pursuer.listup(self._pursuers)
         else:
-            import warnings
-
             warnings.warn("step is called after pursuers are distinct!")
             return []
 
@@ -372,7 +373,8 @@ class WaterWorld(Environment):
     def born(self, generation: int = 0, place: t.Optional[np.ndarray] = None) -> Body:
         if place is not None:
             if any(map(lambda p: p < 0 or 1 < p, place)):
-                raise ValueError("Place {place} is out of the field")
+                warnings.warn(f"Place {place} is out of the field")
+                place = np.clip(place, 0.0, 1.0)
         body = self._generate_pursuer(generation)
         self._initialize_archea(body, position=place, velocity=np.zeros(2))
         self._maybe_rebound_archea(body)
@@ -488,8 +490,8 @@ class WaterWorld(Environment):
             rebound = True
         if velocity is None:
             velocity = self._sample_velocity(archea.max_accel)
-        archea.set_position(position)
-        archea.set_velocity(velocity)
+        archea.position = position
+        archea.velocity = velocity
         if rebound:
             self._maybe_rebound_archea(archea)
 
@@ -600,7 +602,7 @@ class WaterWorld(Environment):
         # ratio of the vector from archea to edge
         ratio_of_ae = 1.0 - ratio_of_ca
         new_pos = archea.position + center_to_archea * (ratio_of_ae / ratio_of_ca) * 2.0
-        archea.set_position(new_pos)
+        archea.position = new_pos
 
         # project current velocity onto collision normal
         current_vel = archea.velocity
@@ -610,7 +612,7 @@ class WaterWorld(Environment):
         proj_vel = (proj_numer / cllsn_mag) * collision_normal
         perp_vel = current_vel - proj_vel
         total_vel = perp_vel - proj_vel
-        archea.set_velocity(total_vel)
+        archea.velocity = total_vel
 
     def _maybe_rebound_archea(self, archea: Archea) -> None:
         collision_idx = self._detect_collision_to_obs(archea.radius, archea.position)
@@ -625,8 +627,8 @@ class WaterWorld(Environment):
             # If x or y position gets clipped, set x or y velocity to 0 respectively
             clipped_velocity[pursuer.position != clipped_coord] = 0
             # Save clipped velocity and position
-            pursuer.set_velocity(clipped_velocity)
-            pursuer.set_position(clipped_coord)
+            pursuer.velocity = clipped_velocity
+            pursuer.position = clipped_coord
 
         # Rebound an archea if it hits an obstacle
         for archea in itertools.chain(self._pursuers, self._evaders, self._poisons):
