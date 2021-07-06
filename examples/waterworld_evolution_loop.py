@@ -46,7 +46,7 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
         return float(info["food"] - info["poison"])
 
     manager = bd.Manager(
-        default_status=bd.Status(3.0),
+        default_status=bd.Status(4.0),
         is_dead=lambda status: status.energy_level < 0.5,
         sexual_repr_fn=repr_fn,
     )
@@ -106,6 +106,7 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
 
 if __name__ == "__main__":
     import argparse
+    from emevo.environments.waterworld import logistic_reproduce_fn
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -120,5 +121,11 @@ if __name__ == "__main__":
         help="Disable rendering by pygame",
     )
     args = parser.parse_args()
-    env = make("Waterworld-v0", n_evaders=8, n_poison=12)
+    env = make(
+        "Waterworld-v0",
+        n_evaders=8,
+        n_poison=12,
+        evader_reproduce_fn=logistic_reproduce_fn(1.0, 10),
+        poison_reproduce_fn=logistic_reproduce_fn(1.0, 16),
+    )
     env_loop(env, args.max_steps, render=not args.no_render)

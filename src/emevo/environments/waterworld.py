@@ -183,6 +183,18 @@ class Pursuer(Archea, Body):
         return sensor_values.T
 
 
+ReproduceFn = t.Callable[[t.List[Archea], np.random.RandomState], int]
+
+
+def logistic_reproduce_fn(growth_rate: float, capacity: float) -> ReproduceFn:
+    def reproduce_fn(archeas: t.List[Archea], _np_random: np.random.RandomState) -> int:
+        n_archea = len(archeas)
+        dn_dt = growth_rate * n_archea * (1 - n_archea / capacity)
+        return max(0, int(dn_dt))
+
+    return reproduce_fn
+
+
 @dataclasses.dataclass(frozen=True)
 class _Collision:
     distance_mat: np.ndarray
@@ -204,6 +216,16 @@ class _Collision:
     def caught_archeas(self, archeas: t.List[Archea]) -> t.Iterable[Archea]:
         for caught_idx in self.caught_b:
             yield archeas[caught_idx]
+
+
+def _remove_indices(list_: t.List[t.Any], indices: t.Iterable[t.Any]) -> t.List[t.Any]:
+    if len(indices) == 0:
+        return list_
+    res = []
+    for idx, elem in enumerate(list_):
+        if idx not in indices:
+            res.append(elem)
+    return res
 
 
 @dataclasses.dataclass(frozen=True)
@@ -234,8 +256,10 @@ class WaterWorld(Environment):
         obstacle_coords: t.Optional[np.ndarray] = np.array([0.5, 0.5]),
         n_obstacles: int = 1,
         pursuer_max_accel: float = 0.01,
-        evader_max_speed: float = 0.01,
-        poison_max_speed: float = 0.01,
+        evader_max_accel: float = 0.01,
+        poison_max_accel: float = 0.01,
+        evader_reproduce_fn: ReproduceFn = logistic_reproduce_fn(1.0, 8),
+        poison_reproduce_fn: ReproduceFn = logistic_reproduce_fn(1.0, 14),
         speed_features: bool = True,
     ) -> None:
         """
@@ -254,13 +278,20 @@ class WaterWorld(Environment):
         obstacle_coord: coordinate of obstacle object.
                         Can be set to `None` to use a random location
         pursuer_max_accel: pursuer archea maximum acceleration (maximum action size)
-        evader_max_speed: max speed of evader
-        poison_max_speed: max spped of poison archea
+        evader_max_accel: max accel of evader
+        poison_max_accel: max accel of poison archea
+        evader_reproduce_fn: reproducer of evader
+        poison_reproduce_fn: reproducer of poison
         speed_features: toggles whether pursuing archea (agent) sensors
                         detect speed of other archea
         """
         self._initial_n_pursuers = n_pursuers
+        self._initial_n_evaders = n_evaders
+        self._initial_n_poison = n_poison
         self._n_pursuers = n_pursuers
+        self._n_evaders = n_evaders
+        self._n_poison = n_poison
+
         self._n_required_pursuers = n_required_pursuers
         self._obstacle_radius = obstacle_radius
         if obstacle_coords is not None:
@@ -283,23 +314,28 @@ class WaterWorld(Environment):
         self._n_sensors = n_sensors
         self._n_obstacles = n_obstacles
         self._speed_features = speed_features
-        self._pursuer_max_accel = pursuer_max_accel
         self._pursuer_sensor_range = sensor_range
+
+        def _generate_pursuer(generation: int = 0) -> Pursuer:
+            return Pursuer(
+                radius=self._pursuer_radius,
+                n_sensors=self._n_sensors,
+                max_accel=pursuer_max_accel,
+                sensor_range=self._pursuer_sensor_range,
+                speed_features=self._speed_features,
+                generation=generation,
+            )
+
+        self._generate_pursuer = _generate_pursuer
+        self._generate_evader = lambda: Archea(
+            radius=self._evader_radius, max_accel=evader_max_accel
+        )
+        self._generate_poison = lambda: Archea(
+            radius=self._poison_radius, max_accel=poison_max_accel
+        )
         self._pursuers = [self._generate_pursuer() for _ in range(self._n_pursuers)]
-        self._evaders = [
-            Archea(
-                radius=self._evader_radius,
-                max_accel=evader_max_speed,
-            )
-            for _ in range(n_evaders)
-        ]
-        self._poisons = [
-            Archea(
-                radius=self._poison_radius,
-                max_accel=poison_max_speed,
-            )
-            for _ in range(n_poison)
-        ]
+        self._evaders = [self._generate_evader() for _ in range(self._n_evaders)]
+        self._poisons = [self._generate_poison() for _ in range(self._n_poison)]
 
         # Observational informations for each agent
         self._last_observations: t.List[t.Optional[np.ndarray]] = [
@@ -310,6 +346,10 @@ class WaterWorld(Environment):
 
         self._unit_time = 1.0
         self._n_steps = 0
+
+        # reproducers
+        self._evader_reproduce_fn = evader_reproduce_fn
+        self._poison_reproduce_fn = poison_reproduce_fn
 
         # Visualization stuffs
         self._pixel_scale = 30 * 25
@@ -351,8 +391,9 @@ class WaterWorld(Environment):
         move_archeas(self._poisons)
 
         self._n_steps += 1
-        if len(self._pursuers) > 0:
+        if self._n_pursuers > 0:
             self._last_observations = self._collision_handling_impl()
+            self._reproduce_archeas()
             return self._last_collisions.pursuer.listup(self._pursuers)
         else:
             warnings.warn("step is called after pursuers are distinct!")
@@ -402,18 +443,34 @@ class WaterWorld(Environment):
         # Initialize obstacles
         if self._initial_obstacle_coords is None:
             # Generate xsxfobstacle positions in range [0, 1)
-            self._obstacle_coords = self.np_random.rand(self._n_obstacles, 2)
+            self._obstacle_coords = self._np_random.rand(self._n_obstacles, 2)
         else:
             self._obstacle_coords = self._initial_obstacle_coords.copy()
 
-        # Initialize pursuers
-        if len(self._pursuers) != self._initial_n_pursuers:
-            self._pursuers = [self._generate_pursuer() for _ in range(self._n_pursuers)]
+        def maybe_reset_archeas(
+            archeas: t.List[Archea],
+            initial_n_archeas: int,
+            generater: t.Callable[[], Archea],
+        ) -> t.List[Archea]:
+            if len(archeas) != initial_n_archeas:
+                return [generater() for _ in range(initial_n_archeas)]
+            else:
+                return archeas
 
+        # Initialize pursuers
+        self._pursuers = maybe_reset_archeas(
+            self._pursuers, self._initial_n_pursuers, self._generate_pursuer
+        )
         for pursuer in self._pursuers:
             self._initialize_archea(pursuer, velocity=np.zeros(2))
 
         # Initialize evaders and poisons
+        self._evaders = maybe_reset_archeas(
+            self._evaders, self._initial_n_evaders, self._generate_evader
+        )
+        self._poisons = maybe_reset_archeas(
+            self._poisons, self._initial_n_poison, self._generate_poison
+        )
         for archea in itertools.chain(self._evaders, self._poisons):
             self._initialize_archea(archea)
 
@@ -424,7 +481,7 @@ class WaterWorld(Environment):
             self._viewer.close()
 
     def seed(self, seed: t.Optional[int] = None) -> int:
-        self.np_random, seed = seeding.np_random(seed)
+        self._np_random, seed = seeding.np_random(seed)
         return seed
 
     def render(self, mode: str = "human") -> t.Union[None, np.ndarray]:
@@ -464,14 +521,10 @@ class WaterWorld(Environment):
         except ValueError as e:
             raise ValueError(f"Invalid pursuer: {pursuer}") from e
 
-    def _generate_pursuer(self, generation: int = 0) -> Pursuer:
-        return Pursuer(
-            radius=self._pursuer_radius,
-            n_sensors=self._n_sensors,
-            max_accel=self._pursuer_max_accel,
-            sensor_range=self._pursuer_sensor_range,
-            speed_features=self._speed_features,
-            generation=generation,
+    def _generate_poison(self) -> Archea:
+        return Archea(
+            radius=self._poison_radius,
+            max_accel=self._poison_max_accel,
         )
 
     def _initialize_archea(
@@ -482,9 +535,9 @@ class WaterWorld(Environment):
         velocity: t.Optional[np.ndarray] = None,
     ) -> None:
         if position is None:
-            position = self.np_random.rand(2)
+            position = self._np_random.rand(2)
             while self._detect_collision_to_obs(archea.radius, position) is not None:
-                position = self.np_random.rand(2)
+                position = self._np_random.rand(2)
             rebound = False
         else:
             rebound = True
@@ -517,7 +570,7 @@ class WaterWorld(Environment):
         """Sample velocity from standard normal distribution and
         truncate it if necessary.
         """
-        velocity = self.np_random.rand(2) - 0.5
+        velocity = self._np_random.rand(2) - 0.5
         speed = np.linalg.norm(velocity)
         if speed > max_norm:
             # Limit speed
@@ -539,6 +592,10 @@ class WaterWorld(Environment):
         This is because you need `n_required_pursuers` agents to collide
         with the object to actually catch it.
         """
+        if positions_a.ndim == 1:
+            positions_a = np.expand_dims(positions_a, axis=0)
+        if positions_b.ndim == 1:
+            positions_b = np.expand_dims(positions_b, axis=0)
 
         distances = spd.cdist(positions_a, positions_b)
         is_colliding_a_b = distances <= threshold
@@ -614,12 +671,30 @@ class WaterWorld(Environment):
         total_vel = perp_vel - proj_vel
         archea.velocity = total_vel
 
+    def _reproduce_archeas(self) -> None:
+        n_new_evaders = self._evader_reproduce_fn(self._evaders, self._np_random)
+        for _ in range(n_new_evaders):
+            new_evader = self._generate_evader()
+            self._initialize_archea(new_evader)
+            self._evaders.append(new_evader)
+
+        n_new_poison = self._poison_reproduce_fn(self._poisons, self._np_random)
+        for _ in range(n_new_poison):
+            new_poison = self._generate_poison()
+            self._initialize_archea(new_poison)
+            self._poisons.append(new_poison)
+
+        self._n_evaders += n_new_evaders
+        self._n_poison += n_new_poison
+
     def _maybe_rebound_archea(self, archea: Archea) -> None:
         collision_idx = self._detect_collision_to_obs(archea.radius, archea.position)
         if collision_idx is not None:
             self._rebound_archea(self._obstacle_coords[collision_idx], archea)
 
     def _collision_handling_impl(self) -> t.List[np.ndarray]:
+        assert self._n_evaders > 0 and self._n_poison > 0
+
         # Stop pursuers upon hitting a wall
         for pursuer in self._pursuers:
             clipped_coord = np.clip(pursuer.position, 0, 1)
@@ -637,10 +712,6 @@ class WaterWorld(Environment):
         positions_pursuer = np.array([pursuer.position for pursuer in self._pursuers])
         positions_evader = np.array([evader.position for evader in self._evaders])
         positions_poison = np.array([poison.position for poison in self._poisons])
-
-        # If there's only one archea, expand the dimension of positions
-        if positions_pursuer.ndim == 1:
-            positions_pursuer = np.expand_dims(positions_pursuer, axis=0)
 
         # Find evader collisions
         evader_collision = self._detect_collision(
@@ -719,14 +790,6 @@ class WaterWorld(Environment):
             sensorvals_pursuer_pursuer
         )
 
-        # If object collided with required number of players,
-        # reset its position and velocity
-        for caught_archea in itertools.chain(
-            evader_collision.caught_archeas(self._evaders),
-            poison_collision.caught_archeas(self._poisons),
-        ):
-            self._initialize_archea(caught_archea)
-
         # Memonize collisions
         self._last_collisions = _Collisions(
             evader_collision,
@@ -784,6 +847,11 @@ class WaterWorld(Environment):
             )
             obs_list.append(obs)
 
+        # Remove caught archeas
+        self._evaders = _remove_indices(self._evaders, evader_collision.caught_b)
+        self._poisons = _remove_indices(self._poisons, poison_collision.caught_b)
+        self._n_evaders, self._n_poison = len(self._evaders), len(self._poisons)
+
         return obs_list
 
 
@@ -835,31 +903,3 @@ class _Viewer:
                 center,
                 self._pixel_scale * radius,
             )
-
-
-if __name__ == "__main__":
-    env = WaterWorld(speed_features=False)
-    env.reset()
-    N = 1000
-
-    for i in range(N):
-        for p in env.available_bodies():
-            env.act(p, p.action_space.sample())
-        encounts = env.step()
-        for p in env.available_bodies():
-            env.observe(p)
-
-        if np.random.randint(N // 10) == 0:
-            bodies = list(env.available_bodies())
-            who_to_die = np.random.choice(bodies)
-            distinction = env.die(who_to_die)
-            print(f"Die! {who_to_die}")
-            if distinction:
-                print("Distinction!")
-                break
-
-        if np.random.randint(N // 20) == 0:
-            new_body = env.born()
-            print(f"Born! {new_body}")
-        env.render()
-    env.close()
