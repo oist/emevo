@@ -61,12 +61,17 @@ class Viviparous(Newborn):
 
 @dataclasses.dataclass()
 class Status:
-    """Default implementation of agent's status"""
+    """
+    Default implementation of agent's status.
+    You can use arbitary class instead of this.
+    """
 
     energy_level: float
+    lifetime: int
 
     def update(self, *, energy_level: float) -> None:
         self.energy_level += energy_level
+        self.lifetime -= 1
 
 
 @dataclasses.dataclass(frozen=True)
