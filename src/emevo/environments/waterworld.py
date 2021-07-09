@@ -236,7 +236,7 @@ class _Collisions:
 
 
 class WaterWorld(Environment):
-    INFO_DESCR: t.ClassVar[t.Dict[str, str]] = {
+    INFO_DESCRIPTIONS: t.ClassVar[t.Dict[str, str]] = {
         "food": "Number of foods the pursuer ate",
         "poison": "Number of poisons the pursuer ate",
     }

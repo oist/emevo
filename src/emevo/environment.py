@@ -25,7 +25,7 @@ class Encount:
 class Environment(abc.ABC):
     """Abstract API for emevo environments"""
 
-    INFO_DESCR: t.ClassVar[t.Dict[str, str]] = {}
+    INFO_DESCRIPTIONS: t.ClassVar[t.Dict[str, str]] = {}
 
     @abc.abstractmethod
     def act(self, body: Body, action: Action) -> None:

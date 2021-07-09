@@ -1,54 +1,55 @@
 """Simulate random agents with birth and death
 """
 
+import dataclasses
 import typing as t
 
 import numpy as np
 
-from emevo import Body, Encount, Environment, make
+from emevo import Body, Environment, make
 from emevo import birth_and_death as bd
 
 
+@dataclasses.dataclass()
 class Agent:
     """A simple agent that learns nothing"""
 
-    def __init__(self, body: Body) -> None:
-        self.body = body
-        self.previous_observation = None
-        self.previous_action = None
+    body: Body
+    previous_observation: t.Optional[np.ndarray] = None
+    previous_action: t.Optional[np.ndarray] = None
 
     def select_action(self) -> np.ndarray:
         return self.body.action_space.sample()
 
 
+@dataclasses.dataclass(frozen=True)
+class GeneticContext:
+    generation: int
+    position: np.ndarray
+
+
 def env_loop(environment: Environment, max_steps: int, render: bool = False) -> None:
     environment.reset()
-
-    def repr_fn(
-        statuses: t.Tuple[bd.Status, bd.Status],
-        encount: Encount,
-    ) -> t.Optional[bd.Oviparous]:
-        ENERGY_THRESHOLD = 4.5
-
-        if all(map(lambda s: s.energy_level > ENERGY_THRESHOLD, statuses)):
-            parent = encount.bodies[0]
-            return bd.Oviparous(
-                context={
-                    "position": parent.position,
-                    "generation": parent.profile.generation,
-                },
-                time_to_birth=3,
-            )
-        else:
-            return None
 
     def energy_update(info: t.Dict[str, float]) -> float:
         return float(info["food"] - info["poison"])
 
+    ENERGY_THRESHOLD = 4.5
     manager = bd.Manager(
-        default_status=bd.Status(4.0),
-        is_dead=lambda status: status.energy_level < 0.5,
-        sexual_repr_fn=repr_fn,
+        default_status=bd.Status(4.0, 10),
+        death_prob_fn=bd.death_functions.gompertz_makeham_beta_energy(),
+        repr_manager=bd.SexualReprManager(
+            success_prob=lambda statuses, encount: all(
+                map(lambda s: s.energy_level > ENERGY_THRESHOLD, statuses)
+            ),
+            produce=lambda statuses, encount: bd.Oviparous(
+                context=GeneticContext(
+                    encount.bodies[0].profile.generation,
+                    encount.bodies[0].position,
+                ),
+                time_to_birth=3,
+            ),
+        ),
     )
 
     # Initialize agents
@@ -75,13 +76,13 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
         # Collect information of each agents, and Update the status
         for agent in agents:
             _, info = environment.observe(agent.body)
-            manager.update(agent.body, energy_level=energy_update(info))
+            manager.update_status(agent.body, energy_update=energy_update(info))
 
         # If the mating succeeds, parents consume some energy
         for encount in encounts:
-            if manager.sexual_repr(encount):
+            if manager.reproduction(encount):
                 for body in encount.bodies:
-                    manager.update(body, energy_level=-3.0)
+                    manager.update_status(body, energy_update=-3.0)
 
         deads, newborns = manager.step()
 
@@ -95,7 +96,8 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
 
         for newborn in newborns:
             body = environment.born(
-                newborn.context["generation"], newborn.context["position"]
+                newborn.context.generation,
+                newborn.context.position,
             )
             agents.append(Agent(body))
             manager.register(body)
