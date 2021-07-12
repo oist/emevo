@@ -33,13 +33,13 @@ class DeadBody:
 
 @dataclasses.dataclass(frozen=True)
 class AsexualReprManager:
-    success_prob: t.Callable[[Status], bool]
+    success_prob: t.Callable[[Status], float]
     produce: t.Callable[[Status], Newborn]
 
 
 @dataclasses.dataclass(frozen=True)
 class SexualReprManager:
-    success_prob: t.Callable[[t.Tuple[Status, Status], Encount], bool]
+    success_prob: t.Callable[[t.Tuple[Status, Status], Encount], float]
     produce: t.Callable[[t.Tuple[Status, Status], Encount], Newborn]
 
 

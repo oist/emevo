@@ -20,25 +20,23 @@ def hunger_or_infirmity(
     return death_prob_fn
 
 
-def energy_to_gompertz_r_fn(
+def energy_to_gompertz_r(
     energy_min: float,
     energy_max: float,
     base: float = 0.001,
 ) -> t.Callable[[float], float]:
     energy_range = energy_max - energy_min
 
-    def energy_to_gompertz_r(energy: float) -> float:
+    def convert_fn(energy: float) -> float:
         normalized = max(0.0, energy - energy_min) / energy_range
         return normalized * base
 
-    return energy_to_gompertz_r
+    return convert_fn
 
 
 def gompertz_hazard(
-    energy_threshold: float,x
-    energy_to_gompertz_r: t.Callable[[float], float] = energy_to_gompertz_r_fn(
-        -5.0, 15.0
-    ),
+    energy_threshold: float,
+    energy_to_gompertz_r: t.Callable[[float], float] = energy_to_gompertz_r(-5.0, 15.0),
     gompertz_alpha: float = 0.001,
 ) -> t.Callable[[AgeAndEnergy], float]:
     """Gompertz hazard function is defined by λ(x) = R exp(αx)"""

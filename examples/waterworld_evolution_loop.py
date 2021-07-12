@@ -45,15 +45,11 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
         # death_prob_fn=bd.death_functions.hunger_or_infirmity(0.1, 1000.0),
         death_prob_fn=bd.death_functions.gompertz_hazard(
             energy_threshold=-10.0,
-            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r_fn(
-                -10.0, 10.0
-            ),
+            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r(-10.0, 10.0),
             gompertz_alpha=0.001,
         ),
         repr_manager=bd.SexualReprManager(
-            success_prob=lambda statuses, encount: all(
-                map(lambda s: s.energy > 5.0, statuses)
-            ),
+            success_prob=bd.repr_functions.logprod_success_prob(4.0, 0.1),
             produce=lambda statuses, encount: bd.Oviparous(
                 context=GeneticContext(
                     encount.bodies[0].profile.generation,
