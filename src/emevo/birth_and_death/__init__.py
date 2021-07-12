@@ -11,3 +11,4 @@ from .core import (  # noqa
     Status,
 )
 from .newborn import Newborn, Oviparous, Viviparous  # noqa
+from .statuses import AgeAndEnergy  # noqa

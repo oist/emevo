@@ -3,6 +3,7 @@
 
 import dataclasses
 import typing as t
+from functools import partial
 
 import numpy as np
 
@@ -34,13 +35,24 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
     def energy_update(info: t.Dict[str, float]) -> float:
         return float(info["food"] - info["poison"])
 
-    ENERGY_THRESHOLD = 4.5
     manager = bd.Manager(
-        default_status=bd.Status(4.0, 10),
-        death_prob_fn=bd.death_functions.gompertz_makeham_beta_energy(),
+        default_status_fn=partial(
+            bd.AgeAndEnergy,
+            age=1,
+            energy=0.0,
+            energy_delta=0.001,
+        ),
+        # death_prob_fn=bd.death_functions.hunger_or_infirmity(0.1, 1000.0),
+        death_prob_fn=bd.death_functions.gompertz_hazard(
+            energy_threshold=-10.0,
+            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r_fn(
+                -10.0, 10.0
+            ),
+            gompertz_alpha=0.001,
+        ),
         repr_manager=bd.SexualReprManager(
             success_prob=lambda statuses, encount: all(
-                map(lambda s: s.energy_level > ENERGY_THRESHOLD, statuses)
+                map(lambda s: s.energy > 5.0, statuses)
             ),
             produce=lambda statuses, encount: bd.Oviparous(
                 context=GeneticContext(
@@ -87,7 +99,7 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
         deads, newborns = manager.step()
 
         for dead in deads:
-            # print(f"{dead} is dead at {dead.body.position}")
+            print(f"{dead.body} is dead with {dead.status}")
             environment.die(dead.body)
             remove_idx, _ = next(
                 filter(lambda agent: agent[1].body == dead.body, enumerate(agents))
@@ -125,9 +137,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     env = make(
         "Waterworld-v0",
-        n_evaders=8,
-        n_poison=12,
-        evader_reproduce_fn=logistic_reproduce_fn(1.0, 10),
+        n_evaders=10,
+        n_poison=16,
+        evader_reproduce_fn=logistic_reproduce_fn(1.0, 14),
         poison_reproduce_fn=logistic_reproduce_fn(1.0, 16),
     )
     env_loop(env, args.max_steps, render=not args.no_render)

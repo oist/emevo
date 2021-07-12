@@ -1,7 +1,7 @@
 """Core components of birth_and_death, including Manager
 """
 
-import copy
+import abc
 import dataclasses
 import datetime as dt
 import typing as t
@@ -14,23 +14,12 @@ from emevo.environment import Encount
 from .newborn import Newborn
 
 
-@dataclasses.dataclass
-class Status:
-    """
-    Default implementation of agent's status.
-    You can use arbitary class instead of this.
-    """
-
-    age: int
-    energy_level: float
-    DELTA_E: t.ClassVar[float] = -0.1
-
-    def update(self, *, energy_update: float) -> None:
-        self.energy_level += energy_update
-
+class Status(abc.ABC):
     def step(self) -> None:
-        self.age += 1
-        self.energy_level += self.DELTA_E
+        pass
+
+    def update(self, **kwargs) -> None:
+        pass
 
 
 @dataclasses.dataclass(frozen=True)
@@ -40,9 +29,6 @@ class DeadBody:
     body: Body
     status: Status
     dead_time: dt.datetime
-
-
-DeathProbFn = t.Callable[[Status], float]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -64,8 +50,8 @@ class Manager:
     Note that Manager does not manage matings.
     """
 
-    default_status: Status
-    death_prob_fn: DeathProbFn
+    default_status_fn: t.Callable[[], Status]
+    death_prob_fn: t.Callable[[Status], float]
     repr_manager: t.Union[AsexualReprManager, SexualReprManager]
     rng: t.Callable[[], float] = np.random.rand
     statuses: t.Dict[Body, Status] = dataclasses.field(default_factory=dict)
@@ -76,7 +62,7 @@ class Manager:
 
     def register(self, body: Body, status: t.Optional[Status] = None) -> None:
         if status is None:
-            status = self.statuses[body] = copy.deepcopy(self.default_status)
+            status = self.statuses[body] = self.default_status_fn()
         self.statuses[body] = status
 
     def update_status(self, body: Body, **updates) -> None:
@@ -97,12 +83,11 @@ class Manager:
             return False
 
     def step(self) -> t.Tuple[t.List[DeadBody], t.List[Newborn]]:
-        deads, newborn_indices = [], []
+        deads, newborns = [], []
 
         for body, status in self.statuses.items():
             status.step()
-            death_prob = self.death_prob_fn(status)
-            if self.rng() < death_prob and False:
+            if self.rng() < self.death_prob_fn(status):
                 deads.append(DeadBody(body, status, dt.datetime.now()))
 
         for dead in deads:
@@ -111,8 +96,9 @@ class Manager:
         for i, newborn in enumerate(self.pending_newborns):
             newborn.step()
             if newborn.is_ready():
-                newborn_indices.append(i)
+                newborns.append(newborn)
 
-        newborns = [self.pending_newborns.pop(idx) for idx in newborn_indices]
+        for newborn in newborns:
+            self.pending_newborns.remove(newborn)
 
         return deads, newborns
