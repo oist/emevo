@@ -37,12 +37,11 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
 
     manager = bd.Manager(
         default_status_fn=partial(
-            bd.AgeAndEnergy,
+            bd.statuses.AgeAndEnergy,
             age=1,
             energy=0.0,
             energy_delta=0.001,
         ),
-        # death_prob_fn=bd.death_functions.hunger_or_infirmity(0.1, 1000.0),
         death_prob_fn=bd.death_functions.gompertz_hazard(
             energy_threshold=-10.0,
             energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r(-10.0, 10.0),
@@ -88,7 +87,7 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
 
         # If the mating succeeds, parents consume some energy
         for encount in encounts:
-            if manager.reproduction(encount):
+            if manager.reproduce(encount):
                 for body in encount.bodies:
                     manager.update_status(body, energy_update=-3.0)
 

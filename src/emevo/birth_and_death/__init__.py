@@ -2,7 +2,7 @@
 birth_and_death module provides some utilities for handling birth and death of agents.
 """
 
-from . import death_functions, repr_functions  # noqa
+from . import death_functions, repr_functions, statuses  # noqa
 from .core import (  # noqa
     AsexualReprManager,
     DeadBody,
@@ -11,4 +11,3 @@ from .core import (  # noqa
     Status,
 )
 from .newborn import Newborn, Oviparous, Viviparous  # noqa
-from .statuses import AgeAndEnergy  # noqa

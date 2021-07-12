@@ -68,12 +68,12 @@ class Manager:
     def update_status(self, body: Body, **updates) -> None:
         self.statuses[body].update(**updates)
 
-    def reproduction(self, arg: t.Union[Status, Encount]) -> bool:
+    def reproduce(self, arg: t.Union[Body, Encount]) -> bool:
         if isinstance(arg, Encount):
             statuses = tuple((self.statuses[body] for body in arg.bodies))
             args = statuses, arg
         else:
-            args = (arg,)
+            args = (self.statuses[arg],)
         success_prob = self.repr_manager.success_prob(*args)
         if self.rng() < success_prob:
             newborn = self.repr_manager.produce(*args)
