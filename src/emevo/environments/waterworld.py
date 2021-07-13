@@ -27,6 +27,9 @@ from emevo.environment import Encount, Environment
 from emevo.types import Info
 
 
+Self = t.Any
+
+
 class Archea:
     def __init__(
         self,
@@ -201,6 +204,10 @@ class _Collision:
     collision_mat: np.ndarray
     caught_b: np.ndarray
 
+    @staticmethod
+    def empty() -> Self:
+        return _Collision(np.array([]), np.array([[]]), np.array([], dtype=np.int))
+
     def listup(self, bodies: t.List[Archea]) -> t.List[Encount]:
         n_bodies = len(bodies)
         res = []
@@ -261,6 +268,7 @@ class WaterWorld(Environment):
         evader_reproduce_fn: ReproduceFn = logistic_reproduce_fn(1.0, 8),
         poison_reproduce_fn: ReproduceFn = logistic_reproduce_fn(1.0, 14),
         speed_features: bool = True,
+        render_pixel_scale: int = 30 * 25,
     ) -> None:
         """
         n_pursuers: number of pursuing archea (agents)
@@ -352,7 +360,7 @@ class WaterWorld(Environment):
         self._poison_reproduce_fn = poison_reproduce_fn
 
         # Visualization stuffs
-        self._pixel_scale = 30 * 25
+        self._pixel_scale = render_pixel_scale
         self._viewer = None
 
         # Call seed and reset for convenience
@@ -397,6 +405,7 @@ class WaterWorld(Environment):
             return self._last_collisions.pursuer.listup(self._pursuers)
         else:
             warnings.warn("step is called after pursuers are distinct!")
+            self._collision_handling_impl()
             return []
 
     def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Info]]:
@@ -485,27 +494,22 @@ class WaterWorld(Environment):
         return seed
 
     def render(self, mode: str = "human") -> t.Union[None, np.ndarray]:
-        if mode not in ["human", "rgb-array"]:
-            raise ValueError(f"Invalid mode: {mode}")
-
         if self._viewer is None:
             try:
                 import pygame
             except ImportError as e:
-                raise ImportError("Rendering waterworld needs pygame") from e
+                raise ImportError(
+                    "To render waterworld, you need to install pygame by"
+                    + " e.g. pip install pygame"
+                ) from e
 
-            if mode == "human":
-                pygame.display.init()
-                screen = pygame.display.set_mode((self._pixel_scale, self._pixel_scale))
-            else:
-                screen = pygame.Surface((self._pixel_scale, self._pixel_scale))
-            self._viewer = _Viewer(screen, self._pixel_scale, pygame)
+            self._viewer = _Viewer(mode, self._pixel_scale, pygame)
 
         self._viewer.draw_background()
         self._viewer.draw_obstacles(self._obstacle_coords, self._obstacle_radius)
-        self._viewer.draw_archeas(self._pursuers, (101, 104, 209))
-        self._viewer.draw_archeas(self._evaders, (238, 116, 106))
-        self._viewer.draw_archeas(self._poisons, (145, 250, 116))
+        self._viewer.draw_archeas(self._pursuers, "pursuer")
+        self._viewer.draw_archeas(self._evaders, "evader")
+        self._viewer.draw_archeas(self._poisons, "poison")
 
         if mode == "human":
             self._viewer.pygame.display.flip()
@@ -586,12 +590,20 @@ class WaterWorld(Environment):
         *,
         n_required_collisions: int = 1,
         a_equal_to_b: bool = False,
-    ) -> _Collision:
+    ) -> t.Optional[_Collision]:
         """
         Detect collision and check whether it results in catching the object.
         This is because you need `n_required_pursuers` agents to collide
         with the object to actually catch it.
         """
+        alen, blen = len(positions_a), len(positions_b)
+        if alen == 0 or blen == 0:
+            return _Collision(
+                np.empty([alen, blen]),
+                np.empty([alen, blen]),
+                np.array([], dtype=np.int64),
+            )
+
         if positions_a.ndim == 1:
             positions_a = np.expand_dims(positions_a, axis=0)
         if positions_b.ndim == 1:
@@ -600,7 +612,7 @@ class WaterWorld(Environment):
         distances = spd.cdist(positions_a, positions_b)
         is_colliding_a_b = distances <= threshold
         if a_equal_to_b:
-            indices = np.arange(len(positions_a))
+            indices = np.arange(alen)
             is_colliding_a_b[indices, indices] = False
 
         # Number of collisions for each y
@@ -630,14 +642,20 @@ class WaterWorld(Environment):
         object_sensorvals: np.ndarray,
         sensed_mask: np.ndarray,
     ) -> np.ndarray:
-        # sensed_mask is a boolean mask of which sensor values detected an object
+        """
+        object_velocities: velocities of objected archeas
+        object_sensorvals: sensor values of objected archeas
+        sensed_mask: a boolean mask of which sensor values detected an object
+        """
+        speed_features = np.zeros((self._n_pursuers, self._n_sensors))
+        if len(object_velocities) == 0:
+            return speed_features
+
         sensorvals = []
         for pursuer in self._pursuers:
             relative_speed = object_velocities - np.expand_dims(pursuer.velocity, 0)
             sensorvals.append(pursuer.sensors.dot(relative_speed.T))
         sensed_speed = np.c_[sensorvals]  # Speeds in direction of each sensor
-
-        speed_features = np.zeros((self._n_pursuers, self._n_sensors))
 
         sensorvals = []
         for pursuer_idx in range(self._n_pursuers):
@@ -693,7 +711,7 @@ class WaterWorld(Environment):
             self._rebound_archea(self._obstacle_coords[collision_idx], archea)
 
     def _collision_handling_impl(self) -> t.List[np.ndarray]:
-        assert self._n_evaders > 0 and self._n_poison > 0
+        # assert self._n_evaders > 0 and self._n_poison > 0
 
         # Stop pursuers upon hitting a wall
         for pursuer in self._pursuers:
@@ -747,16 +765,22 @@ class WaterWorld(Environment):
         ]
 
         # Find sensed evaders
-        sensorvals_pursuer_evader = [
-            pursuer.sensed(positions_evader, self._evader_radius)
-            for pursuer in self._pursuers
-        ]
+        if self._n_evaders > 0:
+            sensorvals_pursuer_evader = [
+                pursuer.sensed(positions_evader, self._evader_radius)
+                for pursuer in self._pursuers
+            ]
+        else:
+            sensorvals_pursuer_evader = []
 
         # Find sensed poisons
-        sensorvals_pursuer_poison = [
-            pursuer.sensed(positions_poison, self._poison_radius)
-            for pursuer in self._pursuers
-        ]
+        if self._n_poison > 0:
+            sensorvals_pursuer_poison = [
+                pursuer.sensed(positions_poison, self._poison_radius)
+                for pursuer in self._pursuers
+            ]
+        else:
+            sensorvals_pursuer_poison = []
 
         # Find sensed pursuers
         sensorvals_pursuer_pursuer = [
@@ -770,6 +794,9 @@ class WaterWorld(Environment):
         def sensor_features(
             sensorvals: t.List[np.ndarray],
         ) -> t.Tuple[np.ndarray, np.ndarray, np.ndarray]:
+            if len(sensorvals) == 0:
+                empty = np.array([], dtype=np.int64)
+                return empty, empty, empty
             sensorvals = np.stack(sensorvals, axis=0)
             closest_idx_array = np.argmin(sensorvals, axis=2)
             closest_distances = self._closest_dist(closest_idx_array, sensorvals)
@@ -815,7 +842,7 @@ class WaterWorld(Environment):
                 pursuer_mask,
             )
 
-            sensorfeatures = np.c_[
+            all_features = [
                 obstacle_distance_features,
                 barrier_distance_features,
                 evader_distance_features,
@@ -826,7 +853,7 @@ class WaterWorld(Environment):
                 pursuer_speed_features,
             ]
         else:
-            sensorfeatures = np.c_[
+            all_features = [
                 obstacle_distance_features,
                 barrier_distance_features,
                 evader_distance_features,
@@ -835,17 +862,17 @@ class WaterWorld(Environment):
             ]
 
         obs_list = []
-        has_collided_to_ev = evader_collision.collision_mat.sum(axis=1) > 0
-        has_collided_to_po = poison_collision.collision_mat.sum(axis=1) > 0
-
-        for pursuer_idx in range(self._n_pursuers):
-            obs = np.concatenate(
-                [
+        nonempty_features = list(filter(lambda arr: len(arr) > 0, all_features))
+        if len(nonempty_features) > 0:
+            sensorfeatures = np.column_stack(nonempty_features)
+            has_collided_to_ev = evader_collision.collision_mat.sum(axis=1) > 0
+            has_collided_to_po = poison_collision.collision_mat.sum(axis=1) > 0
+            for pursuer_idx in range(self._n_pursuers):
+                obs = [
                     sensorfeatures[pursuer_idx].ravel(),
                     [has_collided_to_ev[pursuer_idx], has_collided_to_po[pursuer_idx]],
                 ]
-            )
-            obs_list.append(obs)
+                obs_list.append(np.concatenate(obs))
 
         # Remove caught archeas
         self._evaders = _remove_indices(self._evaders, evader_collision.caught_b)
@@ -858,21 +885,43 @@ class WaterWorld(Environment):
 class _Viewer:
     """Visualizer of Waterworld using pygame"""
 
-    def __init__(self, screen: t.Any, pixel_scale: int, pygame: "module") -> None:
+    _BLACK: t.Tuple[float, float, float] = (0, 0, 0)
+    _COLORS: t.Dict[str, t.Tuple[float, float, float]] = {
+        "pursuer": (101, 104, 209),
+        "evader": (238, 116, 106),
+        "poison": (145, 250, 116),
+    }
+    _OBSTACLE_GREEN: t.Tuple[float, float, float] = (120, 176, 178)
+    _WHITE: t.Tuple[float, float, float] = (255, 255, 255)
+
+    def __init__(self, mode: str, pixel_scale: int, pygame: "module") -> None:
         self.pygame = pygame
 
         self._pixel_scale = pixel_scale
-        self._screen = screen
+        self._xoffset = int(pixel_scale * 0.4)
+        self._screen_size = self._pixel_scale + self._xoffset, self._pixel_scale
+
+        if mode == "human":
+            pygame.display.init()
+            self._screen = pygame.display.set_mode(self._screen_size)
+        elif mode == "rgb-array":
+            self._screen = pygame.Surface(self._screen_size)
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
+
+        self._archea_names = list(self._COLORS.keys())
+        pygame.font.init()
+        self._font = pygame.font.SysFont(None, 24)
 
     def close(self) -> None:
         self.pygame.display.quit()
         self.pygame.quit()
 
-    def draw_archeas(
-        self,
-        archeas: t.List[Archea],
-        color: t.Tuple[int, int, int],
-    ) -> None:
+    def draw_archeas(self, archeas: t.List[Archea], name: str) -> None:
+        n_archeas = len(archeas)
+        if n_archeas == 0:
+            return
+
         for archea in archeas:
             x, y = archea.position
             center = int(self._pixel_scale * x), int(self._pixel_scale * y)
@@ -880,18 +929,29 @@ class _Viewer:
                 for sensor in archea._sensors:
                     start = center
                     end = center + self._pixel_scale * (archea.sensor_range * sensor)
-                    self.pygame.draw.line(self._screen, (0, 0, 0), start, end, 1)
+                    self.pygame.draw.line(self._screen, self._BLACK, start, end, 1)
             self.pygame.draw.circle(
                 self._screen,
-                color,
+                self._COLORS[name],
                 center,
                 self._pixel_scale * archea.radius,
             )
 
+        x_start = self._pixel_scale + self._xoffset // 2
+        y_position = (self._archea_names.index(name) + 4) * (self._pixel_scale // 7)
+        self.pygame.draw.circle(
+            self._screen,
+            self._COLORS[name],
+            (x_start, y_position),
+            self._pixel_scale * archea.radius,
+        )
+        img = self._font.render(f": {n_archeas}", True, self._BLACK)
+        self._screen.blit(img, (x_start + self._xoffset // 4, y_position))
+
     def draw_background(self) -> None:
         # -1 is building pixel flag
-        rect = self.pygame.Rect(0, 0, self._pixel_scale, self._pixel_scale)
-        self.pygame.draw.rect(self._screen, (255, 255, 255), rect)
+        rect = self.pygame.Rect(0, 0, *self._screen_size)
+        self.pygame.draw.rect(self._screen, self._WHITE, rect)
 
     def draw_obstacles(self, obstacle_coords: np.ndarray, radius: float) -> None:
         for obstacle in obstacle_coords:
@@ -899,7 +959,7 @@ class _Viewer:
             center = int(self._pixel_scale * x), int(self._pixel_scale * y)
             self.pygame.draw.circle(
                 self._screen,
-                (120, 176, 178),
+                self._OBSTACLE_GREEN,
                 center,
                 self._pixel_scale * radius,
             )
