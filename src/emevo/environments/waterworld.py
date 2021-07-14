@@ -367,7 +367,7 @@ class WaterWorld(Environment):
         self.seed()
         self.reset()
 
-    # Methods required by Enviroment
+    # Methods required by Environment
 
     def act(self, pursuer: Pursuer, action: np.ndarray) -> None:
         action = np.asarray(action).reshape(2)
