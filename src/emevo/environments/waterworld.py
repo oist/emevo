@@ -20,6 +20,7 @@ import numpy as np
 
 from gym import spaces
 from gym.utils import seeding
+from scipy.stats import truncnorm
 from scipy.spatial import distance as spd
 
 from emevo.body import Body
@@ -493,6 +494,10 @@ class WaterWorld(Environment):
         self._np_random, seed = seeding.np_random(seed)
         return seed
 
+    @property
+    def np_random(self) -> t.Optional[np.random.RandomState]:
+        return self._np_random
+
     def render(self, mode: str = "human") -> t.Union[None, np.ndarray]:
         if self._viewer is None:
             try:
@@ -571,10 +576,8 @@ class WaterWorld(Environment):
             return collision_indices.item()
 
     def _sample_velocity(self, max_norm: float) -> np.ndarray:
-        """Sample velocity from standard normal distribution and
-        truncate it if necessary.
-        """
-        velocity = self._np_random.rand(2) - 0.5
+        """Sample velocity from two independent trunnorms and then normalize it"""
+        velocity = truncnorm.ppf(self._np_random.rand(2), -max_norm, max_norm)
         speed = np.linalg.norm(velocity)
         if speed > max_norm:
             # Limit speed

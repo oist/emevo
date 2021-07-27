@@ -58,6 +58,7 @@ class Environment(abc.ABC):
     @abc.abstractmethod
     def die(self, body: Body) -> None:
         """Notify the environment that the body is dead."""
+        pass
 
     def reset(self) -> None:
         """Do some initialization"""
@@ -67,8 +68,13 @@ class Environment(abc.ABC):
         """Close visualizer or so"""
         pass
 
-    def seed(self, seed: t.Optional[int] = None) -> int:
+    def seed(self, seed: t.Optional[int] = None) -> None:
         """Set seed"""
+        pass
+
+    @property
+    def np_random(self) -> t.Optional[np.random.RandomState]:
+        """Returns the random state of the enviroment if it has"""
         pass
 
     def render(self, mode: str) -> t.Union[None, np.ndarray]:
