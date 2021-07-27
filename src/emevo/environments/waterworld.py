@@ -33,12 +33,7 @@ Self = t.Any
 
 
 class Archea:
-    def __init__(
-        self,
-        *,
-        radius: float,
-        max_accel: float,
-    ) -> None:
+    def __init__(self, *, radius: float, max_accel: float) -> None:
         # Public members
         self.radius = radius
         self.max_accel = max_accel
@@ -515,9 +510,9 @@ class WaterWorld(Environment):
 
         self._viewer.draw_background()
         self._viewer.draw_obstacles(self._obstacle_coords, self._obstacle_radius)
-        self._viewer.draw_archeas(self._pursuers, "pursuer")
-        self._viewer.draw_archeas(self._evaders, "evader")
-        self._viewer.draw_archeas(self._poisons, "poison")
+        self._viewer.draw_archeas(self._pursuers, "pursuer", "Agent")
+        self._viewer.draw_archeas(self._evaders, "evader", "Food")
+        self._viewer.draw_archeas(self._poisons, "poison", "Poison")
 
         for idx in self.pursuers_with_mark:
             self._viewer.mark_archea(self._pursuers[idx], (255, 0, 255))
@@ -799,32 +794,31 @@ class WaterWorld(Environment):
             for idx in range(self._n_pursuers)
         ]
 
+        class SensorFeatures(t.NamedTuple):
+            distance: np.ndarray
+            closest_idx: np.ndarray
+            mask: np.ndarray
+
         # Collect distance features
         def sensor_features(
             sensorvals: t.List[np.ndarray],
         ) -> t.Tuple[np.ndarray, np.ndarray, np.ndarray]:
             if len(sensorvals) == 0:
                 empty = np.array([], dtype=np.int64)
-                return empty, empty, empty
+                return SensorFeatures(empty, empty, empty)
             sensorvals = np.stack(sensorvals, axis=0)
             closest_idx_array = np.argmin(sensorvals, axis=2)
             closest_distances = self._closest_dist(closest_idx_array, sensorvals)
             finite_mask = np.isfinite(closest_distances)
             sensed_distances = np.ones((self._n_pursuers, self._n_sensors))
             sensed_distances[finite_mask] = closest_distances[finite_mask]
-            return sensed_distances, closest_idx_array, finite_mask
+            return SensorFeatures(sensed_distances, closest_idx_array, finite_mask)
 
-        obstacle_distance_features, _, _ = sensor_features(sensorvals_pursuer_obstacle)
-        barrier_distance_features, _, _ = sensor_features(sensorvals_pursuer_barrier)
-        evader_distance_features, closest_evader_idx, evader_mask = sensor_features(
-            sensorvals_pursuer_evader
-        )
-        poison_distance_features, closest_poison_idx, poison_mask = sensor_features(
-            sensorvals_pursuer_poison
-        )
-        pursuer_distance_features, closest_pursuer_idx, pursuer_mask = sensor_features(
-            sensorvals_pursuer_pursuer
-        )
+        obstacle_distances, _, _ = sensor_features(sensorvals_pursuer_obstacle)
+        barrier_distances, _, _ = sensor_features(sensorvals_pursuer_barrier)
+        evader_features = sensor_features(sensorvals_pursuer_evader)
+        poison_features = sensor_features(sensorvals_pursuer_poison)
+        pursuer_features = sensor_features(sensorvals_pursuer_pursuer)
 
         # Memonize collisions
         self._last_collisions = _Collisions(
@@ -835,39 +829,32 @@ class WaterWorld(Environment):
 
         # Add features together
         if self._speed_features:
-            evader_speed_features = self._extract_speed_features(
-                np.array([evader.velocity for evader in self._evaders]),
-                closest_evader_idx,
-                evader_mask,
-            )
-            poison_speed_features = self._extract_speed_features(
-                np.array([poison.velocity for poison in self._poisons]),
-                closest_poison_idx,
-                poison_mask,
-            )
-            pursuer_speed_features = self._extract_speed_features(
-                np.array([pursuer.velocity for pursuer in self._pursuers]),
-                closest_pursuer_idx,
-                pursuer_mask,
-            )
-
             all_features = [
-                obstacle_distance_features,
-                barrier_distance_features,
-                evader_distance_features,
-                evader_speed_features,
-                poison_distance_features,
-                poison_speed_features,
-                pursuer_distance_features,
-                pursuer_speed_features,
+                obstacle_distances,
+                barrier_distances,
+                evader_features.distance,
+                self._extract_speed_features(
+                    np.array([evader.velocity for evader in self._evaders]),
+                    *evader_features[1:],
+                ),
+                poison_features.distance,
+                self._extract_speed_features(
+                    np.array([poison.velocity for poison in self._poisons]),
+                    *poison_features[1:],
+                ),
+                pursuer_features.distance,
+                self._extract_speed_features(
+                    np.array([pursuer.velocity for pursuer in self._pursuers]),
+                    *pursuer_features[1:],
+                ),
             ]
         else:
             all_features = [
-                obstacle_distance_features,
-                barrier_distance_features,
-                evader_distance_features,
-                poison_distance_features,
-                pursuer_distance_features,
+                obstacle_distances,
+                barrier_distances,
+                evader_features.distance,
+                poison_features.distance,
+                pursuer_features.distance,
             ]
 
         obs_list = []
@@ -897,8 +884,8 @@ class _Viewer:
     _BLACK: Color = 0, 0, 0
     _COLORS: t.Dict[str, Color] = {
         "pursuer": (101, 104, 209),
-        "evader": (238, 116, 106),
-        "poison": (145, 250, 116),
+        "evader": (145, 250, 116),
+        "poison": (238, 116, 106),
     }
     _OBSTACLE_GREEN: Color = 120, 176, 178
     _WHITE: Color = (255, 255, 255)
@@ -936,7 +923,7 @@ class _Viewer:
             self._pixel_scale * archea.radius * 0.25,
         )
 
-    def draw_archeas(self, archeas: t.List[Archea], name: str) -> None:
+    def draw_archeas(self, archeas: t.List[Archea], name: str, disp_name: str) -> None:
         n_archeas = len(archeas)
         if n_archeas == 0:
             return
@@ -964,8 +951,8 @@ class _Viewer:
             (x_start, y_position),
             self._pixel_scale * archea.radius,
         )
-        img = self._font.render(f": {n_archeas}", True, self._BLACK)
-        self._screen.blit(img, (x_start + self._xoffset // 4, y_position))
+        img = self._font.render(f"{disp_name}: {n_archeas}", True, self._BLACK)
+        self._screen.blit(img, (x_start + self._xoffset // 8, y_position))
 
     def draw_background(self) -> None:
         # -1 is building pixel flag
