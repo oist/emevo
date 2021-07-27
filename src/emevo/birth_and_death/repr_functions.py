@@ -2,11 +2,17 @@ import typing as t
 
 import numpy as np
 
-from emevo.environment import Encount
+
+from emevo import Body, Encount
+
 from .statuses import AgeAndEnergy
 
 
-def logprod_success_prob(
+def _scaled_log(value: float, scale: float) -> float:
+    return np.log(1 + max(value, 0.0) * scale)
+
+
+def log_prod(
     scale_energy: float,
     scale_prob: float,
 ) -> t.Callable[[t.Tuple[AgeAndEnergy, AgeAndEnergy], Encount], float]:
@@ -14,9 +20,16 @@ def logprod_success_prob(
         statuses: t.Tuple[AgeAndEnergy, AgeAndEnergy],
         encount: Encount,
     ) -> float:
-        energy1, energy2 = map(lambda status: max(0.0, status.energy), statuses)
-        scaled_energy1, scaled_energy2 = energy1 * scale_energy, energy2 * scale_energy
-        log_prod_sum = np.log(1 + scaled_energy1) * np.log(1 + scaled_energy2)
-        return min(1.0, log_prod_sum * scale_prob)
+        log_e1, log_e2 = map(
+            lambda status: _scaled_log(status.energy, scale_energy), statuses
+        )
+        return min(1.0, log_e1 * log_e2 * scale_prob)
+
+    return success_prob
+
+
+def log(scale_energy: float, scale_prob: float) -> t.Callable[[AgeAndEnergy], float]:
+    def success_prob(status: AgeAndEnergy, _body: Body) -> float:
+        return min(1.0, _scaled_log(status.energy, scale_energy) * scale_prob)
 
     return success_prob

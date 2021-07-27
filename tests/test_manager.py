@@ -1,4 +1,5 @@
 import typing as t
+
 from functools import partial
 
 import numpy as np
@@ -52,10 +53,12 @@ def test_asexual() -> None:
 
     manager = _get_manager(
         bd.AsexualReprManager(
-            success_prob=lambda status: float(
+            success_prob=lambda status, _body: float(
                 status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
             ),
-            produce=lambda _: bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH),
+            produce=lambda _status, _body: bd.Oviparous(
+                context=(), time_to_birth=STEPS_TO_BIRTH
+            ),
         )
     )
     bodies = list(manager.available_bodies())

@@ -33,8 +33,8 @@ class DeadBody:
 
 @dataclasses.dataclass(frozen=True)
 class AsexualReprManager:
-    success_prob: t.Callable[[Status], float]
-    produce: t.Callable[[Status], Newborn]
+    success_prob: t.Callable[[Status, Body], float]
+    produce: t.Callable[[Status, Body], Newborn]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -68,12 +68,15 @@ class Manager:
     def update_status(self, body: Body, **updates) -> None:
         self.statuses[body].update(**updates)
 
-    def reproduce(self, arg: t.Union[Body, Encount]) -> bool:
-        if isinstance(arg, Encount):
-            statuses = tuple((self.statuses[body] for body in arg.bodies))
-            args = statuses, arg
+    def reproduce(self, body_or_encount: t.Union[Body, Encount]) -> bool:
+        if isinstance(body_or_encount, Encount):
+            statuses = tuple((self.statuses[body] for body in body_or_encount.bodies))
+            args = statuses, body_or_encount
         else:
-            args = (self.statuses[arg],)
+            assert isinstance(
+                body_or_encount, Body
+            ), f"invalid type as body_or_encount: {type(body_or_encount)}"
+            args = self.statuses[body_or_encount], body_or_encount
         success_prob = self.repr_manager.success_prob(*args)
         if self.rng() < success_prob:
             newborn = self.repr_manager.produce(*args)

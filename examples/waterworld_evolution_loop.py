@@ -35,30 +35,6 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
     def energy_update(info: t.Dict[str, float]) -> float:
         return float(info["food"] - info["poison"])
 
-    manager = bd.Manager(
-        default_status_fn=partial(
-            bd.statuses.AgeAndEnergy,
-            age=1,
-            energy=0.0,
-            energy_delta=0.001,
-        ),
-        death_prob_fn=bd.death_functions.gompertz_hazard(
-            energy_threshold=-10.0,
-            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r(-10.0, 10.0),
-            gompertz_alpha=0.001,
-        ),
-        repr_manager=bd.SexualReprManager(
-            success_prob=bd.repr_functions.logprod_success_prob(4.0, 0.1),
-            produce=lambda statuses, encount: bd.Oviparous(
-                context=GeneticContext(
-                    encount.bodies[0].profile.generation,
-                    encount.bodies[0].position,
-                ),
-                time_to_birth=3,
-            ),
-        ),
-    )
-
     # Initialize agents
     agents = []
     for body in environment.available_bodies():
@@ -129,6 +105,12 @@ if __name__ == "__main__":
         default=False,
         help="Disable rendering by pygame",
     )
+    parser.add_argument(
+        "--asexual",
+        type=bool,
+        default=False,
+        help="Use asexual mating",
+    )
     args = parser.parse_args()
     env = make(
         "Waterworld-v0",
@@ -137,4 +119,41 @@ if __name__ == "__main__":
         evader_reproduce_fn=logistic_reproduce_fn(1.0, 14),
         poison_reproduce_fn=logistic_reproduce_fn(1.0, 16),
     )
+
+    if args.asexual:
+        repr_manager = bd.AsexualReprManager(
+            success_prob=bd.repr_functions.log(2.0, 0.1),
+            produce=lambda status, body: bd.Oviparous(
+                body.profile.generation,
+                body.position,
+            ),
+            time_to_birth=3,
+        )
+    else:
+        repr_manager = bd.SexualReprManager(
+            success_prob=bd.repr_functions.log_prod(4.0, 0.1),
+            produce=lambda statuses, encount: bd.Oviparous(
+                context=GeneticContext(
+                    encount.bodies[0].profile.generation,
+                    encount.bodies[0].position,
+                ),
+                time_to_birth=3,
+            ),
+        )
+
+    manager = bd.Manager(
+        default_status_fn=partial(
+            bd.statuses.AgeAndEnergy,
+            age=1,
+            energy=0.0,
+            energy_delta=0.001,
+        ),
+        death_prob_fn=bd.death_functions.gompertz_hazard(
+            energy_threshold=-10.0,
+            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r(-10.0, 10.0),
+            gompertz_alpha=0.001,
+        ),
+        repr_manager=repr_manager,
+    )
+
     env_loop(env, args.max_steps, render=not args.no_render)
