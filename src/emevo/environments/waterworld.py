@@ -28,6 +28,7 @@ from emevo.environment import Encount, Environment
 from emevo.types import Info
 
 
+Color = t.Tuple[int, int, int]
 Self = t.Any
 
 
@@ -270,6 +271,7 @@ class WaterWorld(Environment):
         poison_reproduce_fn: ReproduceFn = logistic_reproduce_fn(1.0, 14),
         speed_features: bool = True,
         render_pixel_scale: int = 30 * 25,
+        render_pursuers_with_mark: t.List[int] = [],
     ) -> None:
         """
         n_pursuers: number of pursuing archea (agents)
@@ -361,6 +363,7 @@ class WaterWorld(Environment):
         self._poison_reproduce_fn = poison_reproduce_fn
 
         # Visualization stuffs
+        self.pursuers_with_mark = render_pursuers_with_mark
         self._pixel_scale = render_pixel_scale
         self._viewer = None
 
@@ -515,6 +518,9 @@ class WaterWorld(Environment):
         self._viewer.draw_archeas(self._pursuers, "pursuer")
         self._viewer.draw_archeas(self._evaders, "evader")
         self._viewer.draw_archeas(self._poisons, "poison")
+
+        for idx in self.pursuers_with_mark:
+            self._viewer.mark_archea(self._pursuers[idx], (255, 0, 255))
 
         if mode == "human":
             self._viewer.pygame.display.flip()
@@ -888,14 +894,14 @@ class WaterWorld(Environment):
 class _Viewer:
     """Visualizer of Waterworld using pygame"""
 
-    _BLACK: t.Tuple[float, float, float] = (0, 0, 0)
-    _COLORS: t.Dict[str, t.Tuple[float, float, float]] = {
+    _BLACK: Color = 0, 0, 0
+    _COLORS: t.Dict[str, Color] = {
         "pursuer": (101, 104, 209),
         "evader": (238, 116, 106),
         "poison": (145, 250, 116),
     }
-    _OBSTACLE_GREEN: t.Tuple[float, float, float] = (120, 176, 178)
-    _WHITE: t.Tuple[float, float, float] = (255, 255, 255)
+    _OBSTACLE_GREEN: Color = 120, 176, 178
+    _WHITE: Color = (255, 255, 255)
 
     def __init__(self, mode: str, pixel_scale: int, pygame: "module") -> None:
         self.pygame = pygame
@@ -919,6 +925,16 @@ class _Viewer:
     def close(self) -> None:
         self.pygame.display.quit()
         self.pygame.quit()
+
+    def mark_archea(self, archea: Archea, color: Color) -> None:
+        x, y = archea.position
+        center = int(self._pixel_scale * x), int(self._pixel_scale * y)
+        self.pygame.draw.circle(
+            self._screen,
+            color,
+            center,
+            self._pixel_scale * archea.radius * 0.25,
+        )
 
     def draw_archeas(self, archeas: t.List[Archea], name: str) -> None:
         n_archeas = len(archeas)
