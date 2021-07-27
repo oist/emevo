@@ -243,6 +243,7 @@ class WaterWorld(Environment):
     INFO_DESCRIPTIONS: t.ClassVar[t.Dict[str, str]] = {
         "food": "Number of foods the pursuer ate",
         "poison": "Number of poisons the pursuer ate",
+        "energy": "Energy consumed by the last action",
     }
 
     def __init__(
@@ -416,6 +417,7 @@ class WaterWorld(Environment):
         info = {
             "food": self._last_collisions.evader.n_caught(idx),
             "poison": self._last_collisions.poison.n_caught(idx),
+            "energy": self._consumed_energy[idx],
         }
         return obs, info
 

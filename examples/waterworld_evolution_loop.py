@@ -32,8 +32,8 @@ class GeneticContext:
 def env_loop(environment: Environment, max_steps: int, render: bool = False) -> None:
     environment.reset()
 
-    def energy_update(info: t.Dict[str, float]) -> float:
-        return float(info["food"] - info["poison"])
+    def energy_update(food: int, poison: int, energy: float) -> float:
+        return food - poison - energy
 
     # Initialize agents
     agents = []
@@ -59,7 +59,7 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
         # Collect information of each agents, and Update the status
         for agent in agents:
             _, info = environment.observe(agent.body)
-            manager.update_status(agent.body, energy_update=energy_update(info))
+            manager.update_status(agent.body, energy_update=energy_update(**info))
 
         # If the mating succeeds, parents consume some energy
         for encount in encounts:
