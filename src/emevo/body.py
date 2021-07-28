@@ -52,7 +52,8 @@ class Body(abc.ABC):
     def __repr__(self) -> str:
         name, gen, birthtime, uuid_ = dataclasses.astuple(self.profile)
         birthtime = birthtime.strftime("%d,%h %H:%M:%S")
-        return f"{name} (gen: {gen} birth: {birthtime})"
+        hash_ = self.__hash__()
+        return f"{name} (gen: {gen} birth: {birthtime} hash: {hash_})"
 
     def __eq__(self, other: t.Any) -> bool:
         return self.profile == other.profile
