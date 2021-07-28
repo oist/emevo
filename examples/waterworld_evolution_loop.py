@@ -2,6 +2,7 @@
 """
 
 import dataclasses
+import operator
 import typing as t
 from functools import partial
 
@@ -29,7 +30,14 @@ class GeneticContext:
     position: np.ndarray
 
 
-def env_loop(environment: Environment, max_steps: int, render: bool = False) -> None:
+def env_loop(
+    *,
+    environment: Environment,
+    manager: bd.Manager,
+    max_steps: int,
+    asexual: bool = False,
+    render: bool = False,
+) -> None:
     environment.reset()
 
     def energy_update(food: int, poison: int, energy: float) -> float:
@@ -62,10 +70,15 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
             manager.update_status(agent.body, energy_update=energy_update(**info))
 
         # If the mating succeeds, parents consume some energy
-        for encount in encounts:
-            if manager.reproduce(encount):
-                for body in encount.bodies:
-                    manager.update_status(body, energy_update=-3.0)
+        if asexual:
+            for body in map(operator.attrgetter("body"), agents):
+                if manager.reproduce(body):
+                    manager.update_status(body, energy_update=-6.0)
+        else:
+            for encount in encounts:
+                if manager.reproduce(encount):
+                    for body in encount.bodies:
+                        manager.update_status(body, energy_update=-3.0)
 
         deads, newborns = manager.step()
 
@@ -101,14 +114,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--no-render",
-        type=bool,
-        default=False,
+        action="store_true",
         help="Disable rendering by pygame",
     )
     parser.add_argument(
         "--asexual",
-        type=bool,
-        default=False,
+        action="store_true",
         help="Use asexual mating",
     )
     args = parser.parse_args()
@@ -124,10 +135,9 @@ if __name__ == "__main__":
         repr_manager = bd.AsexualReprManager(
             success_prob=bd.repr_functions.log(2.0, 0.1),
             produce=lambda status, body: bd.Oviparous(
-                body.profile.generation,
-                body.position,
+                context=GeneticContext(body.profile.generation, body.position),
+                time_to_birth=3,
             ),
-            time_to_birth=3,
         )
     else:
         repr_manager = bd.SexualReprManager(
@@ -156,4 +166,10 @@ if __name__ == "__main__":
         repr_manager=repr_manager,
     )
 
-    env_loop(env, args.max_steps, render=not args.no_render)
+    env_loop(
+        environment=env,
+        manager=manager,
+        max_steps=args.max_steps,
+        asexual=args.asexual,
+        render=not args.no_render,
+    )
