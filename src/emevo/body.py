@@ -23,7 +23,7 @@ class Profile:
     uuid_: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4)
 
     def __deepcopy__(self) -> t.NoReturn:
-        raise RuntimeError("BodyID cannot be copied")
+        raise RuntimeError("Profile cannot be copied")
 
 
 class Body(abc.ABC):
