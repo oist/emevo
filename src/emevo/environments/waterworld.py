@@ -183,14 +183,72 @@ class Pursuer(Archea, Body):
         return sensor_values.T
 
 
-ReproduceFn = t.Callable[[t.List[Archea], np.random.RandomState], int]
+ReproduceFn = t.Callable[
+    [t.List[Archea], t.Callable[[np.ndarray], bool], np.random.RandomState],
+    t.List[np.ndarray],
+]
 
 
-def logistic_reproduce_fn(growth_rate: float, capacity: float) -> ReproduceFn:
-    def reproduce_fn(archeas: t.List[Archea], _np_random: np.random.RandomState) -> int:
+def logistic_repr(growth_rate: float, capacity: float) -> ReproduceFn:
+    def reproduce_fn(
+        archeas: t.List[Archea],
+        overlapped_with: t.Callable[[np.ndarray], bool],
+        np_random: np.random.RandomState,
+    ) -> t.List[np.ndarray]:
         n_archea = len(archeas)
         dn_dt = growth_rate * n_archea * (1 - n_archea / capacity)
-        return max(0, int(dn_dt))
+        res = []
+        for _ in range(max(0, int(dn_dt))):
+            position = np_random.uniform(size=2)
+            while overlapped_with(position):
+                position = np_random.uniform(size=2)
+            res.append(position)
+        return res
+
+    return reproduce_fn
+
+
+def bacteria_constrained_repr(
+    initial_n_bacterias: int,
+    bacteria_growth_rate: float,
+    bacteria_capacity: float,
+) -> ReproduceFn:
+    @dataclasses.dataclass
+    class BacteriaState:
+        num: int
+        growth_rate: t.ClassVar[float] = bacteria_growth_rate
+        capacity: t.ClassVar[float] = bacteria_capacity
+
+        def growth(self) -> None:
+            delta = self.growth_rate * self.num * (1 - self.num / self.capacity)
+            self.num += int(delta)
+
+    bacteria = BacteriaState(initial_n_bacterias)
+    del initial_n_bacterias, bacteria_growth_rate, bacteria_capacity
+
+    def reproduce_fn(
+        archeas: t.List[Archea],
+        overlapped_with: t.Callable[[np.ndarray], bool],
+        np_random: np.random.RandomState,
+    ) -> t.List[np.ndarray]:
+        n_archea = len(archeas)
+        z = bacteria.capacity * n_archea * 2
+        res = []
+        for idx in np_random.permutation(n_archea):
+            prob = min(bacteria.num, bacteria.capacity) / z
+            flip = np_random.rand() <= prob
+            if flip:
+                x, y = archeas[idx].position
+                low = np.maximum([0.0, 0.0], [x - 0.4, y - 0.4])
+                high = np.minimum([1.0, 1.0], [x + 0.4, y + 0.4])
+                position = np_random.uniform(low=low, high=high)
+                while overlapped_with(position):
+                    position = np_random.uniform(low=low, high=high)
+                res.append(position)
+                bacteria.num -= 1
+
+        bacteria.growth()
+        return res
 
     return reproduce_fn
 
@@ -232,6 +290,10 @@ def _remove_indices(list_: t.List[t.Any], indices: t.Iterable[t.Any]) -> t.List[
     return res
 
 
+def _positions(archeas: t.List[Archea]) -> np.ndarray:
+    return np.array([archea.position for archea in archeas])
+
+
 @dataclasses.dataclass(frozen=True)
 class _Collisions:
     evader: _Collision
@@ -263,8 +325,8 @@ class WaterWorld(Environment):
         pursuer_max_accel: float = 0.01,
         evader_max_accel: float = 0.01,
         poison_max_accel: float = 0.01,
-        evader_reproduce_fn: ReproduceFn = logistic_reproduce_fn(1.0, 8),
-        poison_reproduce_fn: ReproduceFn = logistic_reproduce_fn(1.0, 14),
+        evader_reproduce_fn: ReproduceFn = logistic_repr(1.0, 8),
+        poison_reproduce_fn: ReproduceFn = logistic_repr(1.0, 14),
         speed_features: bool = True,
         render_pixel_scale: int = 30 * 25,
         render_pursuers_with_mark: t.List[int] = [],
@@ -406,6 +468,7 @@ class WaterWorld(Environment):
         else:
             warnings.warn("step is called after pursuers are distinct!")
             self._collision_handling_impl()
+            self._reproduce_archeas()
             return []
 
     def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Info]]:
@@ -696,20 +759,31 @@ class WaterWorld(Environment):
         archea.velocity = total_vel
 
     def _reproduce_archeas(self) -> None:
-        n_new_evaders = self._evader_reproduce_fn(self._evaders, self._np_random)
-        for _ in range(n_new_evaders):
+        def _overlap(radius: float) -> t.Callable[[np.ndarray], bool]:
+            return lambda pos: self._detect_collision_to_obs(radius, pos) is None
+
+        new_evader_positions = self._evader_reproduce_fn(
+            self._evaders,
+            _overlap(self._evader_radius),
+            self._np_random,
+        )
+        for position in new_evader_positions:
             new_evader = self._generate_evader()
-            self._initialize_archea(new_evader)
+            self._initialize_archea(new_evader, position=position)
             self._evaders.append(new_evader)
 
-        n_new_poison = self._poison_reproduce_fn(self._poisons, self._np_random)
-        for _ in range(n_new_poison):
+        new_poison_positions = self._poison_reproduce_fn(
+            self._poisons,
+            _overlap(self._poison_radius),
+            self._np_random,
+        )
+        for position in new_poison_positions:
             new_poison = self._generate_poison()
-            self._initialize_archea(new_poison)
+            self._initialize_archea(new_poison, position=position)
             self._poisons.append(new_poison)
 
-        self._n_evaders += n_new_evaders
-        self._n_poison += n_new_poison
+        self._n_evaders += len(new_evader_positions)
+        self._n_poison += len(new_poison_positions)
 
     def _maybe_rebound_archea(self, archea: Archea) -> None:
         collision_idx = self._detect_collision_to_obs(archea.radius, archea.position)
@@ -733,9 +807,9 @@ class WaterWorld(Environment):
         for archea in itertools.chain(self._pursuers, self._evaders, self._poisons):
             self._maybe_rebound_archea(archea)
 
-        positions_pursuer = np.array([pursuer.position for pursuer in self._pursuers])
-        positions_evader = np.array([evader.position for evader in self._evaders])
-        positions_poison = np.array([poison.position for poison in self._poisons])
+        positions_pursuer = _positions(self._pursuers)
+        positions_evader = _positions(self._evaders)
+        positions_poison = _positions(self._poisons)
 
         # Find evader collisions
         evader_collision = self._detect_collision(

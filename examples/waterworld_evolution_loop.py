@@ -104,7 +104,7 @@ def env_loop(
 
 if __name__ == "__main__":
     import argparse
-    from emevo.environments.waterworld import logistic_reproduce_fn
+    from emevo.environments import waterworld as ww
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -122,14 +122,29 @@ if __name__ == "__main__":
         action="store_true",
         help="Use asexual mating",
     )
-    args = parser.parse_args()
-    env = make(
-        "Waterworld-v0",
-        n_evaders=10,
-        n_poison=16,
-        evader_reproduce_fn=logistic_reproduce_fn(1.0, 14),
-        poison_reproduce_fn=logistic_reproduce_fn(1.0, 16),
+    parser.add_argument(
+        "-CR",
+        "--constrained-repr",
+        action="store_true",
+        help="Use asexual mating",
     )
+    args = parser.parse_args()
+    if args.constrained_repr:
+        env = make(
+            "Waterworld-v0",
+            n_evaders=10,
+            n_poison=16,
+            evader_reproduce_fn=ww.bacteria_constrained_repr(20, 1.0, 20),
+            poison_reproduce_fn=ww.bacteria_constrained_repr(30, 1.0, 30),
+        )
+    else:
+        env = make(
+            "Waterworld-v0",
+            n_evaders=10,
+            n_poison=16,
+            evader_reproduce_fn=ww.logistic_repr(0.8, 14),
+            poison_reproduce_fn=ww.logistic_repr(0.8, 16),
+        )
 
     if args.asexual:
         repr_manager = bd.AsexualReprManager(
