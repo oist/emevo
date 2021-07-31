@@ -307,6 +307,10 @@ class WaterWorld(Environment):
         "poison": "Number of poisons the pursuer ate",
         "energy": "Energy consumed by the last action",
     }
+    RENDERING_OPTIONS: t.ClassVar[t.Dict[str, str]] = {
+        "human": "Show PyGame window",
+        "rgb-array": "Returns RGB array",
+    }
 
     def __init__(
         self,
@@ -562,6 +566,8 @@ class WaterWorld(Environment):
         return self._np_random
 
     def render(self, mode: str = "human") -> t.Union[None, np.ndarray]:
+        assert mode in self.RENDERING_OPTIONS.keys()
+
         if self._viewer is None:
             try:
                 import pygame
@@ -585,8 +591,7 @@ class WaterWorld(Environment):
         if mode == "human":
             self._viewer.pygame.display.flip()
         else:
-            observation = self._viewer.pygame.surfarray.pixels3d(self.screen)
-            return np.transpose(observation.copy(), axes=(1, 0, 2))
+            return np.transpose(self._viewer.rgb_array().copy(), axes=(1, 0, 2))
 
     # Other methods
 
@@ -984,6 +989,9 @@ class _Viewer:
         self._archea_names = list(self._COLORS.keys())
         pygame.font.init()
         self._font = pygame.font.SysFont(None, 24)
+
+    def rgb_array(self) -> np.ndarray:
+        return self.pygame.surfarray.pixels3d(self._screen)
 
     def close(self) -> None:
         self.pygame.display.quit()
