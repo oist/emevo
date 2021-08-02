@@ -212,6 +212,8 @@ def bacteria_constrained_repr(
     initial_n_bacterias: int,
     bacteria_growth_rate: float,
     bacteria_capacity: float,
+    *,
+    prob_coef: float = 0.2,
 ) -> ReproduceFn:
     @dataclasses.dataclass
     class BacteriaState:
@@ -224,7 +226,6 @@ def bacteria_constrained_repr(
             self.num += int(delta)
 
     bacteria = BacteriaState(initial_n_bacterias)
-    del initial_n_bacterias, bacteria_growth_rate, bacteria_capacity
 
     def reproduce_fn(
         archeas: t.List[Archea],
@@ -232,15 +233,14 @@ def bacteria_constrained_repr(
         np_random: np.random.RandomState,
     ) -> t.List[np.ndarray]:
         n_archea = len(archeas)
-        z = bacteria.capacity * n_archea * 2
+        z = bacteria.capacity * n_archea
         res = []
         for idx in np_random.permutation(n_archea):
-            prob = min(bacteria.num, bacteria.capacity) / z
-            flip = np_random.rand() <= prob
-            if flip:
+            prob = prob_coef * min(bacteria.capacity, bacteria.num) / z
+            if np_random.rand() <= prob:
                 x, y = archeas[idx].position
-                low = np.maximum([0.0, 0.0], [x - 0.4, y - 0.4])
-                high = np.minimum([1.0, 1.0], [x + 0.4, y + 0.4])
+                low = np.maximum([0.0, 0.0], [x - 0.2, y - 0.2])
+                high = np.minimum([1.0, 1.0], [x + 0.2, y + 0.2])
                 position = np_random.uniform(low=low, high=high)
                 while overlapped_with(position):
                     position = np_random.uniform(low=low, high=high)
@@ -765,7 +765,7 @@ class WaterWorld(Environment):
 
     def _reproduce_archeas(self) -> None:
         def _overlap(radius: float) -> t.Callable[[np.ndarray], bool]:
-            return lambda pos: self._detect_collision_to_obs(radius, pos) is None
+            return lambda pos: self._detect_collision_to_obs(radius, pos) is not None
 
         new_evader_positions = self._evader_reproduce_fn(
             self._evaders,
