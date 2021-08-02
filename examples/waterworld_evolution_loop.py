@@ -35,13 +35,14 @@ def env_loop(
     environment: Environment,
     manager: bd.Manager,
     max_steps: int,
+    energy_update_scale: float = 1.0,
     asexual: bool = False,
     render: bool = False,
 ) -> None:
     environment.reset()
 
     def energy_update(food: int, poison: int, energy: float) -> float:
-        return food - poison - energy
+        return (food - poison - energy) * energy_update_scale
 
     # Initialize agents
     agents = []
@@ -51,6 +52,8 @@ def env_loop(
         manager.register(body)
         obs, _ = environment.observe(body)
         agent.previous_observation = obs
+
+    repr_energy_update = [-3.0, -6.0][int(asexual)] * energy_update_scale
 
     # Do some experiments
     for _ in range(max_steps):
@@ -73,12 +76,12 @@ def env_loop(
         if asexual:
             for body in map(operator.attrgetter("body"), agents):
                 if manager.reproduce(body):
-                    manager.update_status(body, energy_update=-6.0)
+                    manager.update_status(body, energy_update=repr_energy_update)
         else:
             for encount in encounts:
                 if manager.reproduce(encount):
                     for body in encount.bodies:
-                        manager.update_status(body, energy_update=-3.0)
+                        manager.update_status(body, energy_update=repr_energy_update)
 
         deads, newborns = manager.step()
 
@@ -106,45 +109,57 @@ if __name__ == "__main__":
     import argparse
     from emevo.environments import waterworld as ww
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "max_steps",
-        type=int,
-        help="Max enviromental steps to simulate",
+    def create_parser(*args) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser()
+        for args_i, kwargs_i in args:
+            if isinstance(args_i, tuple):
+                parser.add_argument(*args_i, **kwargs_i)
+            else:
+                parser.add_argument(args_i, **kwargs_i)
+
+        return parser
+
+    parser = create_parser(
+        ("max_steps", dict(type=int, help="Max enviromental steps to simulate")),
+        ("--no-render", dict(action="store_true", help="Disable rendering by pygame")),
+        ("--asexual", dict(action="store_true", help="Use asexual mating")),
+        (
+            ("-CR", "--constrained-repr"),
+            dict(action="store_true", help="Use bacteria_constarained_repr"),
+        ),
+        (
+            ("-GA", "--gompertz-alpha"),
+            dict(type=float, default=0.001, help="α for Gompertz hazard function"),
+        ),
+        (
+            ("-ES", "--energy-scale"),
+            dict(type=float, default=1.0, help="Scaling for energy update"),
+        ),
+        (
+            ("-GE", "--gompertz-energy"),
+            dict(
+                type=int,
+                default=10,
+                help="Energy normalization function for Gompertz hazard function",
+            ),
+        ),
     )
-    parser.add_argument(
-        "--no-render",
-        action="store_true",
-        help="Disable rendering by pygame",
-    )
-    parser.add_argument(
-        "--asexual",
-        action="store_true",
-        help="Use asexual mating",
-    )
-    parser.add_argument(
-        "-CR",
-        "--constrained-repr",
-        action="store_true",
-        help="Use asexual mating",
-    )
+
     args = parser.parse_args()
     if args.constrained_repr:
-        env = make(
-            "Waterworld-v0",
-            n_evaders=10,
-            n_poison=16,
-            evader_reproduce_fn=ww.bacteria_constrained_repr(20, 1.0, 20),
-            poison_reproduce_fn=ww.bacteria_constrained_repr(30, 1.0, 30),
-        )
+        evader_reproduce_fn = ww.bacteria_constrained_repr(20, 1.0, 20)
+        poison_reproduce_fn = ww.bacteria_constrained_repr(30, 1.0, 30)
     else:
-        env = make(
-            "Waterworld-v0",
-            n_evaders=10,
-            n_poison=16,
-            evader_reproduce_fn=ww.logistic_repr(0.8, 14),
-            poison_reproduce_fn=ww.logistic_repr(0.8, 16),
-        )
+        evader_reproduce_fn = ww.logistic_repr(0.8, 14)
+        poison_reproduce_fn = ww.logistic_repr(0.8, 16)
+
+    env = make(
+        "Waterworld-v0",
+        n_evaders=10,
+        n_poison=16,
+        evader_reproduce_fn=evader_reproduce_fn,
+        poison_reproduce_fn=poison_reproduce_fn,
+    )
 
     if args.asexual:
         repr_manager = bd.AsexualReprManager(
@@ -166,6 +181,7 @@ if __name__ == "__main__":
             ),
         )
 
+    ge = args.gompertz_energy
     manager = bd.Manager(
         default_status_fn=partial(
             bd.statuses.AgeAndEnergy,
@@ -174,9 +190,9 @@ if __name__ == "__main__":
             energy_delta=0.001,
         ),
         death_prob_fn=bd.death_functions.gompertz_hazard(
-            energy_threshold=-10.0,
-            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r(-10.0, 10.0),
-            gompertz_alpha=0.001,
+            energy_threshold=-ge,
+            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r(-ge, ge),
+            gompertz_alpha=args.gompertz_alpha,
         ),
         repr_manager=repr_manager,
     )

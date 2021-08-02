@@ -11,7 +11,7 @@ class AgeAndEnergy(Status):
 
     age: int
     energy: float
-    energy_delta: dataclasses.InitVar[float] = 0.01
+    energy_delta: dataclasses.InitVar[float] = 0.0
 
     def __post_init__(self, energy_delta: float) -> None:
         # Make a constant function to ensure the delta is constant
