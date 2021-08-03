@@ -152,27 +152,16 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    if args.constrained_repr:
-        evader_reproduce_fn = ww.bacteria_constrained_repr(
-            args.n_evaders * 2,
-            args.growth_rate,
-            args.n_evaders * 2,
-        )
-        poison_reproduce_fn = ww.bacteria_constrained_repr(
-            args.n_poison * 2,
-            args.growth_rate,
-            args.n_poison * 2,
-        )
-    else:
-        evader_reproduce_fn = ww.logistic_repr(args.growth_rate, args.n_evaders + 1.0)
-        poison_reproduce_fn = ww.logistic_repr(args.growth_rate, args.n_poison + 1.0)
-
     env = make(
         "Waterworld-v0",
         n_evaders=args.n_evaders,
         n_poison=args.n_poison,
-        evader_reproduce_fn=evader_reproduce_fn,
-        poison_reproduce_fn=poison_reproduce_fn,
+        **ww.repr_functions(
+            kind="constrained" if args.constrained_repr else "logistic",
+            n_evaders=args.n_evaders,
+            n_poison=args.n_poison,
+            growth_rate=args.growth_rate,
+        ),
     )
 
     if args.asexual:

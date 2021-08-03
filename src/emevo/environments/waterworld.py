@@ -189,6 +189,37 @@ ReproduceFn = t.Callable[
 ]
 
 
+def repr_functions(
+    *,
+    kind: str,
+    n_evaders: int,
+    n_poison: int,
+    growth_rate: float,
+) -> t.Dict[str, ReproduceFn]:
+    """A convenient function for making reproduction functions"""
+    if kind == "constrained":
+        return {
+            # TODO: what is the best default setting for bc repr?
+            "evader_reproduce_fn": bacteria_constrained_repr(
+                n_evaders,
+                growth_rate,
+                n_evaders + 1.0,
+            ),
+            "poison_reproduce_fn": bacteria_constrained_repr(
+                n_poison,
+                growth_rate,
+                n_poison + 1.0,
+            ),
+        }
+    elif kind == "logistic":
+        return {
+            "evader_reproduce_fn": logistic_repr(growth_rate, n_evaders + 1.0),
+            "poison_reproduce_fn": logistic_repr(growth_rate, n_poison + 1.0),
+        }
+    else:
+        raise f"Unsupported reproduction function: {kind}"
+
+
 def logistic_repr(growth_rate: float, capacity: float) -> ReproduceFn:
     def reproduce_fn(
         archeas: t.List[Archea],
@@ -213,7 +244,7 @@ def bacteria_constrained_repr(
     bacteria_growth_rate: float,
     bacteria_capacity: float,
     *,
-    prob_coef: float = 0.2,
+    prob_coef: float = 0.1,
 ) -> ReproduceFn:
     @dataclasses.dataclass
     class BacteriaState:
@@ -235,12 +266,13 @@ def bacteria_constrained_repr(
         n_archea = len(archeas)
         z = bacteria.capacity * n_archea
         res = []
-        for idx in np_random.permutation(n_archea):
-            prob = prob_coef * min(bacteria.capacity, bacteria.num) / z
+        for i, idx in enumerate(np_random.permutation(n_archea)):
+            energy = min(bacteria.capacity, bacteria.num) * (n_archea - i)
+            prob = 1.0 / np.exp((z - energy) * prob_coef)
             if np_random.rand() <= prob:
                 x, y = archeas[idx].position
-                low = np.maximum([0.0, 0.0], [x - 0.2, y - 0.2])
-                high = np.minimum([1.0, 1.0], [x + 0.2, y + 0.2])
+                low = np.maximum([0.0, 0.0], [x - 0.1, y - 0.1])
+                high = np.minimum([1.0, 1.0], [x + 0.1, y + 0.1])
                 position = np_random.uniform(low=low, high=high)
                 while overlapped_with(position):
                     position = np_random.uniform(low=low, high=high)
