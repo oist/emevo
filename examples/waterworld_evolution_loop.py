@@ -123,6 +123,12 @@ if __name__ == "__main__":
         ("max_steps", dict(type=int, help="Max enviromental steps to simulate")),
         ("--no-render", dict(action="store_true", help="Disable rendering by pygame")),
         ("--asexual", dict(action="store_true", help="Use asexual mating")),
+        ("--n-evaders", dict(type=int, default=10, help="Initial number of evaders")),
+        ("--n-poison", dict(type=int, default=14, help="Initial number of poison")),
+        (
+            "--growth-rate",
+            dict(type=float, default=1.0, help="Growth rate of food and poison"),
+        ),
         (
             ("-CR", "--constrained-repr"),
             dict(action="store_true", help="Use bacteria_constarained_repr"),
@@ -147,16 +153,24 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if args.constrained_repr:
-        evader_reproduce_fn = ww.bacteria_constrained_repr(20, 1.0, 20)
-        poison_reproduce_fn = ww.bacteria_constrained_repr(30, 1.0, 30)
+        evader_reproduce_fn = ww.bacteria_constrained_repr(
+            args.n_evaders * 2,
+            args.growth_rate,
+            args.n_evaders * 2,
+        )
+        poison_reproduce_fn = ww.bacteria_constrained_repr(
+            args.n_poison * 2,
+            args.growth_rate,
+            args.n_poison * 2,
+        )
     else:
-        evader_reproduce_fn = ww.logistic_repr(0.8, 14)
-        poison_reproduce_fn = ww.logistic_repr(0.8, 16)
+        evader_reproduce_fn = ww.logistic_repr(args.growth_rate, args.n_evaders + 1.0)
+        poison_reproduce_fn = ww.logistic_repr(args.growth_rate, args.n_poison + 1.0)
 
     env = make(
         "Waterworld-v0",
-        n_evaders=10,
-        n_poison=16,
+        n_evaders=args.n_evaders,
+        n_poison=args.n_poison,
         evader_reproduce_fn=evader_reproduce_fn,
         poison_reproduce_fn=poison_reproduce_fn,
     )
