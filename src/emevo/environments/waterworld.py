@@ -999,8 +999,8 @@ class _Viewer:
         "pursuer": (101, 104, 209),
         "evader": (145, 250, 116),
         "poison": (238, 116, 106),
+        "obstacle": (120, 176, 178),
     }
-    _OBSTACLE_GREEN: Color = 120, 176, 178
     _WHITE: Color = (255, 255, 255)
 
     def __init__(self, mode: str, pixel_scale: int, pygame: "module") -> None:
@@ -1081,7 +1081,7 @@ class _Viewer:
             center = int(self._pixel_scale * x), int(self._pixel_scale * y)
             self.pygame.draw.circle(
                 self._screen,
-                self._OBSTACLE_GREEN,
+                self._COLORS["obstacle"],
                 center,
                 self._pixel_scale * radius,
             )
