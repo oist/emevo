@@ -28,7 +28,7 @@ from emevo.environment import Encount, Environment
 from emevo.types import Info
 
 
-Color = t.Tuple[int, int, int]
+RGB = t.Tuple[int, int, int]
 Self = t.Any
 
 
@@ -365,7 +365,6 @@ class WaterWorld(Environment):
         poison_reproduce_fn: ReproduceFn = logistic_repr(1.0, 14),
         speed_features: bool = True,
         render_pixel_scale: int = 30 * 25,
-        render_pursuers_with_mark: t.List[int] = [],
     ) -> None:
         """
         n_pursuers: number of pursuing archea (agents)
@@ -457,7 +456,6 @@ class WaterWorld(Environment):
         self._poison_reproduce_fn = poison_reproduce_fn
 
         # Visualization stuffs
-        self.pursuers_with_mark = render_pursuers_with_mark
         self._pixel_scale = render_pixel_scale
         self._viewer = None
 
@@ -597,7 +595,12 @@ class WaterWorld(Environment):
     def np_random(self) -> t.Optional[np.random.RandomState]:
         return self._np_random
 
-    def render(self, mode: str = "human") -> t.Union[None, np.ndarray]:
+    def render(
+        self,
+        *,
+        mode: str = "human",
+        policies: t.List[t.Tuple[Archea, np.ndarray, t.Optional[float]]] = [],
+    ) -> t.Union[None, np.ndarray]:
         assert mode in self.RENDERING_OPTIONS.keys()
 
         if self._viewer is None:
@@ -617,8 +620,8 @@ class WaterWorld(Environment):
         self._viewer.draw_archeas(self._evaders, "evader", "Food")
         self._viewer.draw_archeas(self._poisons, "poison", "Poison")
 
-        for idx in self.pursuers_with_mark:
-            self._viewer.mark_archea(self._pursuers[idx], (255, 0, 255))
+        for archea, policy, value in policies:
+            self._viewer.draw_policy(archea, policy, value)
 
         if mode == "human":
             self._viewer.pygame.display.flip()
@@ -991,17 +994,34 @@ class WaterWorld(Environment):
         return obs_list
 
 
+def _rotate_polygon(*, polygon: np.array, theta: float, scale: float) -> np.array:
+    sint, cost = np.cos(theta), np.sin(theta)
+    rotation_mat = np.array([[cost, -sint], [sint, cost]])
+    result = [np.dot(rotation_mat, polygon[0]) * scale]
+    for i in range(polygon.shape[0] - 1):
+        p1, p2 = polygon[i : i + 2]
+        vector = p2 - p1
+        rotated = np.dot(rotation_mat, vector)
+        scaled = rotated * scale
+        result.append(result[-1] + scaled)
+    return np.stack(result)
+
+
 class _Viewer:
     """Visualizer of Waterworld using pygame"""
 
-    _BLACK: Color = 0, 0, 0
-    _COLORS: t.Dict[str, Color] = {
+    _BLACK: RGB = 0, 0, 0
+    _COLORS: t.Dict[str, RGB] = {
         "pursuer": (101, 104, 209),
         "evader": (145, 250, 116),
         "poison": (238, 116, 106),
         "obstacle": (120, 176, 178),
     }
-    _WHITE: Color = (255, 255, 255)
+    _WHITE: RGB = 255, 255, 255
+    _ORANGE: RGB = 248, 155, 41
+    _ARROW: np.ndarray = np.array(
+        [[0, 80], [0, 180], [180, 180], [180, 260], [300, 130], [180, 0], [180, 80]]
+    )
 
     def __init__(self, mode: str, pixel_scale: int, pygame: "module") -> None:
         self.pygame = pygame
@@ -1020,7 +1040,8 @@ class _Viewer:
 
         self._archea_names = list(self._COLORS.keys())
         pygame.font.init()
-        self._font = pygame.font.SysFont(None, 24)
+        self._font_24 = pygame.font.SysFont(None, 24)
+        self._font_36 = pygame.font.SysFont(None, 36)
 
     def rgb_array(self) -> np.ndarray:
         return self.pygame.surfarray.pixels3d(self._screen)
@@ -1028,16 +1049,6 @@ class _Viewer:
     def close(self) -> None:
         self.pygame.display.quit()
         self.pygame.quit()
-
-    def mark_archea(self, archea: Archea, color: Color) -> None:
-        x, y = archea.position
-        center = int(self._pixel_scale * x), int(self._pixel_scale * y)
-        self.pygame.draw.circle(
-            self._screen,
-            color,
-            center,
-            self._pixel_scale * archea.radius * 0.25,
-        )
 
     def draw_archeas(self, archeas: t.List[Archea], name: str, disp_name: str) -> None:
         n_archeas = len(archeas)
@@ -1067,7 +1078,7 @@ class _Viewer:
             (x_start, y_position),
             self._pixel_scale * archea.radius,
         )
-        img = self._font.render(f"{disp_name}: {n_archeas}", True, self._BLACK)
+        img = self._font_24.render(f"{disp_name}: {n_archeas}", True, self._BLACK)
         self._screen.blit(img, (x_start + self._xoffset // 8, y_position))
 
     def draw_background(self) -> None:
@@ -1085,3 +1096,21 @@ class _Viewer:
                 center,
                 self._pixel_scale * radius,
             )
+
+    def draw_policy(
+        self,
+        archea: Archea,
+        policy: np.ndarray,
+        value: t.Optional[float] = None,
+    ) -> None:
+        norm = np.linalg.norm(policy)
+        theta = np.arccos(np.clip(policy[1] / norm, -1.0, 1.0))
+        position = archea.position * self._pixel_scale
+        scale = 0.2 * min(archea.max_accel, norm) / archea.max_accel
+        arrow = _rotate_polygon(polygon=self._ARROW, theta=theta, scale=scale)
+        arrow += position + np.array([0.0, -self._pixel_scale * 0.02])
+        self.pygame.draw.polygon(self._screen, self._ORANGE, arrow)
+        if value is not None:
+            img = self._font_36.render(f"{value:.2}", True, self._BLACK)
+            x, y = position + np.array([0.0, self._pixel_scale * 0.01])
+            self._screen.blit(img, (int(x), int(y)))
