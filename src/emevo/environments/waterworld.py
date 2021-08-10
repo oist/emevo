@@ -295,7 +295,7 @@ class _Collision:
     def empty() -> Self:
         return _Collision(np.array([]), np.array([[]]), np.array([], dtype=np.int))
 
-    def listup(self, bodies: t.List[Archea]) -> t.List[Encount]:
+    def listup_encounts(self, bodies: t.List[Archea]) -> t.List[Encount]:
         n_bodies = len(bodies)
         res = []
         for i in range(n_bodies):
@@ -304,7 +304,7 @@ class _Collision:
                     res.append(Encount((bodies[i], bodies[j]), self.distance_mat[i, j]))
         return res
 
-    def n_caught(self, idx: int) -> int:
+    def n_collided(self, idx: int) -> int:
         return self.collision_mat[idx][self.caught_b].sum()
 
     def caught_archeas(self, archeas: t.List[Archea]) -> t.Iterable[Archea]:
@@ -337,6 +337,7 @@ class WaterWorld(Environment):
     INFO_DESCRIPTIONS: t.ClassVar[t.Dict[str, str]] = {
         "food": "Number of foods the pursuer ate",
         "poison": "Number of poisons the pursuer ate",
+        "others": "Other agents encountered",
         "energy": "Energy consumed by the last action",
     }
     RENDERING_OPTIONS: t.ClassVar[t.Dict[str, str]] = {
@@ -498,7 +499,7 @@ class WaterWorld(Environment):
         if self._n_pursuers > 0:
             self._last_observations = self._collision_handling_impl()
             self._reproduce_archeas()
-            return self._last_collisions.pursuer.listup(self._pursuers)
+            return self._last_collisions.pursuer.listup_encounts(self._pursuers)
         else:
             warnings.warn("step is called after pursuers are distinct!")
             self._collision_handling_impl()
@@ -512,8 +513,9 @@ class WaterWorld(Environment):
             # If obs is None, then the agent is a newborn and have observed nothing.
             return None
         info = {
-            "food": self._last_collisions.evader.n_caught(idx),
-            "poison": self._last_collisions.poison.n_caught(idx),
+            "food": self._last_collisions.evader.n_collided(idx),
+            "poison": self._last_collisions.poison.n_collided(idx),
+            "others": self._last_collisions.pursuer.n_collided(idx),
             "energy": self._consumed_energy[idx],
         }
         return obs, info
