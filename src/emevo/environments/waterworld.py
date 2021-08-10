@@ -357,8 +357,7 @@ class WaterWorld(Environment):
         evader_radius_ratio: float = 2.0,
         poison_radius_ratio: float = 0.75,
         obstacle_radius: float = 0.2,
-        obstacle_coords: t.Optional[np.ndarray] = np.array([0.5, 0.5]),
-        n_obstacles: int = 1,
+        obstacle_coords: t.Union[np.ndarray, t.List[float]] = [0.5, 0.5],
         pursuer_max_accel: float = 0.01,
         evader_max_accel: float = 0.01,
         poison_max_accel: float = 0.01,
@@ -380,8 +379,7 @@ class WaterWorld(Environment):
         evader_radius_ratio: ratio of evader's radius to pursuer's radious
         poison_radius_ratio: ratio of poison's radius to pursuer's radious
         obstacle_radius: radius of obstacle object
-        obstacle_coord: coordinate of obstacle object.
-                        Can be set to `None` to use a random location
+        obstacle_coords: Coordinate of obstacle object.
         pursuer_max_accel: pursuer archea maximum acceleration (maximum action size)
         evader_max_accel: max accel of evader
         poison_max_accel: max accel of poison archea
@@ -399,25 +397,17 @@ class WaterWorld(Environment):
 
         self._n_required_pursuers = n_required_pursuers
         self._obstacle_radius = obstacle_radius
-        if obstacle_coords is not None:
-            if obstacle_coords.ndim > 2 or obstacle_coords.shape[-1] != 2:
-                raise ValueError(
-                    f"Invalid shape as coordinates: {obstacle_coord.shape}"
-                )
-            if obstacle_coords.ndim == 1:
-                obstacle_coords = np.expand_dims(obstacle_coords, 0)
-            if obstacle_coords.shape[0] != n_obstacles:
-                raise ValueError(
-                    f"n_obstacles = {n_obstacles}, but obstacles "
-                    + f"with shape {obstacle_coords.shape} is given"
-                )
+        obstacle_coords = np.array(obstacle_coords)
+        if obstacle_coords.ndim > 2 or obstacle_coords.shape[-1] != 2:
+            raise ValueError(f"Invalid shape as coordinates: {obstacle_coord.shape}")
+        if obstacle_coords.ndim == 1:
+            obstacle_coords = np.expand_dims(obstacle_coords, 0)
         self._initial_obstacle_coords = obstacle_coords
         self._obstacle_coords: t.Optional[np.ndarray] = None
         self._pursuer_radius = pursuer_radius
         self._evader_radius = pursuer_radius * evader_radius_ratio
         self._poison_radius = pursuer_radius * poison_radius_ratio
         self._n_sensors = n_sensors
-        self._n_obstacles = n_obstacles
         self._speed_features = speed_features
         self._pursuer_sensor_range = sensor_range
 
@@ -550,11 +540,7 @@ class WaterWorld(Environment):
 
         self._n_steps = 0
         # Initialize obstacles
-        if self._initial_obstacle_coords is None:
-            # Generate xsxfobstacle positions in range [0, 1)
-            self._obstacle_coords = self._np_random.rand(self._n_obstacles, 2)
-        else:
-            self._obstacle_coords = self._initial_obstacle_coords.copy()
+        self._obstacle_coords = self._initial_obstacle_coords.copy()
 
         def maybe_reset_archeas(
             archeas: t.List[Archea],
