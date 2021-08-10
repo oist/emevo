@@ -63,3 +63,11 @@ class Body(abc.ABC):
 
     def __hash__(self) -> bool:
         return hash(self.profile)
+
+
+@dataclasses.dataclass(frozen=True)
+class Encount:
+    """Two agents encount!"""
+
+    bodies: t.Tuple[Body, Body]
+    distance: float

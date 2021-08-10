@@ -45,13 +45,12 @@ def env_loop(
         return (food - poison - energy) * energy_update_scale
 
     # Initialize agents
-    agents = []
+    agents = {}
     for body in environment.available_bodies():
-        agent = Agent(body)
-        agents.append(agent)
         manager.register(body)
-        obs, _ = environment.observe(body)
-        agent.previous_observation = obs
+        agent = Agent(body)
+        agent.previous_observation, _ = environment.observe(body)
+        agents[body] = agent
 
     repr_energy_update = [-3.0, -6.0][int(asexual)] * energy_update_scale
 
@@ -59,46 +58,41 @@ def env_loop(
     for _ in range(max_steps):
 
         # Each agent acts in the environment
-        for agent in agents:
+        for body, agent in agents.items():
             action = agent.select_action()
-            environment.act(agent.body, action)
+            environment.act(body, action)
             agent.previous_action = action
 
         # Step the simulator
         encounts = environment.step()
 
         # Collect information of each agents, and Update the status
-        for agent in agents:
-            _, info = environment.observe(agent.body)
-            manager.update_status(agent.body, energy_update=energy_update(**info))
+        for body, agent in agents.items():
+            obs, info = environment.observe(body)
+            agent.previous_observation = obs
+            manager.update_status(body, energy_update=energy_update(**info))
 
         # If the mating succeeds, parents consume some energy
-        if asexual:
-            for body in map(operator.attrgetter("body"), agents):
-                if manager.reproduce(body):
-                    manager.update_status(body, energy_update=repr_energy_update)
-        else:
-            for encount in encounts:
-                if manager.reproduce(encount):
-                    for body in encount.bodies:
-                        manager.update_status(body, energy_update=repr_energy_update)
+        bd.utils.reproduce_and_update(
+            manager,
+            list(agents.keys()),
+            encounts,
+            energy_update=repr_energy_update,
+        )
 
         deads, newborns = manager.step()
 
         for dead in deads:
             print(f"{dead.body} is dead with {dead.status}")
             environment.die(dead.body)
-            remove_idx, _ = next(
-                filter(lambda agent: agent[1].body == dead.body, enumerate(agents))
-            )
-            agents.pop(remove_idx)
+            del agents[dead.body]
 
         for newborn in newborns:
             body = environment.born(
                 newborn.context.generation,
                 newborn.context.position,
             )
-            agents.append(Agent(body))
+            agents[body] = Agent(body)
             manager.register(body)
 
         if render:

@@ -8,8 +8,7 @@ import typing as t
 
 import numpy as np
 
-from emevo.body import Body
-from emevo.environment import Encount
+from emevo.body import Body, Encount
 
 from .newborn import Newborn
 
@@ -60,13 +59,14 @@ class Manager:
     def available_bodies(self) -> t.Iterable[Body]:
         return self.statuses.keys()
 
+    @property
+    def is_asexual(self) -> bool:
+        return isinstance(self.repr_manager, AsexualReprManager)
+
     def register(self, body: Body, status: t.Optional[Status] = None) -> None:
         if status is None:
             status = self.statuses[body] = self.default_status_fn()
         self.statuses[body] = status
-
-    def update_status(self, body: Body, **updates) -> None:
-        self.statuses[body].update(**updates)
 
     def reproduce(self, body_or_encount: t.Union[Body, Encount]) -> bool:
         if isinstance(body_or_encount, Encount):
@@ -105,3 +105,6 @@ class Manager:
             self.pending_newborns.remove(newborn)
 
         return deads, newborns
+
+    def update_status(self, body: Body, **updates) -> None:
+        self.statuses[body].update(**updates)

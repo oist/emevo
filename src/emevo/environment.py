@@ -5,21 +5,12 @@ Other specific things (e.g., asexual mating or sexual mating) are defiend in act
 environment implementations.
 """
 import abc
-import dataclasses
 import typing as t
 
 import numpy as np
 
-from emevo.body import Body
+from emevo.body import Body, Encount
 from emevo.types import Action, Info, Observation
-
-
-@dataclasses.dataclass(frozen=True)
-class Encount:
-    """Two agents encount!"""
-
-    bodies: t.Tuple[Body, Body]
-    distance: float
 
 
 class Environment(abc.ABC):

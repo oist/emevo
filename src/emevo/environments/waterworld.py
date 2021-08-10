@@ -23,8 +23,8 @@ from gym.utils import seeding
 from scipy.stats import truncnorm
 from scipy.spatial import distance as spd
 
-from emevo.body import Body
-from emevo.environment import Encount, Environment
+from emevo.body import Body, Encount
+from emevo.environment import Environment
 from emevo.types import Info
 
 
