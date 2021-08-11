@@ -41,7 +41,7 @@ def env_loop(
 ) -> None:
     environment.reset()
 
-    def energy_update(food: int, poison: int, energy: float) -> float:
+    def energy_update(*, food: int, poison: int, others: int, energy: float) -> float:
         return (food - poison - energy) * energy_update_scale
 
     # Initialize agents
