@@ -92,7 +92,7 @@ def env_loop(
 
         for newborn in newborns:
             body = environment.born(
-                newborn.context.generation,
+                newborn.context.generation + 1,
                 newborn.context.position,
             )
             agents[body] = Agent(body)
