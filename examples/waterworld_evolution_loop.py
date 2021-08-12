@@ -73,12 +73,15 @@ def env_loop(
             manager.update_status(body, energy_update=energy_update(**info))
 
         # If the mating succeeds, parents consume some energy
-        bd.utils.reproduce_and_update(
-            manager,
-            list(agents.keys()),
-            encounts,
-            energy_update=repr_energy_update,
-        )
+        if manager.is_asexual:
+            for body in agents.keys():
+                if manager.reproduce(body) is not None:
+                    manager.update_status(body, energy_update=repr_energy_update)
+        else:
+            for encount in encounts:
+                if manager.reproduce(encount) is not None:
+                    for body in encount.bodies:
+                        manager.update_status(body, energy_update=repr_energy_update)
 
         deads, newborns = manager.step()
 

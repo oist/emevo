@@ -68,7 +68,7 @@ class Manager:
             status = self.statuses[body] = self.default_status_fn()
         self.statuses[body] = status
 
-    def reproduce(self, body_or_encount: t.Union[Body, Encount]) -> bool:
+    def reproduce(self, body_or_encount: t.Union[Body, Encount]) -> t.Optional[Newborn]:
         if isinstance(body_or_encount, Encount):
             statuses = tuple((self.statuses[body] for body in body_or_encount.bodies))
             args = statuses, body_or_encount
@@ -81,9 +81,9 @@ class Manager:
         if self.rng() < success_prob:
             newborn = self.repr_manager.produce(*args)
             self.pending_newborns.append(newborn)
-            return True
+            return newborn
         else:
-            return False
+            return None
 
     def step(self) -> t.Tuple[t.List[DeadBody], t.List[Newborn]]:
         deads, newborns = [], []
