@@ -31,8 +31,9 @@ class Body(abc.ABC):
     Reprsents the bodily existance of the agent, also works as an effecient key object.
     """
 
-    def __init__(self, name: str = "NoName", generation: int = 0) -> None:
+    def __init__(self, name: str = "NoName", generation: int = 0, nth: int = 0) -> None:
         self.profile = Profile(name, generation)
+        self.nth = nth
 
     @property
     @abc.abstractmethod
@@ -48,6 +49,10 @@ class Body(abc.ABC):
     @abc.abstractmethod
     def position(self) -> np.ndarray:
         pass
+
+    @property
+    def uuid(self) -> uuid.UUID:
+        return self.profile.uuid_
 
     def __repr__(self) -> str:
         name, gen, birthtime, uuid_ = dataclasses.astuple(self.profile)

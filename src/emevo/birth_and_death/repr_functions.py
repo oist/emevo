@@ -2,7 +2,6 @@ import typing as t
 
 import numpy as np
 
-
 from emevo import Body, Encount
 
 from .statuses import AgeAndEnergy
