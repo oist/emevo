@@ -2,7 +2,6 @@
 """
 
 import dataclasses
-import operator
 import typing as t
 from functools import partial
 
