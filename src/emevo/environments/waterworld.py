@@ -20,13 +20,12 @@ import numpy as np
 
 from gym import spaces
 from gym.utils import seeding
-from scipy.stats import truncnorm
 from scipy.spatial import distance as spd
+from scipy.stats import truncnorm
 
 from emevo.body import Body, Encount
 from emevo.environment import Environment
 from emevo.types import Info
-
 
 RGB = t.Tuple[int, int, int]
 Self = t.Any
@@ -72,9 +71,10 @@ class Pursuer(Archea, Body):
         sensor_range: float,
         speed_features: bool = True,
         generation: int = 0,
+        nth: int = 0,
     ) -> None:
         super().__init__(radius=radius, max_accel=max_accel)
-        Body.__init__(self, name="Pursuer Archea", generation=generation)
+        Body.__init__(self, name="Pursuer Archea", generation=generation, nth=nth)
 
         self.sensor_range = sensor_range
 
@@ -410,8 +410,10 @@ class WaterWorld(Environment):
         self._n_sensors = n_sensors
         self._speed_features = speed_features
         self._pursuer_sensor_range = sensor_range
+        self._n_born_pursuers = 0
 
         def _generate_pursuer(generation: int = 0) -> Pursuer:
+            self._n_born_pursuers += 1
             return Pursuer(
                 radius=self._pursuer_radius,
                 n_sensors=self._n_sensors,
@@ -419,6 +421,7 @@ class WaterWorld(Environment):
                 sensor_range=self._pursuer_sensor_range,
                 speed_features=self._speed_features,
                 generation=generation,
+                nth=self._n_born_pursuers,
             )
 
         self._generate_pursuer = _generate_pursuer
@@ -486,14 +489,12 @@ class WaterWorld(Environment):
         move_archeas(self._poisons)
 
         self._n_steps += 1
+        self._last_observations = self._collision_handling_impl()
+        self._reproduce_archeas()
         if self._n_pursuers > 0:
-            self._last_observations = self._collision_handling_impl()
-            self._reproduce_archeas()
             return self._last_collisions.pursuer.listup_encounts(self._pursuers)
         else:
             warnings.warn("step is called after pursuers are distinct!")
-            self._collision_handling_impl()
-            self._reproduce_archeas()
             return []
 
     def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Info]]:
@@ -819,8 +820,6 @@ class WaterWorld(Environment):
             self._rebound_archea(self._obstacle_coords[collision_idx], archea)
 
     def _collision_handling_impl(self) -> t.List[np.ndarray]:
-        # assert self._n_evaders > 0 and self._n_poison > 0
-
         # Stop pursuers upon hitting a wall
         for pursuer in self._pursuers:
             clipped_coord = np.clip(pursuer.position, 0, 1)
@@ -831,9 +830,11 @@ class WaterWorld(Environment):
             pursuer.velocity = clipped_velocity
             pursuer.position = clipped_coord
 
-        # Rebound an archea if it hits an obstacle
         for archea in itertools.chain(self._pursuers, self._evaders, self._poisons):
             self._maybe_rebound_archea(archea)
+
+        if self._n_pursuers == 0:
+            return []
 
         positions_pursuer = _positions(self._pursuers)
         positions_evader = _positions(self._evaders)
@@ -900,23 +901,25 @@ class WaterWorld(Environment):
 
         class SensorFeatures(t.NamedTuple):
             distance: np.ndarray
-            closest_idx: np.ndarray
-            mask: np.ndarray
+            closest_indices: np.ndarray
+            is_finite: np.ndarray
 
-        # Collect distance features
-        def sensor_features(
-            sensorvals: t.List[np.ndarray],
-        ) -> t.Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        def sensor_features(sensorvals: t.List[np.ndarray]) -> None:
+            shape = self._n_pursuers, self._n_sensors
             if len(sensorvals) == 0:
-                empty = np.array([], dtype=np.int64)
-                return SensorFeatures(empty, empty, empty)
+                # distance = 1, is_finite = False
+                return SensorFeatures(
+                    np.ones(shape),
+                    np.zeros(shape, dtype=np.int64),
+                    np.zeros(shape, dtype=bool),
+                )
             sensorvals = np.stack(sensorvals, axis=0)
-            closest_idx_array = np.argmin(sensorvals, axis=2)
-            closest_distances = self._closest_dist(closest_idx_array, sensorvals)
-            finite_mask = np.isfinite(closest_distances)
-            sensed_distances = np.ones((self._n_pursuers, self._n_sensors))
-            sensed_distances[finite_mask] = closest_distances[finite_mask]
-            return SensorFeatures(sensed_distances, closest_idx_array, finite_mask)
+            closest_indices = np.argmin(sensorvals, axis=2)
+            closest_distances = self._closest_dist(closest_indices, sensorvals)
+            is_finite = np.isfinite(closest_distances)
+            sensed_distances = np.ones(shape)
+            sensed_distances[is_finite] = closest_distances[is_finite]
+            return SensorFeatures(sensed_distances, closest_indices, is_finite)
 
         obstacle_distances, _, _ = sensor_features(sensorvals_pursuer_obstacle)
         barrier_distances, _, _ = sensor_features(sensorvals_pursuer_barrier)
