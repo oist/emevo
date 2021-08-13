@@ -29,19 +29,19 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
         obs, _ = environment.observe(body)
         agent.previous_observation = obs
 
-    # Do some experiments
+    # Enviromental loop
     for _ in range(max_steps):
 
-        # Each agent acts in the environment
+        # Act
         for agent in agents:
             action = agent.select_action()
             environment.act(agent.body, action)
             agent.previous_action = action
 
-        # Step the simulator
+        # Step
         _ = environment.step()
 
-        # Collect information of each agents, and Update the status
+        # Observe
         for agent in agents:
             _, info = environment.observe(agent.body)
 

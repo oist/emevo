@@ -54,19 +54,19 @@ def env_loop(
 
     repr_energy_update = [-3.0, -6.0][int(asexual)] * energy_update_scale
 
-    # Do some experiments
+    # Enviromental loop
     for _ in range(max_steps):
 
-        # Each agent acts in the environment
+        # Act
         for body, agent in agents.items():
             action = agent.select_action()
             environment.act(body, action)
             agent.previous_action = action
 
-        # Step the simulator
+        # Step
         encounts = environment.step()
 
-        # Collect information of each agents, and Update the status
+        # Observe
         for body, agent in agents.items():
             obs, info = environment.observe(body)
             agent.previous_observation = obs

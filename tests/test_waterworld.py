@@ -35,7 +35,7 @@ def test_waterworld(
         obs, _ = environment.observe(body)
         assert obs.shape == correct_shape
 
-    # Do some experiments
+    # Enviromental loop
     for _ in range(10):
         # Act
         for body in bodies:
