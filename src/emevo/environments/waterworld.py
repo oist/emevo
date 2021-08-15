@@ -361,6 +361,7 @@ class WaterWorld(Environment):
         pursuer_max_accel: float = 0.01,
         evader_max_accel: float = 0.01,
         poison_max_accel: float = 0.01,
+        obs_dtype: type = np.float32,
         evader_reproduce_fn: ReproduceFn = logistic_repr(1.0, 8),
         poison_reproduce_fn: ReproduceFn = logistic_repr(1.0, 14),
         speed_features: bool = True,
@@ -434,6 +435,9 @@ class WaterWorld(Environment):
         self._pursuers = [self._generate_pursuer() for _ in range(self._n_pursuers)]
         self._evaders = [self._generate_evader() for _ in range(self._n_evaders)]
         self._poisons = [self._generate_poison() for _ in range(self._n_poison)]
+
+        # Forse a dtype to observation
+        self._obs_dtype = obs_dtype
 
         # Observational informations for each agent
         self._last_observations: t.List[t.Optional[np.ndarray]] = [
@@ -509,7 +513,7 @@ class WaterWorld(Environment):
             "others": self._last_collisions.pursuer.n_collided(idx),
             "energy": self._consumed_energy[idx],
         }
-        return obs, info
+        return obs.astype(self._obs_dtype), info
 
     def born(self, generation: int = 0, place: t.Optional[np.ndarray] = None) -> Body:
         if place is not None:
