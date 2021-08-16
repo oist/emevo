@@ -243,20 +243,19 @@ def bacteria_constrained_repr(
     initial_n_bacterias: int,
     bacteria_growth_rate: float,
     bacteria_capacity: float,
-    *,
-    prob_coef: float = 0.1,
 ) -> ReproduceFn:
     @dataclasses.dataclass
     class BacteriaState:
-        num: int
+        num: float
         growth_rate: t.ClassVar[float] = bacteria_growth_rate
         capacity: t.ClassVar[float] = bacteria_capacity
+        delta_min: t.ClassVar[float] = 0.01
 
         def growth(self) -> None:
             delta = self.growth_rate * self.num * (1 - self.num / self.capacity)
-            self.num += int(delta)
+            self.num += max(delta, self.delta_min)
 
-    bacteria = BacteriaState(initial_n_bacterias)
+    bacteria = BacteriaState(float(initial_n_bacterias))
 
     def reproduce_fn(
         archeas: t.List[Archea],
@@ -264,11 +263,9 @@ def bacteria_constrained_repr(
         np_random: np.random.RandomState,
     ) -> t.List[np.ndarray]:
         n_archea = len(archeas)
-        z = bacteria.capacity * n_archea
         res = []
         for i, idx in enumerate(np_random.permutation(n_archea)):
-            energy = min(bacteria.capacity, bacteria.num) * (n_archea - i)
-            prob = 1.0 / np.exp((z - energy) * prob_coef)
+            prob = min(int(bacteria.num), bacteria.capacity) / (bacteria.capacity + 1)
             if np_random.rand() <= prob:
                 x, y = archeas[idx].position
                 low = np.maximum([0.0, 0.0], [x - 0.1, y - 0.1])
@@ -277,7 +274,7 @@ def bacteria_constrained_repr(
                 while overlapped_with(position):
                     position = np_random.uniform(low=low, high=high)
                 res.append(position)
-                bacteria.num -= 1
+                bacteria.num -= 1.0
 
         bacteria.growth()
         return res
