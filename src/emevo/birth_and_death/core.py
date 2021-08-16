@@ -108,3 +108,7 @@ class Manager:
 
     def update_status(self, body: Body, **updates) -> None:
         self.statuses[body].update(**updates)
+
+    def stats(self, stats_fn: t.Callable[[Status], float]) -> t.Dict[str, float]:
+        stats = np.array(list(map(stats_fn, self.statuses.values())))
+        return {"Average": stats.mean(), "Max": stats.max(), "Min": stats.min()}
