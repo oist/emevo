@@ -12,6 +12,7 @@ that appears in `reinforcejs`_.
 """
 
 import dataclasses
+import enum
 import itertools
 import typing as t
 import warnings
@@ -189,15 +190,20 @@ ReproduceFn = t.Callable[
 ]
 
 
+class ReprKind(str, enum.Enum):
+    logistic: str = "logistic"
+    constrained: str = "constrained"
+
+
 def repr_functions(
     *,
-    kind: str,
+    kind: t.Union[str, ReprKind],
     n_evaders: int,
     n_poison: int,
     growth_rate: float,
 ) -> t.Dict[str, ReproduceFn]:
     """A convenient function for making reproduction functions"""
-    if kind == "constrained":
+    if kind == ReprKind.constrained:
         return {
             # TODO: what is the best default setting for bc repr?
             "evader_reproduce_fn": bacteria_constrained_repr(
@@ -211,7 +217,7 @@ def repr_functions(
                 n_poison + 1.0,
             ),
         }
-    elif kind == "logistic":
+    elif kind == ReprKind.logistic:
         return {
             "evader_reproduce_fn": logistic_repr(growth_rate, n_evaders + 1.0),
             "poison_reproduce_fn": logistic_repr(growth_rate, n_poison + 1.0),
