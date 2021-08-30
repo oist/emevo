@@ -501,7 +501,7 @@ class WaterWorld(Environment):
         if self._n_pursuers > 0:
             return self._last_collisions.pursuer.listup_encounts(self._pursuers)
         else:
-            warnings.warn("step is called after pursuers are distinct!")
+            warnings.warn("step is called after pursuers are extinct!")
             return []
 
     def observe(self, body: Body) -> t.Optional[t.Tuple[np.ndarray, Info]]:
@@ -539,6 +539,9 @@ class WaterWorld(Environment):
         self._consumed_energy.pop(idx)
         self._last_observations.pop(idx)
         self._n_pursuers -= 1
+        return self._n_pursuers == 0
+
+    def is_extinct(self) -> bool:
         return self._n_pursuers == 0
 
     def reset(self) -> None:
@@ -615,7 +618,6 @@ class WaterWorld(Environment):
         self._viewer.draw_archeas(self._pursuers, "pursuer", "Agent")
         self._viewer.draw_archeas(self._evaders, "evader", "Food")
         self._viewer.draw_archeas(self._poisons, "poison", "Poison")
-
         for archea, policy, value in policies:
             self._viewer.draw_policy(archea, policy, value)
 
