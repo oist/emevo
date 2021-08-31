@@ -1040,8 +1040,8 @@ class _Viewer:
 
         self._archea_names = list(self._COLORS.keys())
         pygame.font.init()
-        self._font_24 = pygame.font.SysFont(None, 24)
-        self._font_36 = pygame.font.SysFont(None, 36)
+        self._font_small = pygame.font.SysFont(None, int(pixel_scale / 30))
+        self._font_large = pygame.font.SysFont(None, int(pixel_scale / 20))
 
     def rgb_array(self) -> np.ndarray:
         return self.pygame.surfarray.pixels3d(self._screen)
@@ -1078,7 +1078,7 @@ class _Viewer:
             (x_start, y_position),
             self._pixel_scale * archea.radius,
         )
-        img = self._font_24.render(f"{disp_name}: {n_archeas}", True, self._BLACK)
+        img = self._font_small.render(f"{disp_name}: {n_archeas}", True, self._BLACK)
         self._screen.blit(img, (x_start + self._xoffset // 8, y_position))
 
     def draw_background(self) -> None:
@@ -1111,6 +1111,6 @@ class _Viewer:
         arrow += position + np.array([0.0, -self._pixel_scale * 0.02])
         self.pygame.draw.polygon(self._screen, self._ORANGE, arrow)
         if value is not None:
-            img = self._font_36.render(f"{value:.2}", True, self._BLACK)
+            img = self._font_large.render(f"{value:.2}", True, self._BLACK)
             x, y = position + np.array([0.0, self._pixel_scale * 0.01])
             self._screen.blit(img, (int(x), int(y)))
