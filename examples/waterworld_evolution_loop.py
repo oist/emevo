@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
     ge = args.gompertz_energy
     manager = bd.Manager(
-        default_status_fn=partial(
+        status_fn=partial(
             bd.statuses.AgeAndEnergy,
             age=1,
             energy=0.0,

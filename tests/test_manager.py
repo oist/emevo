@@ -31,7 +31,7 @@ class FakeBody(Body):
 
 def _get_manager(repr_manager, n_bodies: int = 5) -> bd.Manager:
     manager = bd.Manager(
-        default_status_fn=partial(
+        status_fn=partial(
             bd.statuses.AgeAndEnergy,
             age=1,
             energy=DEFAULT_ENERGY_LEVEL,

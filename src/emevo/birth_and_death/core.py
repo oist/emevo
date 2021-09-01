@@ -49,7 +49,7 @@ class Manager:
     Note that Manager does not manage matings.
     """
 
-    default_status_fn: t.Callable[[], Status]
+    status_fn: t.Callable[..., Status]
     death_prob_fn: t.Callable[[Status], float]
     repr_manager: t.Union[AsexualReprManager, SexualReprManager]
     rng: t.Callable[[], float] = np.random.rand
@@ -63,10 +63,8 @@ class Manager:
     def is_asexual(self) -> bool:
         return isinstance(self.repr_manager, AsexualReprManager)
 
-    def register(self, body: Body, status: t.Optional[Status] = None) -> None:
-        if status is None:
-            status = self.statuses[body] = self.default_status_fn()
-        self.statuses[body] = status
+    def register(self, body: Body, *status_args, **status_kwargs) -> None:
+        self.statuses[body] = self.status_fn(*status_args, **status_kwargs)
 
     def reproduce(self, body_or_encount: t.Union[Body, Encount]) -> t.Optional[Newborn]:
         if isinstance(body_or_encount, Encount):
