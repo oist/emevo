@@ -282,6 +282,16 @@ def bacteria_constrained_repr(
                 res.append(position)
                 bacteria.num -= 1.0
 
+        # It archeas are extinct, give it a chance
+        if n_archea == 0:
+            prob = min(int(bacteria.num), bacteria.capacity) / (bacteria.capacity + 1)
+            if np_random.rand() <= prob:
+                position = np_random.uniform(size=2)
+                while overlapped_with(position):
+                    position = np_random.uniform(size=2)
+                res.append(position)
+                bacteria.num -= 1.0
+
         bacteria.growth()
         return res
 
