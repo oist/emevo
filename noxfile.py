@@ -11,7 +11,7 @@ def tests(session: nox.Session) -> None:
     session.run("pytest", "tests")
 
 
-@nox.session(reuse_venv=True)
+@nox.session(reuse_venv=True, python=["3.8", "3.9"])
 def lint(session: nox.Session) -> None:
     session.install("black")
     session.install("flake8")
