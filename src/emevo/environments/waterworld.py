@@ -270,7 +270,7 @@ def bacteria_constrained_repr(
     ) -> t.List[np.ndarray]:
         n_archea = len(archeas)
         res = []
-        for i, idx in enumerate(np_random.permutation(n_archea)):
+        for idx in np_random.permutation(n_archea):
             prob = min(int(bacteria.num), bacteria.capacity) / (bacteria.capacity + 1)
             if np_random.rand() <= prob:
                 x, y = archeas[idx].position
@@ -370,13 +370,13 @@ class WaterWorld(Environment):
         evader_radius_ratio: float = 2.0,
         poison_radius_ratio: float = 0.75,
         obstacle_radius: float = 0.2,
-        obstacle_coords: t.Union[np.ndarray, t.List[float]] = [0.5, 0.5],
+        obstacle_coords: t.Optional[t.Union[np.ndarray, t.List[float]]] = None,
         pursuer_max_accel: float = 0.01,
         evader_max_accel: float = 0.01,
         poison_max_accel: float = 0.01,
         obs_dtype: type = np.float32,
-        evader_reproduce_fn: ReproduceFn = logistic_repr(1.0, 8),
-        poison_reproduce_fn: ReproduceFn = logistic_repr(1.0, 14),
+        evader_reproduce_fn: t.Optional[ReproduceFn] = None,
+        poison_reproduce_fn: t.Optional[ReproduceFn] = None,
         speed_features: bool = True,
         render_pixel_scale: int = 30 * 25,
     ) -> None:
@@ -411,7 +411,10 @@ class WaterWorld(Environment):
 
         self._n_required_pursuers = n_required_pursuers
         self._obstacle_radius = obstacle_radius
-        obstacle_coords = np.array(obstacle_coords)
+        if obstacle_coords is None:
+            obstacle_coords = np.array([0.5, 0.5])
+        else:
+            obstacle_coords = np.array(obstacle_coords)
         if obstacle_coords.ndim > 2 or obstacle_coords.shape[-1] != 2:
             raise ValueError(f"Invalid shape as coordinates: {obstacle_coord.shape}")
         if obstacle_coords.ndim == 1:
@@ -463,8 +466,8 @@ class WaterWorld(Environment):
         self._n_steps = 0
 
         # reproducers
-        self._evader_reproduce_fn = evader_reproduce_fn
-        self._poison_reproduce_fn = poison_reproduce_fn
+        self._evader_reproduce_fn = evader_reproduce_fn or logistic_repr(1.0, 8)
+        self._poison_reproduce_fn = poison_reproduce_fn or logistic_repr(1.0, 14)
 
         # Visualization stuffs
         self._pixel_scale = render_pixel_scale
@@ -608,7 +611,9 @@ class WaterWorld(Environment):
         self,
         *,
         mode: str = "human",
-        policies: t.List[t.Tuple[Archea, np.ndarray, t.Optional[float]]] = [],
+        policies: t.Optional[
+            t.List[t.Tuple[Archea, np.ndarray, t.Optional[float]]]
+        ] = None,
     ) -> t.Union[None, np.ndarray]:
         assert mode in self.RENDERING_OPTIONS.keys()
 
@@ -628,8 +633,9 @@ class WaterWorld(Environment):
         self._viewer.draw_archeas(self._pursuers, "pursuer", "Agent")
         self._viewer.draw_archeas(self._evaders, "evader", "Food")
         self._viewer.draw_archeas(self._poisons, "poison", "Poison")
-        for archea, policy, value in policies:
-            self._viewer.draw_policy(archea, policy, value)
+        if policies is not None:
+            for archea, policy, value in policies:
+                self._viewer.draw_policy(archea, policy, value)
 
         if mode == "human":
             self._viewer.pygame.display.flip()

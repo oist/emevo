@@ -3,12 +3,12 @@
 
 import dataclasses
 import typing as t
+
 from functools import partial
 
 import numpy as np
 
-from emevo import Body, Environment, make
-from emevo import birth_and_death as bd
+from emevo import Body, Environment, birth_and_death as bd, make
 
 
 @dataclasses.dataclass()
@@ -103,6 +103,7 @@ def env_loop(
 
 if __name__ == "__main__":
     import argparse
+
     from emevo.environments import waterworld as ww
 
     def create_parser(*args) -> argparse.ArgumentParser:
@@ -190,7 +191,8 @@ if __name__ == "__main__":
         ),
         death_prob_fn=bd.death_functions.gompertz_hazard(
             energy_threshold=-ge,
-            energy_to_gompertz_r=bd.death_functions.energy_to_gompertz_r(-ge, ge),
+            energy_min=-ge,
+            energy_max=ge,
             gompertz_alpha=args.gompertz_alpha,
         ),
         repr_manager=repr_manager,

@@ -94,7 +94,7 @@ class Manager:
         for dead in deads:
             del self.statuses[dead.body]
 
-        for i, newborn in enumerate(self.pending_newborns):
+        for newborn in self.pending_newborns:
             newborn.step()
             if newborn.is_ready():
                 newborns.append(newborn)
@@ -109,4 +109,4 @@ class Manager:
 
     def stats(self, stats_fn: t.Callable[[Status], float]) -> t.Dict[str, float]:
         stats = np.array(list(map(stats_fn, self.statuses.values())))
-        return {"Average": stats.mean(), "Max": stats.max(), "Min": stats.min()}
+        return {"Average": np.mean(stats), "Max": np.max(stats), "Min": np.min(stats)}

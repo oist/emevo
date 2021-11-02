@@ -34,7 +34,7 @@ def _levenshtein_distance(s: str, t: str) -> int:
         for j in range(n):
             del_cost = v0[j + 1] + 1
             ins_cost = v1[j] + 1
-            sub_cost = v0[j] if s[i] == t[j] else v0[j] + 1
+            sub_cost = v0[j] if c == t[j] else v0[j] + 1
             v1[j + 1] = min(del_cost, ins_cost, sub_cost)
         v0, v1 = v1, v0
     return v0[-1]

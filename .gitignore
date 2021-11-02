@@ -1,5 +1,5 @@
 .*env
-.tox/
+.nox/
 *.pyc
 **/__pycache__/
 **/.pytest_cache/
