@@ -3,7 +3,7 @@ import nox
 SOURCES = ["src/emevo", "tests", "examples"]
 
 
-@nox.session(reuse_venv=True, python=["3.7", "3.8", "3.9"])
+@nox.session(reuse_venv=True, python=["3.8", "3.9"])
 def tests(session: nox.Session) -> None:
     session.install("setuptools", "--upgrade")
     session.install(".")
@@ -11,7 +11,7 @@ def tests(session: nox.Session) -> None:
     session.run("pytest", "tests")
 
 
-@nox.session(reuse_venv=True, python=["3.8"])
+@nox.session(reuse_venv=True)
 def lint(session: nox.Session) -> None:
     session.install("black")
     session.install("flake8")
