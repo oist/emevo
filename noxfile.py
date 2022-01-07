@@ -3,10 +3,14 @@ import nox
 SOURCES = ["src/emevo", "tests", "examples"]
 
 
-@nox.session(reuse_venv=True, python=["3.8", "3.9"])
-def tests(session: nox.Session) -> None:
+def _install_self(session: nox.Session) -> None:
     session.install("setuptools", "--upgrade")
     session.install(".")
+
+
+@nox.session(reuse_venv=True, python=["3.8", "3.9"])
+def tests(session: nox.Session) -> None:
+    _install_self(session)
     session.install("pytest")
     session.run("pytest", "tests")
 
