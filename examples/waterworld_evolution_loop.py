@@ -101,7 +101,7 @@ def env_loop(
             environment.render()
 
 
-if __name__ == "__main__":
+def main() -> None:
     import argparse
 
     from emevo.environments import waterworld as ww
@@ -205,3 +205,7 @@ if __name__ == "__main__":
         asexual=args.asexual,
         render=not args.no_render,
     )
+
+
+if __name__ == "__main__":
+    main()

@@ -49,7 +49,7 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
             environment.render()
 
 
-if __name__ == "__main__":
+def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -67,3 +67,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     env = make("Waterworld-v0", n_evaders=8, n_poison=12)
     env_loop(env, args.max_steps, render=not args.no_render)
+
+
+if __name__ == "__main__":
+    main()
