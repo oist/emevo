@@ -163,7 +163,7 @@ def main() -> None:
 
     if args.asexual:
         repr_manager = bd.AsexualReprManager(
-            success_prob=bd.repr_functions.log(2.0, 0.1),
+            success_prob=bd.birth_functions.log(2.0, 0.1),
             produce=lambda status, body: bd.Oviparous(
                 context=GeneticContext(body.profile.generation, body.position),
                 time_to_birth=3,
@@ -171,7 +171,7 @@ def main() -> None:
         )
     else:
         repr_manager = bd.SexualReprManager(
-            success_prob=bd.repr_functions.log_prod(4.0, 0.1),
+            success_prob=bd.birth_functions.log_prod(4.0, 0.1),
             produce=lambda statuses, encount: bd.Oviparous(
                 context=GeneticContext(
                     encount.bodies[0].profile.generation,
