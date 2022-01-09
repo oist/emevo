@@ -11,6 +11,8 @@ def hunger_or_infirmity(
     energy_threshold: float,
     age_threshold: float,
 ) -> t.Callable[[AgeAndEnergy], float]:
+    """A completely discretized death function"""
+
     def death_prob_fn(status: AgeAndEnergy) -> bool:
         if status.energy < energy_threshold or age_threshold < status.age:
             return 1.0
@@ -32,7 +34,7 @@ def gompertz_hazard(
     def death_prob_fn(status: AgeAndEnergy) -> bool:
         if status.energy < energy_threshold:
             return 1.0
-        r = max(0.0, energy - energy_min) / energy_range
+        r = max(0.0, status.energy - energy_min) / energy_range
         hazard = np.exp(gompertz_alpha * status.age)
         return min(r * hazard, 1.0)
 
