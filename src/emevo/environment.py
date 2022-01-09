@@ -51,9 +51,10 @@ class Environment(abc.ABC):
         """Notify the environment that the body is dead."""
         pass
 
+    @abc.abstractmethod
     def is_extinct(self) -> bool:
         """Return if agents are extinct"""
-        return True
+        pass
 
     def reset(self) -> None:
         """Do some initialization"""
