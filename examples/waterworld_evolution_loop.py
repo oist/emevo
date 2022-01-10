@@ -8,6 +8,8 @@ from functools import partial
 
 import numpy as np
 
+from matplotlib import pyplot as plt
+
 from emevo import Body, Environment, birth_and_death as bd, make
 
 
@@ -52,6 +54,8 @@ def env_loop(
         agents[body] = agent
 
     repr_energy_update = [-3.0, -6.0][int(asexual)] * energy_update_scale
+
+    n_agents = []
 
     # Enviromental loop
     for _ in range(max_steps):
@@ -100,68 +104,40 @@ def env_loop(
         if render:
             environment.render()
 
+        n_agents.append(len(agents))
 
-def main() -> None:
-    import argparse
+    x, y = np.arange(len(n_agents)), n_agents
+    plt.plot(x, y)
+    plt.show()
 
+
+def main(
+    max_steps: int,
+    no_render: bool = False,
+    asexual: bool = False,
+    constrained_repr: bool = False,
+    n_evaders: int = 10,
+    n_poison: int = 14,
+    growth_rate: float = 1.0,
+    gompertz_alpha: float = 0.001,
+    energy_scale: float = 1.0,
+    gompertz_energy: int = 10,
+) -> None:
     from emevo.environments import waterworld as ww
 
-    def create_parser(*args) -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser()
-        for args_i, kwargs_i in args:
-            if isinstance(args_i, tuple):
-                parser.add_argument(*args_i, **kwargs_i)
-            else:
-                parser.add_argument(args_i, **kwargs_i)
-
-        return parser
-
-    parser = create_parser(
-        ("max_steps", dict(type=int, help="Max enviromental steps to simulate")),
-        ("--no-render", dict(action="store_true", help="Disable rendering by pygame")),
-        ("--asexual", dict(action="store_true", help="Use asexual mating")),
-        ("--n-evaders", dict(type=int, default=10, help="Initial number of evaders")),
-        ("--n-poison", dict(type=int, default=14, help="Initial number of poison")),
-        (
-            "--growth-rate",
-            dict(type=float, default=1.0, help="Growth rate of food and poison"),
-        ),
-        (
-            ("-CR", "--constrained-repr"),
-            dict(action="store_true", help="Use bacteria_constarained_repr"),
-        ),
-        (
-            ("-GA", "--gompertz-alpha"),
-            dict(type=float, default=0.001, help="α for Gompertz hazard function"),
-        ),
-        (
-            ("-ES", "--energy-scale"),
-            dict(type=float, default=1.0, help="Scaling for energy update"),
-        ),
-        (
-            ("-GE", "--gompertz-energy"),
-            dict(
-                type=int,
-                default=10,
-                help="Energy normalization function for Gompertz hazard function",
-            ),
-        ),
-    )
-
-    args = parser.parse_args()
     env = make(
         "Waterworld-v0",
-        n_evaders=args.n_evaders,
-        n_poison=args.n_poison,
+        n_evaders=n_evaders,
+        n_poison=n_poison,
         **ww.repr_functions(
-            kind="constrained" if args.constrained_repr else "logistic",
-            n_evaders=args.n_evaders,
-            n_poison=args.n_poison,
-            growth_rate=args.growth_rate,
+            kind="constrained" if constrained_repr else "logistic",
+            n_evaders=n_evaders,
+            n_poison=n_poison,
+            growth_rate=growth_rate,
         ),
     )
 
-    if args.asexual:
+    if asexual:
         repr_manager = bd.AsexualReprManager(
             success_prob=bd.birth_functions.log(2.0, 0.1),
             produce=lambda status, body: bd.Oviparous(
@@ -181,7 +157,7 @@ def main() -> None:
             ),
         )
 
-    ge = args.gompertz_energy
+    ge = gompertz_energy
     manager = bd.Manager(
         status_fn=partial(
             bd.statuses.AgeAndEnergy,
@@ -193,7 +169,7 @@ def main() -> None:
             energy_threshold=-ge,
             energy_min=-ge,
             energy_max=ge,
-            gompertz_alpha=args.gompertz_alpha,
+            gompertz_alpha=gompertz_alpha,
         ),
         repr_manager=repr_manager,
     )
@@ -201,11 +177,13 @@ def main() -> None:
     env_loop(
         environment=env,
         manager=manager,
-        max_steps=args.max_steps,
-        asexual=args.asexual,
-        render=not args.no_render,
+        max_steps=max_steps,
+        asexual=asexual,
+        render=not no_render,
     )
 
 
 if __name__ == "__main__":
-    main()
+    import typer
+
+    typer.run(main)

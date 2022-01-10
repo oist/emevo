@@ -1,6 +1,7 @@
 """Simulate random agents without birth and death
 """
 
+
 import numpy as np
 
 from emevo import Body, Environment, make
@@ -49,25 +50,12 @@ def env_loop(environment: Environment, max_steps: int, render: bool = False) -> 
             environment.render()
 
 
-def main() -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "max_steps",
-        type=int,
-        help="Max enviromental steps to simulate",
-    )
-    parser.add_argument(
-        "--no-render",
-        type=bool,
-        default=False,
-        help="Disable rendering by pygame",
-    )
-    args = parser.parse_args()
+def main(max_steps: int, no_render: bool = False) -> None:
     env = make("Waterworld-v0", n_evaders=8, n_poison=12)
-    env_loop(env, args.max_steps, render=not args.no_render)
+    env_loop(env, max_steps, render=not no_render)
 
 
 if __name__ == "__main__":
-    main()
+    import typer
+
+    typer.run(main)

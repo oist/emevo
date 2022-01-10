@@ -30,6 +30,7 @@ def lab(session: nox.Session) -> None:
 @nox.session(reuse_venv=True)
 def example(session: nox.Session) -> None:
     _install_self(session)
+    session.install("-r", "requirements/example.txt")
     DEFAULT_EXAMPLE = "examples/waterworld_evolution_loop.py"
     if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):
         session.run("python", *session.posargs)
