@@ -7,7 +7,7 @@ SOURCES = ["src/emevo", "tests", "examples"]
 
 def _install_self(session: nox.Session) -> None:
     session.install("setuptools", "--upgrade")
-    session.install(".")
+    session.install("-e", ".")
 
 
 @nox.session(reuse_venv=True)

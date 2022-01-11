@@ -139,7 +139,8 @@ def main(
 
     if asexual:
         repr_manager = bd.AsexualReprManager(
-            success_prob=bd.birth_functions.log(2.0, 0.1),
+            # success_prob=bd.birth_functions.log(2.0, 0.1),
+            success_prob=bd.birth_functions.normal(300, 100, 1.0),
             produce=lambda status, body: bd.Oviparous(
                 context=GeneticContext(body.profile.generation, body.position),
                 time_to_birth=3,
@@ -165,12 +166,13 @@ def main(
             energy=0.0,
             energy_delta=0.001,
         ),
-        death_prob_fn=bd.death_functions.gompertz_hazard(
-            energy_threshold=-ge,
-            energy_min=-ge,
-            energy_max=ge,
-            gompertz_alpha=gompertz_alpha,
-        ),
+        death_prob_fn=bd.death_functions.hunger_or_infirmity(-10, 500),
+        # death_prob_fn=bd.death_functions.gompertz_hazard(
+        #     energy_threshold=-ge,
+        #     energy_min=-ge,
+        #     energy_max=ge,
+        #     gompertz_alpha=gompertz_alpha,
+        # ),
         repr_manager=repr_manager,
     )
 
