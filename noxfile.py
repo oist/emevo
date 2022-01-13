@@ -38,14 +38,14 @@ def example(session: nox.Session) -> None:
         session.run("python", DEFAULT_EXAMPLE, *session.posargs)
 
 
-@nox.session(reuse_venv=True, python=["3.8", "3.9"])
+@nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])
 def tests(session: nox.Session) -> None:
     _install_self(session)
     session.install("pytest")
     session.run("pytest", "tests")
 
 
-@nox.session(reuse_venv=True, python=["3.8", "3.9"])
+@nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])
 def lint(session: nox.Session) -> None:
     session.install("-r", "requirements/lint.txt")
     session.run("flake8", *SOURCES)
