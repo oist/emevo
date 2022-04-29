@@ -535,15 +535,7 @@ class WaterWorld(Environment):
         assert mode in self.RENDERING_OPTIONS.keys()
 
         if self._viewer is None:
-            try:
-                import pygame
-            except ImportError as e:
-                raise ImportError(
-                    "To render waterworld, you need to install pygame by"
-                    + " e.g. pip install pygame"
-                ) from e
-
-            self._viewer = _Viewer(mode, self._pixel_scale, pygame)
+            self._viewer = _Viewer(mode, self._pixel_scale)
 
         self._viewer.draw_background()
         self._viewer.draw_obstacles(self._obstacle_coords, self._obstacle_radius)
@@ -941,7 +933,7 @@ def _rotate_polygon(*, polygon: np.array, theta: float, scale: float) -> np.arra
 
 
 class _Viewer:
-    """Visualizer of Waterworld using pygame"""
+    """Visualizer of Waterworld"""
 
     _BLACK: RGB = 0, 0, 0
     _COLORS: t.Dict[str, RGB] = {
@@ -956,16 +948,18 @@ class _Viewer:
         [[0, 80], [0, 180], [180, 180], [180, 260], [300, 130], [180, 0], [180, 80]]
     )
 
-    def __init__(self, mode: str, pixel_scale: int, pygame: "module") -> None:
-        self.pygame = pygame
+    def __init__(self, mode: str, pixel_scale: int) -> None:
+        try:
+            import pyglet
+        except ImportError as e:
+            raise ImportError("To render waterworld, you need to install pyglet") from e
 
         self._pixel_scale = pixel_scale
         self._xoffset = int(pixel_scale * 0.4)
         self._screen_size = self._pixel_scale + self._xoffset, self._pixel_scale
 
         if mode == "human":
-            pygame.display.init()
-            self._screen = pygame.display.set_mode(self._screen_size)
+            self._window = pyglet.window.Window(*self._screen_size)
         elif mode == "rgb-array":
             self._screen = pygame.Surface(self._screen_size)
         else:
