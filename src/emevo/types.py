@@ -1,7 +1,16 @@
-import typing as t
+from typing import Any, Dict, Union
 
 import numpy as np
 
-Action = t.Union[int, np.ndarray]
-Info = t.Dict[str, t.Union[int, float]]
-Observation = t.Union[np.ndarray, t.Dict[str, np.ndarray]]
+try:
+    import jax.numpy as jnp
+
+    Array = Union[np.ndarray, jnp.ndarray]
+except ImportError as _:
+    Array = np.ndarray
+
+Action = Array
+Info = Dict[str, Any]
+Location = Array
+# Only array and dict observations are supported
+Observation = Union[Array, Dict[str, Array]]

@@ -5,8 +5,8 @@ Abstract API for bodily existance of agents
 import abc
 import dataclasses
 import datetime as dt
-import typing as t
-import uuid
+
+from typing import Any, NoReturn, Tuple
 
 import numpy as np
 
@@ -20,9 +20,8 @@ class Profile:
     name: str
     generation: int
     birthtime: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
-    uuid_: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4)
 
-    def __deepcopy__(self) -> t.NoReturn:
+    def __deepcopy__(self) -> NoReturn:
         raise RuntimeError("Profile cannot be copied")
 
 
@@ -50,29 +49,24 @@ class Body(abc.ABC):
     def position(self) -> np.ndarray:
         pass
 
-    @property
-    def uuid(self) -> uuid.UUID:
-        return self.profile.uuid_
-
     def __repr__(self) -> str:
-        name, gen, birthtime, uuid_ = dataclasses.astuple(self.profile)
+        name, gen, birthtime = dataclasses.astuple(self.profile)
         birthtime = birthtime.strftime("%d,%h %H:%M:%S")
-        hash_ = self.__hash__()
-        return f"{name} (gen: {gen} birth: {birthtime} hash: {hash_})"
+        return f"{name} (gen: {gen} birth: {birthtime})"
 
-    def __eq__(self, other: t.Any) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.profile == other.profile
 
-    def __ne__(self, other: t.Any) -> bool:
+    def __ne__(self, other: Any) -> bool:
         return self.profile != other.profile
 
-    def __hash__(self) -> bool:
+    def __hash__(self) -> int:
         return hash(self.profile)
 
 
 @dataclasses.dataclass(frozen=True)
 class Encount:
-    """Two agents encount!"""
+    """Two agents encounted each other"""
 
-    bodies: t.Tuple[Body, Body]
+    bodies: Tuple[Body, Body]
     distance: float
