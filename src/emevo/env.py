@@ -22,6 +22,10 @@ class State(abc.ABC):
 class Env(abc.ABC):
     """Abstract API for emevo environments"""
 
+    def __init__(self, *args, **kwargs) -> None:
+        # To supress a PyRight error
+        pass
+
     @abc.abstractmethod
     def bodies(self) -> List[Body]:
         """Returns all 'alive' bodies in the environment"""
@@ -62,8 +66,4 @@ class Env(abc.ABC):
     @abc.abstractmethod
     def is_extinct(self) -> bool:
         """Return if agents are extinct"""
-        pass
-
-    def render(self, mode: str) -> Union[None, Array]:
-        """Render something to GUI or file"""
         pass
