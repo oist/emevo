@@ -40,7 +40,7 @@ class Env(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: Body, state: State) -> Dict[Body, Tuple[Observation, Info]]:
+    def observe(self, body: Body, state: State) -> Tuple[Observation, Info]:
         """Construct the observation from the state"""
         pass
 
@@ -50,13 +50,13 @@ class Env(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def born(self, locations: List[Location], state: State) -> Tuple[List[Body], State]:
+    def born(self, location: Location, state: State) -> Tuple[Body, State]:
         """Taken some locations, place newborns in the environment."""
         pass
 
     @abc.abstractmethod
-    def dead(self, bodies: List[Body], state: State) -> State:
-        """Remove dead bodies from the environment."""
+    def dead(self, body: Body, state: State) -> State:
+        """Remove a dead body from the environment."""
         pass
 
     @abc.abstractmethod
