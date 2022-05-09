@@ -2,12 +2,7 @@ from typing import Any, Dict, Union
 
 import numpy as np
 
-try:
-    import jax.numpy as jnp
-
-    Array = Union[np.ndarray, jnp.ndarray]
-except ImportError as _:
-    Array = np.ndarray
+Array = np.ndarray
 
 Action = Array
 Info = Dict[str, Any]

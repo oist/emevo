@@ -1,31 +1,27 @@
-"""
-Abstract environment API.
-Two points are made in the design:
-1.
-2. Since EmEvo assumes that each agent does not have full access to the
-environmental state, a state class should have 'observe' API that
-"""
 import abc
 
 from typing import Dict, List, Optional, Tuple, Union
 
+import pymunk
+
 from emevo.body import Body, Encount
+from emevo.env import Env
 from emevo.types import Action, Array, Info, Location, Observation
 
 
-class Env(abc.ABC):
-    """Abstract API for emevo environments"""
-
-    def __init__(self, *args, **kwargs) -> None:
-        # To supress a PyRight error
+class PymunkBody(Body):
+    def __init__(self) -> None:
         pass
 
-    @abc.abstractmethod
+
+class PymunkEnv(Env, abc.ABC):
+    def __init__(self) -> None:
+        self._space = pymunk.Space()
+        self._bodies: List[PymunkBody] = []
+
     def bodies(self) -> List[Body]:
-        """Returns all 'alive' bodies in the environment"""
-        pass
+        return self._bodies
 
-    @abc.abstractmethod
     def step(self, actions: Dict[Body, Action]) -> List[Encount]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
@@ -33,27 +29,22 @@ class Env(abc.ABC):
         """
         pass
 
-    @abc.abstractmethod
     def observe(self, body: Body) -> Tuple[Observation, Info]:
         """Construct the observation from the state"""
         pass
 
-    @abc.abstractmethod
     def reset(self, seed: Optional[Union[Array, int]] = None) -> State:
         """Do some initialization"""
         pass
 
-    @abc.abstractmethod
     def born(self, location: Location) -> Tuple[Body]:
         """Taken some locations, place newborns in the environment."""
         pass
 
-    @abc.abstractmethod
     def dead(self, body: Body) -> None:
         """Remove a dead body from the environment."""
         pass
 
-    @abc.abstractmethod
     def is_extinct(self) -> bool:
         """Return if agents are extinct"""
         pass
