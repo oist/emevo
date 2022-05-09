@@ -8,9 +8,13 @@ import datetime as dt
 
 from typing import Any, NoReturn, Tuple
 
-import numpy as np
+from emevo.types import Location, Shape
 
-from gym import spaces
+
+class Locatable(abc.ABC):
+    @abc.abstractmethod
+    def location(self) -> Location:
+        pass
 
 
 @dataclasses.dataclass(frozen=True)
@@ -25,7 +29,7 @@ class Profile:
         raise RuntimeError("Profile cannot be copied")
 
 
-class Body(abc.ABC):
+class Body(Locatable, abc.ABC):
     """
     Reprsents the bodily existance of the agent, also works as an effecient key object.
     """
@@ -34,19 +38,12 @@ class Body(abc.ABC):
         self.profile = Profile(name, generation)
         self.nth = nth
 
-    @property
     @abc.abstractmethod
-    def action_space(self) -> spaces.Space:
+    def act_shape(self) -> Shape:
         pass
 
-    @property
     @abc.abstractmethod
-    def observation_space(self) -> spaces.Space:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def position(self) -> np.ndarray:
+    def obs_shape(self) -> Shape:
         pass
 
     def __repr__(self) -> str:

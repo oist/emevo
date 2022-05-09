@@ -1,11 +1,7 @@
-from typing import Any, Dict, Union
+from typing import Any, Dict, Tuple
 
-import numpy as np
+from numpy.typing import ArrayLike
 
-Array = np.ndarray
-
-Action = Array
 Info = Dict[str, Any]
-Location = Array
-# Only array and dict observations are supported
-Observation = Union[Array, Dict[str, Array]]
+Location = ArrayLike
+Shape = Tuple[int, ...]
