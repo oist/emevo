@@ -4,7 +4,6 @@ Abstract API for bodily existance of agents
 
 import abc
 import dataclasses
-import datetime as dt
 
 from typing import Any, NoReturn, Tuple
 
@@ -23,7 +22,7 @@ class Profile:
 
     name: str
     generation: int
-    birthtime: dt.datetime = dataclasses.field(default_factory=dt.datetime.now)
+    birthtime: float
 
     def __deepcopy__(self) -> NoReturn:
         raise RuntimeError("Profile cannot be copied")
@@ -34,9 +33,15 @@ class Body(Locatable, abc.ABC):
     Reprsents the bodily existance of the agent, also works as an effecient key object.
     """
 
-    def __init__(self, name: str = "NoName", generation: int = 0, nth: int = 0) -> None:
-        self.profile = Profile(name, generation)
-        self.nth = nth
+    def __init__(
+        self,
+        name: str = "NoName",
+        generation: int = 0,
+        birthtime: int = 0,
+        index: int = 0,
+    ) -> None:
+        self._profile = Profile(name, generation, birthtime)
+        self._index = index
 
     @abc.abstractmethod
     def act_shape(self) -> Shape:
@@ -47,18 +52,15 @@ class Body(Locatable, abc.ABC):
         pass
 
     def __repr__(self) -> str:
-        name, gen, birthtime = dataclasses.astuple(self.profile)
+        name, gen, birthtime = dataclasses.astuple(self._profile)
         birthtime = birthtime.strftime("%d,%h %H:%M:%S")
-        return f"{name} (gen: {gen} birth: {birthtime})"
+        return f"{name} (gen: {gen} birth: {birthtime} index: {self._index})"
 
     def __eq__(self, other: Any) -> bool:
-        return self.profile == other.profile
+        return self._index == other.index
 
     def __ne__(self, other: Any) -> bool:
-        return self.profile != other.profile
-
-    def __hash__(self) -> int:
-        return hash(self.profile)
+        return self._index == other.index
 
 
 @dataclasses.dataclass(frozen=True)

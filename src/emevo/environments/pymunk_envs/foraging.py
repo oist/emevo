@@ -8,48 +8,49 @@ from numpy.typing import NDArray
 
 from emevo.body import Body, Encount
 from emevo.env import Env, Observation
+from emevo.environments.utils import FoodReprFn, ReprMethods
 from emevo.types import Info, Location
-from emevo.environments.utils import FoodReprFn
 
 
-class ParticleBody(Body):
+class FgBody(Body):
     def __init__(self) -> None:
         pass
 
 
 @dataclasses.dataclass
-class ParticleObs(Observation):
+class FgObs(Observation):
     sensor: NDArray
 
     def flatten(self) -> NDArray:
         return self.sensor
 
 
-class ParticleForaging(Env[NDArray, ParticleBody, ParticleObs]):
+class Foraging(Env[NDArray, FgBody, FgObs]):
     def __init__(
         self,
         n_initial_bodies: int = 6,
-        food_repr: 
+        food_repr_fn: FoodReprFn = ReprMethods.constant(10),
     ) -> None:
+        self._food_repr_fn = food_repr_fn
         self._space = pymunk.Space()
         self._bodies = []
 
-    def bodies(self) -> List[ParticleBody]:
+    def bodies(self) -> List[FgBody]:
         return self._bodies
 
     def step(self, actions: Dict[Body, NDArray]) -> Tuple[List[Encount], Info]:
         pass
 
-    def observe(self, body: Body) -> Tuple[ParticleObs, Info]:
+    def observe(self, body: Body) -> Tuple[FgObs, Info]:
         pass
 
     def reset(self, seed: Optional[Union[NDArray, int]] = None) -> None:
         pass
 
-    def born(self, location: Location) -> Tuple[ParticleBody, ParticleObs]:
+    def born(self, location: Location) -> Tuple[FgBody, FgObs]:
         pass
 
-    def dead(self, body: ParticleBody) -> None:
+    def dead(self, body: FgBody) -> None:
         pass
 
     def is_extinct(self) -> bool:

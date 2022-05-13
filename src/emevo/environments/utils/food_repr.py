@@ -1,9 +1,10 @@
 """
 Utility functions to write food reproduction code in foraging environments.
 """
+
 import enum
 
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 
@@ -13,6 +14,14 @@ FoodReprFn = Callable[[int], int]
 class ReprMethods(str, enum.Enum):
     constant = "constant"
     logistic = "logistic"
+
+    def __call__(self, *args: Any, **kwargs: Any) -> FoodReprFn:
+        if self.value == "constant":
+            return constant_repr(*args, **kwargs)
+        elif self.value == "logistic":
+            return logistic_repr(*args, **kwargs)
+        else:
+            assert False, "Unreachable"
 
 
 def constant_repr(n_foods: int) -> FoodReprFn:
