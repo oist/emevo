@@ -2,7 +2,7 @@ import dataclasses
 import enum
 
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Set, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Set, Tuple
 
 import numpy as np
 import pymunk
@@ -143,16 +143,12 @@ class SensorHandler:
         self.distances.clear()
 
 
-@dataclasses.dataclass
-class BodyWithSensors:
+class BodyWithSensors(NamedTuple):
     """Pymunk body with touch sensors."""
 
     body: pymunk.Body
     shape: pymunk.Shape
     sensors: List[pymunk.Segment]
-
-    def add(self, space: pymunk.Space) -> None:
-        space.add(self.body, self.shape, *self.sensors)
 
 
 def circle_body(
@@ -199,7 +195,7 @@ def circle_body_with_sensors(
     return BodyWithSensors(body=body, shape=circle, sensors=sensors)
 
 
-def static_line(
+def add_static_line(
     space: pymunk.Space,
     start: Tuple[float, float],
     end: Tuple[float, float],
@@ -214,7 +210,7 @@ def static_line(
     return line
 
 
-def static_square(
+def add_static_square(
     space: pymunk.Space,
     xmin: float,
     xmax: float,
@@ -228,6 +224,6 @@ def static_square(
     p4 = xmax, ymin
     lines = []
     for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
-        line = static_line(space, start, end, **kwargs)
+        line = add_static_line(space, start, end, **kwargs)
         lines.append(line)
     return lines

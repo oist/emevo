@@ -18,7 +18,7 @@ class Observation(abc.ABC):
     """
 
     @abc.abstractmethod
-    def flatten(self) -> ArrayLike:
+    def as_array(self, source: Optional[ArrayLike] = None) -> ArrayLike:
         pass
 
 
@@ -58,7 +58,7 @@ class Env(abc.ABC, Generic[ACT, BODY, OBS]):
         pass
 
     @abc.abstractmethod
-    def born(self, location: Location) -> Tuple[BODY, OBS]:
+    def born(self, location: Location, generation: int) -> Tuple[BODY, OBS]:
         """Taken a location, generate and place a newborn in the environment."""
         pass
 

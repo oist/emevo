@@ -4,33 +4,74 @@ Utility functions to write food reproduction code in foraging environments.
 
 import enum
 
-from typing import Any, Callable
+from typing import Any, Callable, List
 
 import numpy as np
 
-FoodReprFn = Callable[[int], int]
+from numpy.random import Generator
+from numpy.typing import ArrayLike, NDArray
+
+from emevo.types import Location
+
+ReprNumFn = Callable[[int], int]
+ReprLocFn = Callable[[Generator, List[Location]], NDArray]
 
 
-class ReprMethods(str, enum.Enum):
-    constant = "constant"
-    logistic = "logistic"
+class ReprNum(str, enum.Enum):
+    """Methods to determine the number of foods reproduced."""
 
-    def __call__(self, *args: Any, **kwargs: Any) -> FoodReprFn:
-        if self.value == "constant":
-            return constant_repr(*args, **kwargs)
-        elif self.value == "logistic":
-            return logistic_repr(*args, **kwargs)
+    CONSTANT = "constant"
+    LOGISTIC = "logistic"
+
+    def __call__(self, *args: Any, **kwargs: Any) -> ReprNumFn:
+        if self is ReprNum.CONSTANT:
+            return repr_num_constant(*args, **kwargs)
+        elif self is ReprNum.LOGISTIC:
+            return repr_num_logistic(*args, **kwargs)
         else:
             assert False, "Unreachable"
 
 
-def constant_repr(n_foods: int) -> FoodReprFn:
+def repr_num_constant(n_foods: int) -> ReprNumFn:
     return lambda current: max(0, n_foods - current)
 
 
-def logistic_repr(growth_rate: float, capacity: float) -> FoodReprFn:
-    def reproduce_fn(n_foods: int) -> int:
+def repr_num_logistic(growth_rate: float, capacity: float) -> ReprNumFn:
+    def repr_num(n_foods: int) -> int:
         dn_dt = growth_rate * n_foods * (1 - n_foods / capacity)
         return np.rint(dn_dt)
 
-    return reproduce_fn
+    return repr_num
+
+
+class ReprLoc(str, enum.Enum):
+    """Methods to determine the location of new foods or agents"""
+
+    GAUSSIAN = "gaussian"
+    UNIFORM = "uniform"
+
+    def __call__(self, *args: Any, **kwargs: Any) -> ReprLocFn:
+        if self is ReprLoc.GAUSSIAN:
+            return repr_loc_gaussian(*args, **kwargs)
+        elif self is ReprLoc.UNIFORM:
+            return repr_loc_uniform(*args, **kwargs)
+        else:
+            assert False, "Unreachable"
+
+
+def repr_loc_gaussian(
+    mean: ArrayLike,
+    stddev: ArrayLike,
+) -> ReprLocFn:
+    mean = np.array(mean)
+    stddev = np.array(stddev)
+    return lambda generator, _locations: generator.normal(loc=mean, scale=stddev)
+
+
+def repr_loc_uniform(
+    low: ArrayLike,
+    high: ArrayLike,
+) -> ReprLocFn:
+    low = np.array(low)
+    high = np.array(high)
+    return lambda generator, _locations: generator.uniform(low=low, high=high)

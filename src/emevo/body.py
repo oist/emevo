@@ -5,7 +5,7 @@ Abstract API for bodily existance of agents
 import abc
 import dataclasses
 
-from typing import Any, NoReturn, Tuple
+from typing import Any, NoReturn, Tuple, Union
 
 from emevo.types import Location, Shape
 
@@ -22,7 +22,7 @@ class Profile:
 
     name: str
     generation: int
-    birthtime: float
+    birthtime: Union[int, float]
 
     def __deepcopy__(self) -> NoReturn:
         raise RuntimeError("Profile cannot be copied")
@@ -37,7 +37,7 @@ class Body(Locatable, abc.ABC):
         self,
         name: str = "NoName",
         generation: int = 0,
-        birthtime: int = 0,
+        birthtime: Union[int, float] = 0,
         index: int = 0,
     ) -> None:
         self._profile = Profile(name, generation, birthtime)

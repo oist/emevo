@@ -1,1 +1,1 @@
-from emevo.environments.utils.food_repr import FoodReprFn, ReprMethods
+from emevo.environments.utils import food_repr
