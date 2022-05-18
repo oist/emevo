@@ -11,6 +11,7 @@ import numpy as np
 from numpy.random import Generator
 from numpy.typing import ArrayLike, NDArray
 
+from emevo.environments.utils.locating import init_loc_gaussian, init_loc_uniform
 from emevo.types import Location
 
 ReprNumFn = Callable[[int], int]
@@ -59,19 +60,11 @@ class ReprLoc(str, enum.Enum):
             assert False, "Unreachable"
 
 
-def repr_loc_gaussian(
-    mean: ArrayLike,
-    stddev: ArrayLike,
-) -> ReprLocFn:
-    mean = np.array(mean)
-    stddev = np.array(stddev)
-    return lambda generator, _locations: generator.normal(loc=mean, scale=stddev)
+def repr_loc_gaussian(mean: ArrayLike, stddev: ArrayLike) -> ReprLocFn:
+    fn = init_loc_gaussian(mean, stddev)
+    return lambda generator, _locations: fn(generator)
 
 
-def repr_loc_uniform(
-    low: ArrayLike,
-    high: ArrayLike,
-) -> ReprLocFn:
-    low = np.array(low)
-    high = np.array(high)
-    return lambda generator, _locations: generator.uniform(low=low, high=high)
+def repr_loc_uniform(low: ArrayLike, high: ArrayLike) -> ReprLocFn:
+    fn = init_loc_uniform(low, high)
+    return lambda generator, _locations: fn(generator)
