@@ -3,12 +3,12 @@ Abstract environment API.
 """
 import abc
 
-from typing import Dict, Generic, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union
 
 from numpy.typing import ArrayLike, NDArray
 
 from emevo.body import Body, Encount
-from emevo.types import Info, Location, Shape
+from emevo.types import Info, Location
 
 
 class Observation(abc.ABC):
@@ -58,7 +58,7 @@ class Env(abc.ABC, Generic[ACT, BODY, OBS]):
         pass
 
     @abc.abstractmethod
-    def born(self, location: Location, generation: int) -> Tuple[BODY, OBS]:
+    def born(self, location: Location, generation: int) -> Optional[BODY]:
         """Taken a location, generate and place a newborn in the environment."""
         pass
 

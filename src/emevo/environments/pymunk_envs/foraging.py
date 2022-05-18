@@ -1,10 +1,11 @@
 import dataclasses
 
 from functools import partial
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import pymunk
 
+from loguru import logger
 from numpy.random import PCG64, Generator
 from numpy.typing import NDArray
 from pymunk.vec2d import Vec2d
@@ -52,9 +53,12 @@ class FgFood:
         space: pymunk.Space,
         body: pymunk.Body,
         shape: pymunk.Shape,
+        loc: Vec2d,
     ) -> None:
         self._body = body
+        self._body.position = loc
         self._shape = shape
+        space.add(body, shape)
 
     def _remove(self, space: pymunk.Space) -> None:
         space.remove(self._body, self._shape)
@@ -111,9 +115,10 @@ class Foraging(Env[NDArray, FgBody, FgObs]):
             mass=food_mass,
             friction=0.6,
         )
-        # Food reproduction
+        # Custimizable functions
         self._food_num_fn = food_num_fn
         self._food_loc_fn = food_loc_fn
+        self._body_loc_fn = body_loc_fn
         # Variables
         self._agent_index = 0
         self._sim_steps = 0
@@ -153,7 +158,7 @@ class Foraging(Env[NDArray, FgBody, FgObs]):
         self._foods.clear()
         self._generator = Generator(PCG64(seed=seed))
 
-    def born(self, location: Location) -> Tuple[FgBody, FgObs]:
+    def born(self, location: Location) -> Optional[BODY]:
         pass
 
     def dead(self, body: FgBody) -> None:
@@ -161,7 +166,7 @@ class Foraging(Env[NDArray, FgBody, FgObs]):
         self._bodies.remove(body)
 
     def is_extinct(self) -> bool:
-        pass
+        return len(self._bodies) == 0
 
     def _make_body(self, generation: int, loc: Vec2d) -> FgBody:
         body = self._make_pymunk_body()
@@ -169,7 +174,13 @@ class Foraging(Env[NDArray, FgBody, FgObs]):
         self._agent_index += 1
         return FgBody(body, self._space, generation, self._sim_steps, index)
 
-    def _can_place(self, point: Sequence[float], radius: float) -> bool:
+    def _make_food(self, loc: Vec2d) -> FgFood:
+        body, shape = self._make_pymunk_food()
+        return FgFood(self._space, body, shape, loc)
+
+    def _can_place(
+        self, point: Union[Tuple[float, float], NDArray], radius: float
+    ) -> bool:
         nearest = self._space.point_query_nearest(
             tuple(point),
             radius,
@@ -177,10 +188,38 @@ class Foraging(Env[NDArray, FgBody, FgObs]):
         )
         return nearest is None
 
-    def _initialize_bodies_and_foods(self) -> None:
-        for _ in range(self._n_initial_bodies):
-            pass
+    def _try_placing_agent(self) -> Optional[NDArray]:
+        for _ in range(self._max_place_attempts):
+            sampled = self._body_loc_fn(self._generator)
+            if self._can_place(sampled, self._agent_radius):
+                return sampled
+        return None
 
-        self._n_foods = 0
+    def _try_placing_food(self, locations: List[Vec2d]) -> Optional[NDArray]:
+        for _ in range(self._max_place_attempts):
+            sampled = self._food_loc_fn(self._generator, locations)
+            if self._can_place(sampled, self._food_radius):
+                return sampled
+        return None
+
+    def _initialize_bodies_and_foods(self) -> None:
+        assert len(self._bodies) == 0 and len(self._foods) == 0
+
+        for _ in range(self._n_initial_bodies):
+            point = self._try_placing_agent()
+            if point is None:
+                logger.warning("Failed to place a body")
+            else:
+                body = self._make_body(generation=0, loc=Vec2d(*point))
+                self._bodies.append(body)
+
+        food_locations = []
         for _ in range(self._food_num_fn.initial):
-            self._n_foods += 1
+            point = self._try_placing_food(food_locations)
+            if point is None:
+                logger.warning("Failed to place a food")
+            else:
+                loc = Vec2d(*point)
+                food_locations.append(loc)
+                food = self._make_food(loc=Vec2d(*point))
+                self._foods.append(food)
