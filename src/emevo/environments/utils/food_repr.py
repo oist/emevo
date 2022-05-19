@@ -9,13 +9,14 @@ from typing import Any, Callable, Sequence
 import numpy as np
 
 from numpy.random import Generator
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 
 from emevo.environments.utils.locating import init_loc_gaussian, init_loc_uniform
-from emevo.types import Location
+
+_Location = ArrayLike
 
 ReprNumFn = Callable[[int], int]
-ReprLocFn = Callable[[Generator, Sequence[Location]], NDArray]
+ReprLocFn = Callable[[Generator, Sequence[_Location]], NDArray]
 
 
 class ReprNum(str, enum.Enum):

@@ -3,12 +3,11 @@ Abstract environment API.
 """
 import abc
 
-from typing import Dict, Generic, List, Optional, Tuple, TypeVar, Union
+from typing import Dict, Generic, List, Optional, TypeVar, Union
 
 from numpy.typing import ArrayLike, NDArray
 
 from emevo.body import Body, Encount
-from emevo.types import Info, Location
 
 
 class Observation(abc.ABC):
@@ -40,7 +39,7 @@ class Env(abc.ABC, Generic[ACT, BODY, OBS]):
         pass
 
     @abc.abstractmethod
-    def step(self, actions: Dict[BODY, ACT]) -> Tuple[List[Encount], Info]:
+    def step(self, actions: Dict[BODY, ACT]) -> List[Encount]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
         Returns the next state and all encounts.
@@ -48,7 +47,7 @@ class Env(abc.ABC, Generic[ACT, BODY, OBS]):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: BODY) -> Tuple[OBS, Info]:
+    def observe(self, body: BODY) -> OBS:
         """Construct the observation from the state"""
         pass
 
@@ -58,7 +57,7 @@ class Env(abc.ABC, Generic[ACT, BODY, OBS]):
         pass
 
     @abc.abstractmethod
-    def born(self, location: Location, generation: int) -> Optional[BODY]:
+    def born(self, location: ArrayLike, generation: int) -> Optional[BODY]:
         """Taken a location, generate and place a newborn in the environment."""
         pass
 

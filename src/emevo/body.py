@@ -5,14 +5,14 @@ Abstract API for bodily existance of agents
 import abc
 import dataclasses
 
-from typing import Any, NoReturn, Tuple, Union
+from typing import Any, NamedTuple, NoReturn, Tuple, Union
 
-from emevo.types import Location, Shape
+from numpy.typing import ArrayLike
 
 
 class Locatable(abc.ABC):
     @abc.abstractmethod
-    def location(self) -> Location:
+    def location(self) -> ArrayLike:
         pass
 
 
@@ -44,11 +44,11 @@ class Body(Locatable, abc.ABC):
         self._index = index
 
     @abc.abstractmethod
-    def act_shape(self) -> Shape:
+    def act_shape(self) -> Tuple[int, ...]:
         pass
 
     @abc.abstractmethod
-    def obs_shape(self) -> Shape:
+    def obs_shape(self) -> Tuple[int, ...]:
         pass
 
     def __repr__(self) -> str:
@@ -63,9 +63,8 @@ class Body(Locatable, abc.ABC):
         return self._index == other.index
 
 
-@dataclasses.dataclass(frozen=True)
-class Encount:
-    """Two agents encounted each other"""
+class Encount(NamedTuple):
+    """Encounted two bodies"""
 
-    bodies: Tuple[Body, Body]
-    distance: float
+    a: Body
+    b: Body

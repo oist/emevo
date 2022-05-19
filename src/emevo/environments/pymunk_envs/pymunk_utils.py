@@ -2,7 +2,7 @@ import dataclasses
 import enum
 
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, NamedTuple, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Set, Tuple
 
 import numpy as np
 import pymunk
@@ -34,13 +34,26 @@ def _clipped_min(value1: float, value2: float) -> float:
     return max(0.0, min(value1, value2))
 
 
+def add_presolve_handler(
+    space: pymunk.Space,
+    type_a: CollisionType,
+    type_b: CollisionType,
+    callback: Callable[[pymunk.arbiter.Arbiter, pymunk.Space, Any], bool],
+    callback_type: str = "pre_solve",
+) -> None:
+    collision_handler = space.add_collision_handler(type_a, type_b)
+    collision_handler.pre_solve = callback
+    return None
+
+
 @dataclasses.dataclass
 class MatingHandler:
     """
     Handle collisions between agents.
     """
 
-    collided_steps: Dict[Tuple[pymunk.Body, pymunk.Body], int] = dataclasses.field(
+    body_indices: Dict[pymunk.Body, int]
+    collided_steps: Dict[Tuple[int, int], int] = dataclasses.field(
         default_factory=lambda: defaultdict(lambda: 0)
     )
 
@@ -54,17 +67,20 @@ class MatingHandler:
         Implementation of collision handling callback passed to pymunk.
         Store eaten foods and the number of food an agent ate.
         """
-        a, b = arbiter.shapes
-        if id(a) < id(b):
-            key = a.body, b.body
-        else:
-            key = b.body, a.body
+        a, b = map(lambda shape: self.body_indices[shape.body], arbiter.shapes)
+        key = min(a, b), max(a, b)
         self.collided_steps[key] += 1
         return True
 
     def clear(self) -> None:
         for key in self.collided_steps.keys():
             self.collided_steps[key] = 0
+
+    def filter_pairs(self, threshold: int) -> Iterable[Tuple[int, int]]:
+        """Iterate pairs that collided more than threshold"""
+        for pair, n_collided in self.collided_steps.items():
+            if threshold <= n_collided:
+                yield pair
 
 
 @dataclasses.dataclass
@@ -73,8 +89,9 @@ class FoodHandler:
     Handle collisions between agent and food.
     """
 
+    body_indices: Dict[pymunk.Body, int]
     eaten_bodies: Set[pymunk.Body] = dataclasses.field(default_factory=set)
-    n_eaten_foods: Dict[pymunk.Body, int] = dataclasses.field(
+    n_eaten_foods: Dict[int, int] = dataclasses.field(
         default_factory=lambda: defaultdict(lambda: 0)
     )
 
@@ -97,13 +114,14 @@ class FoodHandler:
             return False
         else:
             self.eaten_bodies.add(food)
-            self.n_eaten_foods[agent.index] += 1
+            index = self.body_indices[agent]
+            self.n_eaten_foods[index] += 1
             return True
 
     def clear(self) -> None:
         self.eaten_bodies.clear()
-        for body in self.n_eaten_foods.keys():
-            self.n_eaten_foods[body] = 0
+        for index in self.n_eaten_foods.keys():
+            self.n_eaten_foods[index] = 0
 
 
 @dataclasses.dataclass
