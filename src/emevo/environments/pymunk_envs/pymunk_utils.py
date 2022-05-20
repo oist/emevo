@@ -1,8 +1,9 @@
+import abc
 import dataclasses
 import enum
 
 from collections import defaultdict
-from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Set, Tuple
+from typing import Any, Callable, ClassVar, Dict, Iterable, List, NamedTuple, Set, Tuple
 
 import numpy as np
 import pymunk
@@ -39,48 +40,9 @@ def add_presolve_handler(
     type_a: CollisionType,
     type_b: CollisionType,
     callback: Callable[[pymunk.arbiter.Arbiter, pymunk.Space, Any], bool],
-    callback_type: str = "pre_solve",
 ) -> None:
     collision_handler = space.add_collision_handler(type_a, type_b)
     collision_handler.pre_solve = callback
-    return None
-
-
-@dataclasses.dataclass
-class MatingHandler:
-    """
-    Handle collisions between agents.
-    """
-
-    body_indices: Dict[pymunk.Body, int]
-    collided_steps: Dict[Tuple[int, int], int] = dataclasses.field(
-        default_factory=lambda: defaultdict(lambda: 0)
-    )
-
-    def __call__(
-        self,
-        arbiter: pymunk.arbiter.Arbiter,
-        _space: pymunk.Space,
-        _info: Any,
-    ) -> bool:
-        """
-        Implementation of collision handling callback passed to pymunk.
-        Store eaten foods and the number of food an agent ate.
-        """
-        a, b = map(lambda shape: self.body_indices[shape.body], arbiter.shapes)
-        key = min(a, b), max(a, b)
-        self.collided_steps[key] += 1
-        return True
-
-    def clear(self) -> None:
-        for key in self.collided_steps.keys():
-            self.collided_steps[key] = 0
-
-    def filter_pairs(self, threshold: int) -> Iterable[Tuple[int, int]]:
-        """Iterate pairs that collided more than threshold"""
-        for pair, n_collided in self.collided_steps.items():
-            if threshold <= n_collided:
-                yield pair
 
 
 @dataclasses.dataclass
@@ -104,6 +66,7 @@ class FoodHandler:
         """
         Implementation of collision handling callback passed to pymunk.
         Store eaten foods and the number of food an agent ate.
+        Return False for already eaten foods.
         """
         a, b = arbiter.shapes
         if a.collision_type == CollisionType.FOOD.value:
@@ -125,6 +88,65 @@ class FoodHandler:
 
 
 @dataclasses.dataclass
+class MatingHandler:
+    """
+    Handle collisions between agents.
+    """
+
+    body_indices: Dict[pymunk.Body, int]
+    collided_steps: Dict[Tuple[int, int], int] = dataclasses.field(
+        default_factory=lambda: defaultdict(lambda: 0)
+    )
+
+    def __call__(
+        self,
+        arbiter: pymunk.arbiter.Arbiter,
+        _space: pymunk.Space,
+        _info: Any,
+    ) -> bool:
+        """
+        Store collided bodies and the number of collisions per each pair.
+        Always return True.
+        """
+        a, b = map(lambda shape: self.body_indices[shape.body], arbiter.shapes)
+        key = min(a, b), max(a, b)
+        self.collided_steps[key] += 1
+        return True
+
+    def clear(self) -> None:
+        for key in self.collided_steps.keys():
+            self.collided_steps[key] = 0
+
+    def filter_pairs(self, threshold: int) -> Iterable[Tuple[int, int]]:
+        """Iterate pairs that collided more than threshold"""
+        for pair, n_collided in self.collided_steps.items():
+            if threshold <= n_collided:
+                yield pair
+
+
+@dataclasses.dataclass
+class StaticHandler:
+    """Handle collisions between agents and static objects."""
+
+    body_indices: Dict[pymunk.Body, int]
+    collided_bodies: Set[int] = dataclasses.field(default_factory=set)
+
+    def __call__(
+        self,
+        arbiter: pymunk.arbiter.Arbiter,
+        _space: pymunk.Space,
+        _info: Any,
+    ) -> bool:
+        """Store collided bodies. Always return True."""
+        shape = _select(arbiter.shapes, CollisionType.AGENT)
+        self.collided_bodies.add(self.body_indices[shape.body])
+        return True
+
+    def clear(self) -> None:
+        self.collided_bodies.clear()
+
+
+@dataclasses.dataclass
 class SensorHandler:
     """
     Handle collisions between sensor and something.
@@ -143,7 +165,6 @@ class SensorHandler:
         _info: Any,
     ) -> bool:
         """
-        Implementation of collision handling callback passed to pymunk.
         Store accumulated distance for each sensor.
         Always return False.
         """

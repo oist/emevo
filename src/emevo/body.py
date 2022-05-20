@@ -40,8 +40,8 @@ class Body(Locatable, abc.ABC):
         birthtime: Union[int, float] = 0,
         index: int = 0,
     ) -> None:
+        self.index = index
         self._profile = Profile(name, generation, birthtime)
-        self._index = index
 
     @abc.abstractmethod
     def act_shape(self) -> Tuple[int, ...]:
@@ -54,13 +54,13 @@ class Body(Locatable, abc.ABC):
     def __repr__(self) -> str:
         name, gen, birthtime = dataclasses.astuple(self._profile)
         birthtime = birthtime.strftime("%d,%h %H:%M:%S")
-        return f"{name} (gen: {gen} birth: {birthtime} index: {self._index})"
+        return f"{name} (gen: {gen} birth: {birthtime} index: {self.index})"
 
     def __eq__(self, other: Any) -> bool:
-        return self._index == other.index
+        return self.index == other.index
 
     def __ne__(self, other: Any) -> bool:
-        return self._index == other.index
+        return self.index == other.index
 
 
 class Encount(NamedTuple):

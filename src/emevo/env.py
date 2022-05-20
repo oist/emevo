@@ -11,22 +11,18 @@ from emevo.body import Body, Encount
 
 
 class Observation(abc.ABC):
-    """
-    Observation type.
-    It should be able to return an array representation of the observation.
-    """
-
     @abc.abstractmethod
-    def as_array(self, source: Optional[ArrayLike] = None) -> ArrayLike:
+    def as_array(self) -> ArrayLike:
         pass
 
 
 ACT = TypeVar("ACT")
 BODY = TypeVar("BODY", bound=Body)
+LOC = TypeVar("LOC")
 OBS = TypeVar("OBS", bound=Observation)
 
 
-class Env(abc.ABC, Generic[ACT, BODY, OBS]):
+class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
     """Abstract API for emevo environments"""
 
     def __init__(self, *args, **kwargs) -> None:
@@ -52,12 +48,12 @@ class Env(abc.ABC, Generic[ACT, BODY, OBS]):
         pass
 
     @abc.abstractmethod
-    def reset(self, seed: Optional[Union[NDArray, int]] = None) -> None:
+    def reset(self, seed: Optional[int] = None) -> None:
         """Do some initialization"""
         pass
 
     @abc.abstractmethod
-    def born(self, location: ArrayLike, generation: int) -> Optional[BODY]:
+    def born(self, location: LOC, generation: int) -> Optional[BODY]:
         """Taken a location, generate and place a newborn in the environment."""
         pass
 
