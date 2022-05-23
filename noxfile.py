@@ -20,14 +20,6 @@ def compile(session: nox.Session) -> None:
 
 
 @nox.session(reuse_venv=True)
-def lab(session: nox.Session) -> None:
-    _install_self(session)
-    session.install("-r", "requirements/lab.txt")
-    session.run("python", "-m", "ipykernel", "install", "--user", "--name", "emevo-lab")
-    session.run("jupyter", "lab", *session.posargs)
-
-
-@nox.session(reuse_venv=True)
 def example(session: nox.Session) -> None:
     _install_self(session)
     session.install("-r", "requirements/example.txt")

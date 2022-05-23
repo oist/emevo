@@ -3,26 +3,18 @@ Abstract environment API.
 """
 import abc
 
-from typing import Dict, Generic, List, Optional, TypeVar, Union
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
-from numpy.typing import ArrayLike, NDArray
+from numpy.typing import ArrayLike
 
 from emevo.body import Body, Encount
 
-
-class Observation(abc.ABC):
-    @abc.abstractmethod
-    def as_array(self) -> ArrayLike:
-        pass
-
-
-ACT = TypeVar("ACT")
+Self = Any
 BODY = TypeVar("BODY", bound=Body)
 LOC = TypeVar("LOC")
-OBS = TypeVar("OBS", bound=Observation)
 
 
-class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
+class Env(abc.ABC, Generic[BODY, LOC]):
     """Abstract API for emevo environments"""
 
     def __init__(self, *args, **kwargs) -> None:
@@ -35,7 +27,7 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def step(self, actions: Dict[BODY, ACT]) -> List[Encount]:
+    def step(self, actions: Dict[BODY, ArrayLike]) -> List[Encount]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
         Returns the next state and all encounts.
@@ -43,7 +35,7 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: BODY) -> OBS:
+    def observe(self, body: BODY) -> ArrayLike:
         """Construct the observation from the state"""
         pass
 
@@ -65,4 +57,23 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
     @abc.abstractmethod
     def is_extinct(self) -> bool:
         """Return if agents are extinct"""
+        pass
+
+    @abc.abstractmethod
+    def visualizer(self, *args, **kwargs) -> "Visualizer":
+        """Create a visualizer for the environment"""
+        pass
+
+
+class Visualizer:
+    def close(self) -> None:
+        """Close this visualizer"""
+        pass
+
+    def render(self, env: Any) -> Any:
+        """Render image"""
+        raise NotImplementedError("render is not implemented")
+
+    def open(self) -> None:
+        """Open a GUI window"""
         pass

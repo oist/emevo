@@ -1,5 +1,3 @@
-import dataclasses
-
 from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -12,8 +10,8 @@ from numpy.typing import NDArray
 from pymunk.vec2d import Vec2d
 
 from emevo.body import Body, Encount
-from emevo.env import Env, Observation
-from emevo.environments.pymunk_envs import pymunk_utils
+from emevo.env import Env
+from emevo.environments.pymunk_envs import pymunk_env, pymunk_utils
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import InitLoc, InitLocFn
 
@@ -64,17 +62,7 @@ class FgFood:
         space.remove(self._body, self._shape)
 
 
-@dataclasses.dataclass
-class FgObs(Observation):
-    _data: NDArray
-    sensor_data: NDArray
-    collision_data: NDArray
-
-    def as_array(self) -> NDArray:
-        return self._data
-
-
-class Foraging(Env[NDArray, FgBody, NDArray, FgObs]):
+class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
     _SENSOR_MASK_RATIO: float = 1.2
 
     def __init__(
@@ -195,6 +183,9 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs]):
             self._static_sensor_handler,
         )
 
+    def get_space(self) -> pymunk.Space:
+        return self._space
+
     def bodies(self) -> List[FgBody]:
         """Return thwe list of all bodies"""
         return self._bodies
@@ -215,14 +206,14 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs]):
             all_encounts.append(Encount(body_a, body_b))
         return all_encounts
 
-    def observe(self, body: FgBody) -> FgObs:
-        data = np.zeros((self._n_sensors + 1, 3))
-        sensor_data = data[:-1, :]
+    def observe(self, body: FgBody) -> NDArray:
+        observation = np.zeros((self._n_sensors + 1, 3))
+        sensor_data = observation[:-1, :]
         self._accumulate_sensor_data(body, self._body_sensor_handler, sensor_data[0])
         self._accumulate_sensor_data(body, self._food_sensor_handler, sensor_data[1])
         self._accumulate_sensor_data(body, self._static_sensor_handler, sensor_data[2])
         index = body.index
-        collision_data = data[-1, :]
+        collision_data = observation[-1, :]
         collision_data[0] = index in self._encounted_bodies
         collision_data[1] = self._food_handler.n_eaten_foods[index]
         collision_data[2] = index in self._static_handler.collided_bodies
@@ -230,7 +221,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs]):
         if self._normalize_obs:
             sensor_data /= self._sensor_mask_value
 
-        return FgObs(data, sensor_data, collision_data)
+        return observation
 
     def reset(self, seed: Optional[Union[NDArray, int]] = None) -> None:
         # Reset indices
