@@ -23,7 +23,7 @@ def compile(session: nox.Session) -> None:
 def example(session: nox.Session) -> None:
     _install_self(session)
     session.install("-r", "requirements/example.txt")
-    DEFAULT_EXAMPLE = "examples/waterworld_evolution_loop.py"
+    DEFAULT_EXAMPLE = "examples/forgaging_loop.py"
     if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):
         session.run("python", *session.posargs)
     else:

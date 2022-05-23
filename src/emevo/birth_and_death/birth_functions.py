@@ -1,9 +1,9 @@
 import typing as t
 
 import numpy as np
-from scipy.stats import norm
 
 from emevo import Body, Encount
+
 from .statuses import AgeAndEnergy
 
 
@@ -39,6 +39,8 @@ def normal(
     stddev: float,
     energy_max: float = 8.0,
 ) -> t.Callable[[AgeAndEnergy], float]:
+    from scipy.stats import norm
+
     def success_prob(status: AgeAndEnergy, _body: Body) -> float:
         energy_coef = max(0.0, status.energy) / energy_max
         return norm.pdf(status.age, loc=mean, scale=stddev) * energy_coef

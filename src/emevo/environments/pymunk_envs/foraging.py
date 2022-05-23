@@ -10,8 +10,8 @@ from numpy.typing import NDArray
 from pymunk.vec2d import Vec2d
 
 from emevo.body import Body, Encount
-from emevo.env import Env
-from emevo.environments.pymunk_envs import pymunk_env, pymunk_utils
+from emevo.env import Env, Visualizer
+from emevo.environments.pymunk_envs import mpl_vis, pymunk_env, pymunk_utils
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import InitLoc, InitLocFn
 from emevo.spaces import Box
@@ -26,8 +26,10 @@ class FgBody(Body):
         birthtime: int,
         index: int,
         obs_max: float,
+        loc: Vec2d,
     ) -> None:
         self._body, self._shape, self._sensors = body_with_sensors
+        self._body.position = loc
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
         obs_low = np.zeros((n_sensors + 1, 3))
@@ -103,6 +105,8 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self._n_sensors = n_agent_sensors
         self._sensor_mask_value = sensor_length * self._SENSOR_MASK_RATIO
         self._normalize_obs = normalize_obs
+        self._xlim = xlim
+        self._ylim = ylim
         # Save pymunk params in closures
         self._make_pymunk_body = partial(
             pymunk_utils.circle_body_with_sensors,
@@ -136,9 +140,10 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self._foods = []
         self._encounted_bodies = set()
         self._generator = Generator(PCG64(seed=seed))
-        self._initialize_bodies_and_foods()
         # Shape filter
         self._all_shape = pymunk.ShapeFilter()
+        # Place bodies and foods
+        self._initialize_bodies_and_foods()
         # Setup all collision handlers
         self._food_handler = pymunk_utils.FoodHandler(self._body_indexes)
         self._mating_handler = pymunk_utils.MatingHandler(self._body_indexes)
@@ -261,6 +266,20 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
     def is_extinct(self) -> bool:
         return len(self._bodies) == 0
 
+    def visualizer(
+        self,
+        mode: str,
+        figsize: Tuple[float, float] = (8.0, 8.0),
+    ) -> Visualizer:
+        if mode == "mpl":
+            return mpl_vis.MplVisualizer(
+                figsize=figsize,
+                xlim=self._xlim,
+                ylim=self._ylim,
+            )
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
+
     def _accumulate_sensor_data(
         self,
         body: FgBody,
@@ -325,7 +344,15 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
             obs_max = 1.0
         else:
             obs_max = self._sensor_mask_value
-        return FgBody(body, self._space, generation, self._sim_steps, index, obs_max)
+        return FgBody(
+            body,
+            self._space,
+            generation,
+            self._sim_steps,
+            index,
+            obs_max,
+            loc,
+        )
 
     def _make_food(self, loc: Vec2d) -> FgFood:
         body, shape = self._make_pymunk_food()

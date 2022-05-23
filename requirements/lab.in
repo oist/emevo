@@ -1,5 +1,0 @@
--r format.in
-jupyterlab
-jupyterlab_code_formatter
-matplotlib
-seaborn

@@ -1,14 +1,15 @@
 from typing import Optional, Tuple
 
-from matplotlib import Figure, pyplot as plt
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from pymunk.matplotlib_util import DrawOptions
 
 from emevo.env import Visualizer
 from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
 
 
-class PymunkMplVisualizer(Visualizer):
+class MplVisualizer(Visualizer):
     def __init__(
         self,
         figsize: Tuple[float, float],
@@ -22,6 +23,10 @@ class PymunkMplVisualizer(Visualizer):
         else:
             self._fig = ax.get_figure()
             self._ax = ax
+
+        self._ax.set_aspect("equal")
+        self._ax.set_xlim(xlim)
+        self._ax.set_ylim(ylim)
         self._draw_options = DrawOptions(ax)
 
     def render(self, env: PymunkEnv) -> Figure:

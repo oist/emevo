@@ -2,6 +2,8 @@
 Utility functions to write food reproduction code in foraging environments.
 """
 
+import abc
+import dataclasses
 import enum
 
 from typing import Any, Callable, Sequence
@@ -15,8 +17,32 @@ from emevo.environments.utils.locating import init_loc_gaussian, init_loc_unifor
 
 _Location = ArrayLike
 
-ReprNumFn = Callable[[int], int]
-ReprLocFn = Callable[[Generator, Sequence[_Location]], NDArray]
+
+class ReprNumFn(abc.ABC):
+    initial: int
+
+    @abc.abstractmethod
+    def __call__(self, current_num: int) -> int:
+        pass
+
+
+@dataclasses.dataclass
+class ReprNumConstant(ReprNumFn):
+    initial: int
+
+    def __call__(self, current_num: int) -> int:
+        return max(0, self.initial - current_num)
+
+
+@dataclasses.dataclass
+class ReprNumLogistic(ReprNumFn):
+    initial: int
+    growth_rate: float
+    capacity: float
+
+    def __call__(self, current_num: int) -> int:
+        dn_dt = self.growth_rate * current_num * (1 - current_num / self.capacity)
+        return np.rint(dn_dt)
 
 
 class ReprNum(str, enum.Enum):
@@ -27,23 +53,14 @@ class ReprNum(str, enum.Enum):
 
     def __call__(self, *args: Any, **kwargs: Any) -> ReprNumFn:
         if self is ReprNum.CONSTANT:
-            return repr_num_constant(*args, **kwargs)
+            return ReprNumConstant(*args, **kwargs)
         elif self is ReprNum.LOGISTIC:
-            return repr_num_logistic(*args, **kwargs)
+            return ReprNumLogistic(*args, **kwargs)
         else:
             assert False, "Unreachable"
 
 
-def repr_num_constant(n_foods: int) -> ReprNumFn:
-    return lambda current: max(0, n_foods - current)
-
-
-def repr_num_logistic(growth_rate: float, capacity: float) -> ReprNumFn:
-    def repr_num(n_foods: int) -> int:
-        dn_dt = growth_rate * n_foods * (1 - n_foods / capacity)
-        return np.rint(dn_dt)
-
-    return repr_num
+ReprLocFn = Callable[[Generator, Sequence[_Location]], NDArray]
 
 
 class ReprLoc(str, enum.Enum):
