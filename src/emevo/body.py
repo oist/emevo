@@ -5,9 +5,11 @@ Abstract API for bodily existance of agents
 import abc
 import dataclasses
 
-from typing import Any, NamedTuple, NoReturn, Tuple, Union
+from typing import Any, NamedTuple, NoReturn, Union
 
 from numpy.typing import ArrayLike
+
+from emevo.spaces import Space
 
 
 class Locatable(abc.ABC):
@@ -35,21 +37,17 @@ class Body(Locatable, abc.ABC):
 
     def __init__(
         self,
+        act_space: Space,
+        obs_space: Space,
         name: str = "NoName",
         generation: int = 0,
         birthtime: Union[int, float] = 0,
         index: int = 0,
     ) -> None:
+        self.act_space = act_space
+        self.obs_space = obs_space
         self.index = index
         self._profile = Profile(name, generation, birthtime)
-
-    @abc.abstractmethod
-    def act_shape(self) -> Tuple[int, ...]:
-        pass
-
-    @abc.abstractmethod
-    def obs_shape(self) -> Tuple[int, ...]:
-        pass
 
     def __repr__(self) -> str:
         name, gen, birthtime = dataclasses.astuple(self._profile)

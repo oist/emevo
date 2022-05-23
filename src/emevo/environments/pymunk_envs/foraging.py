@@ -14,6 +14,7 @@ from emevo.env import Env
 from emevo.environments.pymunk_envs import pymunk_env, pymunk_utils
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import InitLoc, InitLocFn
+from emevo.spaces import Box
 
 
 class FgBody(Body):
@@ -24,22 +25,27 @@ class FgBody(Body):
         generation: int,
         birthtime: int,
         index: int,
+        obs_max: float,
     ) -> None:
-        super().__init__("ForgagingBody", generation, birthtime, index)
         self._body, self._shape, self._sensors = body_with_sensors
         space.add(self._body, self._shape, *self._sensors)
+        n_sensors = len(self._sensors)
+        obs_low = np.zeros((n_sensors + 1, 3))
+        obs_high = np.ones((n_sensors + 1, 3)) * obs_max
+        super().__init__(
+            Box(low=np.array([-1, -1]), high=np.array([1, 1])),
+            Box(low=obs_low, high=obs_high),
+            "ForgagingBody",
+            generation,
+            birthtime,
+            index,
+        )
 
     def _apply_force(self, force: NDArray) -> None:
         self._body.apply_force_at_local_point(Vec2d(*force))
 
     def _remove(self, space: pymunk.Space) -> None:
         space.remove(self._body, self._shape, *self._sensors)
-
-    def act_shape(self) -> Tuple[int]:
-        return (2,)
-
-    def obs_shape(self) -> Tuple[int]:
-        return (len(self._sensors),)
 
     def location(self) -> pymunk.vec2d.Vec2d:
         return self._body.position
@@ -220,6 +226,7 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
 
         if self._normalize_obs:
             sensor_data /= self._sensor_mask_value
+            collision_data[1] = min(collision_data[1], 1)
 
         return observation
 
@@ -314,7 +321,11 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         index = self._agent_index
         self._body_indexes[body.body] = index
         self._agent_index += 1
-        return FgBody(body, self._space, generation, self._sim_steps, index)
+        if self._normalize_obs:
+            obs_max = 1.0
+        else:
+            obs_max = self._sensor_mask_value
+        return FgBody(body, self._space, generation, self._sim_steps, index, obs_max)
 
     def _make_food(self, loc: Vec2d) -> FgFood:
         body, shape = self._make_pymunk_food()
