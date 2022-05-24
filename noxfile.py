@@ -34,7 +34,7 @@ def example(session: nox.Session) -> None:
 def tests(session: nox.Session) -> None:
     _install_self(session)
     session.install("pytest")
-    session.run("pytest", "tests")
+    session.run("pytest", "tests", *session.posargs)
 
 
 @nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])

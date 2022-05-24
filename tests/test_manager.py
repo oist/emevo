@@ -5,27 +5,26 @@ from functools import partial
 import numpy as np
 import pytest
 
-from gym import spaces
+from numpy.typing import NDArray
 
-from emevo import Body, Encount, birth_and_death as bd
+from emevo import Body, Encount, birth_and_death as bd, spaces
 
 DEFAULT_ENERGY_LEVEL: int = 10
 
 
 class FakeBody(Body):
     def __init__(self, name: str) -> None:
-        super().__init__(name)
+        act_space = spaces.Box(
+            np.zeros(1, dtype=np.float32),
+            np.ones(1, dtype=np.float32),
+        )
+        obs_space = spaces.Box(
+            np.zeros(1, dtype=np.float32),
+            np.ones(1, dtype=np.float32),
+        )
+        super().__init__(act_space, obs_space, name)
 
-    @property
-    def action_space(self) -> spaces.Box:
-        return spaces.Box(np.zeros(1, dtype=np.float32), np.ones(1, dtype=np.float32))
-
-    @property
-    def observation_space(self) -> spaces.Box:
-        return spaces.Box(np.zeros(1, dtype=np.float32), np.ones(1, dtype=np.float32))
-
-    @property
-    def position(self) -> np.ndarray:
+    def location(self) -> NDArray:
         return np.array(())
 
 
@@ -62,10 +61,12 @@ def test_asexual() -> None:
         )
     )
     bodies = list(manager.available_bodies())
+    print(bodies, manager.statuses)
     for step_idx in range(STEPS_TO_DEATH):
         for body_idx, body in enumerate(bodies):
             manager.update_status(
-                body, energy_update=-1.0 if body_idx % 2 == 1 else 1.0
+                body,
+                energy_update=-1.0 if body_idx % 2 == 1 else 1.0,
             )
         for body in bodies:
             assert not manager.reproduce(body)
@@ -95,7 +96,7 @@ def test_asexual() -> None:
 
 
 @pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
-def test_sexual(newborn_kind: callable) -> None:
+def test_sexual(newborn_kind: str) -> None:
     """Test Sexual reproduction"""
 
     # 10 steps to death, 11 steps to birth, 3 steps to newborn
@@ -108,8 +109,7 @@ def test_sexual(newborn_kind: callable) -> None:
     ) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
         energy_ok = all(map(lambda status: status.energy > threshold, statuses))
-        distance_ok = encount.distance < 1.0
-        return 1.0 if energy_ok and distance_ok else 0.0
+        return 1.0 if energy_ok else 0.0
 
     if newborn_kind == "oviparous":
 
@@ -125,7 +125,9 @@ def test_sexual(newborn_kind: callable) -> None:
         repr_manager = bd.SexualReprManager(
             success_prob=success_prob,
             produce=lambda _, encount: bd.Viviparous(
-                context=(), parent=encount.bodies[0], time_to_birth=STEPS_TO_BIRTH
+                context=(),
+                parent=encount.a,
+                time_to_birth=STEPS_TO_BIRTH,
             ),
         )
 
@@ -153,7 +155,7 @@ def test_sexual(newborn_kind: callable) -> None:
     for body in bodies:
         manager.update_status(body, energy_update=1.0)
 
-    assert manager.reproduce(Encount((bodies[0], bodies[1]), 0.5))
+    assert manager.reproduce(Encount(bodies[0], bodies[1]))
 
     for step_idx in range(STEPS_TO_BIRTH):
         _, newborns = manager.step()

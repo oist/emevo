@@ -4,6 +4,7 @@ import enum
 
 from collections import defaultdict
 from typing import Any, Callable, ClassVar, Dict, Iterable, List, NamedTuple, Set, Tuple
+from uuid import UUID
 
 import numpy as np
 import pymunk
@@ -51,9 +52,9 @@ class FoodHandler:
     Handle collisions between agent and food.
     """
 
-    body_indices: Dict[pymunk.Body, int]
+    body_uuids: Dict[pymunk.Body, UUID]
     eaten_bodies: Set[pymunk.Body] = dataclasses.field(default_factory=set)
-    n_eaten_foods: Dict[int, int] = dataclasses.field(
+    n_eaten_foods: Dict[UUID, int] = dataclasses.field(
         default_factory=lambda: defaultdict(lambda: 0)
     )
 
@@ -77,14 +78,14 @@ class FoodHandler:
             return False
         else:
             self.eaten_bodies.add(food)
-            index = self.body_indices[agent]
-            self.n_eaten_foods[index] += 1
+            uuid = self.body_uuids[agent]
+            self.n_eaten_foods[uuid] += 1
             return True
 
     def clear(self) -> None:
         self.eaten_bodies.clear()
-        for index in self.n_eaten_foods.keys():
-            self.n_eaten_foods[index] = 0
+        for uuid in self.n_eaten_foods.keys():
+            self.n_eaten_foods[uuid] = 0
 
 
 @dataclasses.dataclass
@@ -93,8 +94,8 @@ class MatingHandler:
     Handle collisions between agents.
     """
 
-    body_indices: Dict[pymunk.Body, int]
-    collided_steps: Dict[Tuple[int, int], int] = dataclasses.field(
+    body_uuids: Dict[pymunk.Body, UUID]
+    collided_steps: Dict[Tuple[UUID, UUID], int] = dataclasses.field(
         default_factory=lambda: defaultdict(lambda: 0)
     )
 
@@ -108,7 +109,7 @@ class MatingHandler:
         Store collided bodies and the number of collisions per each pair.
         Always return True.
         """
-        a, b = map(lambda shape: self.body_indices[shape.body], arbiter.shapes)
+        a, b = map(lambda shape: self.body_uuids[shape.body], arbiter.shapes)
         key = min(a, b), max(a, b)
         self.collided_steps[key] += 1
         return True
@@ -117,7 +118,7 @@ class MatingHandler:
         for key in self.collided_steps.keys():
             self.collided_steps[key] = 0
 
-    def filter_pairs(self, threshold: int) -> Iterable[Tuple[int, int]]:
+    def filter_pairs(self, threshold: int) -> Iterable[Tuple[UUID, UUID]]:
         """Iterate pairs that collided more than threshold"""
         for pair, n_collided in self.collided_steps.items():
             if threshold <= n_collided:
@@ -128,8 +129,8 @@ class MatingHandler:
 class StaticHandler:
     """Handle collisions between agents and static objects."""
 
-    body_indices: Dict[pymunk.Body, int]
-    collided_bodies: Set[int] = dataclasses.field(default_factory=set)
+    body_uuids: Dict[pymunk.Body, UUID]
+    collided_bodies: Set[UUID] = dataclasses.field(default_factory=set)
 
     def __call__(
         self,
@@ -139,7 +140,7 @@ class StaticHandler:
     ) -> bool:
         """Store collided bodies. Always return True."""
         shape = _select(arbiter.shapes, CollisionType.AGENT)
-        self.collided_bodies.add(self.body_indices[shape.body])
+        self.collided_bodies.add(self.body_uuids[shape.body])
         return True
 
     def clear(self) -> None:

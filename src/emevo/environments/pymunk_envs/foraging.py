@@ -11,7 +11,7 @@ from pymunk.vec2d import Vec2d
 
 from emevo.body import Body, Encount
 from emevo.env import Env, Visualizer
-from emevo.environments.pymunk_envs import mpl_vis, pygame_vis, pymunk_env, pymunk_utils
+from emevo.environments.pymunk_envs import pymunk_env, pymunk_utils
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import InitLoc, InitLocFn
 from emevo.spaces import Box
@@ -24,7 +24,6 @@ class FgBody(Body):
         space: pymunk.Space,
         generation: int,
         birthtime: int,
-        index: int,
         obs_max: float,
         loc: Vec2d,
     ) -> None:
@@ -40,7 +39,6 @@ class FgBody(Body):
             "ForgagingBody",
             generation,
             birthtime,
-            index,
         )
 
     def _apply_force(self, force: NDArray) -> None:
@@ -227,11 +225,11 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self._accumulate_sensor_data(body, self._body_sensor_handler, sensor_data[0])
         self._accumulate_sensor_data(body, self._food_sensor_handler, sensor_data[1])
         self._accumulate_sensor_data(body, self._static_sensor_handler, sensor_data[2])
-        index = body.index
+        uuid = body.uuid
         collision_data = observation[-1, :]
-        collision_data[0] = index in self._encounted_bodies
-        collision_data[1] = self._food_handler.n_eaten_foods[index]
-        collision_data[2] = index in self._static_handler.collided_bodies
+        collision_data[0] = uuid in self._encounted_bodies
+        collision_data[1] = self._food_handler.n_eaten_foods[uuid]
+        collision_data[2] = uuid in self._static_handler.collided_bodies
 
         if self._normalize_obs:
             sensor_data /= self._sensor_mask_value
@@ -277,12 +275,16 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
     ) -> Visualizer:
         mode = mode.lower()
         if mode == "mpl":
+            from emevo.environments.pymunk_envs import mpl_vis
+
             return mpl_vis.MplVisualizer(
                 xlim=self._xlim,
                 ylim=self._ylim,
                 figsize=figsize,
             )
         elif mode == "pygame":
+            from emevo.environments.pymunk_envs import pygame_vis
+
             return pygame_vis.PygameVisualizer(
                 x_range=_range(self._xlim),
                 y_range=_range(self._ylim),
@@ -360,7 +362,6 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
             self._space,
             generation,
             self._sim_steps,
-            index,
             obs_max,
             loc,
         )

@@ -1,4 +1,4 @@
-from emevo.environments import _levenshtein_distance
+from emevo.environments.registry import _levenshtein_distance
 
 
 def test_levenhtein() -> None:
