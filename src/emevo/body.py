@@ -60,6 +60,9 @@ class Body(Locatable, abc.ABC):
     def __ne__(self, other: Any) -> bool:
         return self.index == other.index
 
+    def __hash__(self) -> int:
+        return self.index
+
 
 class Encount(NamedTuple):
     """Encounted two bodies"""

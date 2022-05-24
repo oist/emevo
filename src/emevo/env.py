@@ -74,6 +74,6 @@ class Visualizer:
         """Render image"""
         raise NotImplementedError("render is not implemented")
 
-    def open(self) -> None:
+    def show(self) -> None:
         """Open a GUI window"""
         pass
