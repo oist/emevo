@@ -7,11 +7,13 @@ from typing import Optional
 import numpy as np
 import typer
 
+from numpy.random import PCG64
+
 from emevo import make
 
 
 class Rendering(str, enum.Enum):
-    MPL = "mpl"
+    PYGAME = "pygame"
     OPENGL = "opengl"
 
 
@@ -22,11 +24,10 @@ def main(
 ) -> None:
     env = make("Forgaging-v0")
     bodies = env.bodies()
-    gen = np.random.Generator(seed=seed)
+    gen = np.random.Generator(PCG64(seed=seed))
 
-    if rendering == Rendering.MPL:
-        visualizer = env.visualizer()
-        visualizer.show()
+    if rendering == Rendering.PYGAME:
+        visualizer = env.visualizer(mode="pygame")
     else:
         visualizer = None
 
@@ -38,6 +39,7 @@ def main(
         _encounts = env.step(actions)
         if visualizer is not None:
             visualizer.render(env)
+            visualizer.show()
 
 
 if __name__ == "__main__":

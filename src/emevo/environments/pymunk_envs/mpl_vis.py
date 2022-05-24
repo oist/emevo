@@ -12,11 +12,13 @@ from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
 class MplVisualizer(Visualizer):
     def __init__(
         self,
-        figsize: Tuple[float, float],
         xlim: Tuple[float, float],
         ylim: Tuple[float, float],
+        figsize: Optional[Tuple[float, float]] = None,
         ax: Optional[Axes] = None,
     ) -> None:
+        if figsize is None:
+            figsize = 8.0, 8.0
         if ax is None:
             self._fig = plt.figure(figsize=figsize)
             self._ax = self._fig.add_subplot()
@@ -27,7 +29,7 @@ class MplVisualizer(Visualizer):
         self._ax.set_aspect("equal")
         self._ax.set_xlim(xlim)
         self._ax.set_ylim(ylim)
-        self._draw_options = DrawOptions(ax)
+        self._draw_options = DrawOptions(self._ax)
 
     def render(self, env: PymunkEnv) -> Figure:
         space = env.get_space()
@@ -35,4 +37,4 @@ class MplVisualizer(Visualizer):
         return self._fig
 
     def open(self) -> None:
-        plt.show(block=False)
+        raise NotImplementedError("Open is not implemented for MPL vis")

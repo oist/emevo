@@ -11,7 +11,7 @@ from pymunk.vec2d import Vec2d
 
 from emevo.body import Body, Encount
 from emevo.env import Env, Visualizer
-from emevo.environments.pymunk_envs import mpl_vis, pymunk_env, pymunk_utils
+from emevo.environments.pymunk_envs import mpl_vis, pygame_vis, pymunk_env, pymunk_utils
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import InitLoc, InitLocFn
 from emevo.spaces import Box
@@ -70,6 +70,10 @@ class FgFood:
         space.remove(self._body, self._shape)
 
 
+def _range(segment: Tuple[float, float]) -> float:
+    return segment[1] - segment[0]
+
+
 class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
     _SENSOR_MASK_RATIO: float = 1.2
 
@@ -77,10 +81,10 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self,
         n_initial_bodies: int = 6,
         food_num_fn: ReprNumFn = ReprNum.CONSTANT(10),
-        food_loc_fn: ReprLocFn = ReprLoc.GAUSSIAN((350.0, 350.0), (10.0, 10.0)),
-        body_loc_fn: InitLocFn = InitLoc.UNIFORM((0.0, 0.0), (320, 320)),
-        xlim: Tuple[float, float] = (0.0, 400.0),
-        ylim: Tuple[float, float] = (0.0, 400.0),
+        food_loc_fn: ReprLocFn = ReprLoc.GAUSSIAN((150.0, 150.0), (20.0, 20.0)),
+        body_loc_fn: InitLocFn = InitLoc.UNIFORM((0.0, 0.0), (150, 150)),
+        xlim: Tuple[float, float] = (0.0, 200.0),
+        ylim: Tuple[float, float] = (0.0, 200.0),
         n_agent_sensors: int = 8,
         sensor_length: float = 6.0,
         agent_radius: float = 4.0,
@@ -269,13 +273,20 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
     def visualizer(
         self,
         mode: str,
-        figsize: Tuple[float, float] = (8.0, 8.0),
+        figsize: Optional[Tuple[float, float]] = None,
     ) -> Visualizer:
+        mode = mode.lower()
         if mode == "mpl":
             return mpl_vis.MplVisualizer(
-                figsize=figsize,
                 xlim=self._xlim,
                 ylim=self._ylim,
+                figsize=figsize,
+            )
+        elif mode == "pygame":
+            return pygame_vis.PygameVisualizer(
+                x_range=_range(self._xlim),
+                y_range=_range(self._ylim),
+                figsize=figsize,
             )
         else:
             raise ValueError(f"Invalid mode: {mode}")
