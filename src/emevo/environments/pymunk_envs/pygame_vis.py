@@ -15,7 +15,7 @@ class PygameVisualizer(Visualizer):
         figsize: Optional[Tuple[float, float]] = None,
     ) -> None:
         if figsize is None:
-            self._figsize = 800, 800
+            self._figsize = 600, 600
         else:
             self._figsize = figsize
         pygame.display.init()

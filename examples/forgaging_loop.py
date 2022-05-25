@@ -2,7 +2,7 @@
 
 import enum
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import typer
@@ -20,9 +20,11 @@ class Rendering(str, enum.Enum):
 def main(
     n_steps: int = 100,
     rendering: Optional[Rendering] = None,
+    food_initial_force: Optional[Tuple[float, float]] = None,
     seed: int = 1,
 ) -> None:
-    env = make("Forgaging-v0")
+    print(food_initial_force)
+    env = make("Forgaging-v0", food_initial_force=food_initial_force)
     bodies = env.bodies()
     gen = np.random.Generator(PCG64(seed=seed))
 

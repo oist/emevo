@@ -1,5 +1,6 @@
 from functools import partial
 from typing import Dict, List, Optional, Tuple, Union
+from uuid import UUID
 
 import numpy as np
 import pymunk
@@ -20,10 +21,12 @@ from emevo.spaces import Box
 class FgBody(Body):
     def __init__(
         self,
+        *,
         body_with_sensors: pymunk_utils.BodyWithSensors,
         space: pymunk.Space,
         generation: int,
         birthtime: int,
+        act_max_abs: float,
         obs_max: float,
         loc: Vec2d,
     ) -> None:
@@ -31,10 +34,12 @@ class FgBody(Body):
         self._body.position = loc
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
-        obs_low = np.zeros((n_sensors + 1, 3))
-        obs_high = np.ones((n_sensors + 1, 3)) * obs_max
+        act_low = np.ones(2, dtype=np.float32) * -act_max_abs
+        act_high = np.ones(2, dtype=np.float32) * act_max_abs
+        obs_low = np.zeros((n_sensors + 1, 3), dtype=np.float32)
+        obs_high = np.ones((n_sensors + 1, 3), dtype=np.float32) * obs_max
         super().__init__(
-            Box(low=np.array([-1, -1]), high=np.array([1, 1])),
+            Box(low=act_low, high=act_high),
             Box(low=obs_low, high=obs_high),
             "ForgagingBody",
             generation,
@@ -85,10 +90,12 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         ylim: Tuple[float, float] = (0.0, 200.0),
         n_agent_sensors: int = 8,
         sensor_length: float = 6.0,
-        agent_radius: float = 4.0,
+        agent_radius: float = 8.0,
         agent_mass: float = 2.0,
-        food_radius: float = 1.0,
+        food_radius: float = 3.0,
         food_mass: float = 0.5,
+        food_initial_force: Optional[Tuple[float, float]] = None,
+        max_abs_force: float = 1.0,
         dt: float = 0.05,
         encount_threshold: int = 2,
         n_physics_steps: int = 10,
@@ -96,7 +103,7 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         normalize_obs: bool = True,
         seed: Optional[int] = None,
     ) -> None:
-        # Just copy invariable some configs
+        # Just copy some invariable configs
         self._dt = dt
         self._n_physics_steps = n_physics_steps
         self._agent_radius = agent_radius
@@ -107,8 +114,10 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self._n_sensors = n_agent_sensors
         self._sensor_mask_value = sensor_length * self._SENSOR_MASK_RATIO
         self._normalize_obs = normalize_obs
+        self._max_abs_force = max_abs_force
         self._xlim = xlim
         self._ylim = ylim
+        self._food_initial_force = food_initial_force
         # Save pymunk params in closures
         self._make_pymunk_body = partial(
             pymunk_utils.circle_body_with_sensors,
@@ -130,7 +139,6 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self._food_loc_fn = food_loc_fn
         self._body_loc_fn = body_loc_fn
         # Variables
-        self._agent_index = 0
         self._sim_steps = 0
         self._n_foods = 0
         # Make pymunk world and add bodies
@@ -138,7 +146,7 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         # Setup physical objects
         pymunk_utils.add_static_square(self._space, *xlim, *ylim, friction=0.4)
         self._bodies = []
-        self._body_indexes = {}
+        self._body_uuids = {}
         self._foods = []
         self._encounted_bodies = set()
         self._generator = Generator(PCG64(seed=seed))
@@ -147,9 +155,9 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         # Place bodies and foods
         self._initialize_bodies_and_foods()
         # Setup all collision handlers
-        self._food_handler = pymunk_utils.FoodHandler(self._body_indexes)
-        self._mating_handler = pymunk_utils.MatingHandler(self._body_indexes)
-        self._static_handler = pymunk_utils.StaticHandler(self._body_indexes)
+        self._food_handler = pymunk_utils.FoodHandler(self._body_uuids)
+        self._mating_handler = pymunk_utils.MatingHandler(self._body_uuids)
+        self._static_handler = pymunk_utils.StaticHandler(self._body_uuids)
         self._body_sensor_handler = pymunk_utils.SensorHandler()
         self._food_sensor_handler = pymunk_utils.SensorHandler()
         self._static_sensor_handler = pymunk_utils.SensorHandler()
@@ -211,11 +219,13 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         for _ in range(self._n_physics_steps):
             self._space.step(dt=self._dt)
         all_encounts = []
-        for idx_a, idx_b in self._mating_handler.filter_pairs(self._encount_threshold):
-            self._encounted_bodies.add(idx_a)
-            self._encounted_bodies.add(idx_b)
-            body_a = self._find_body_by_index(idx_a)
-            body_b = self._find_body_by_index(idx_b)
+        for uuid_a, uuid_b in self._mating_handler.filter_pairs(
+            self._encount_threshold
+        ):
+            self._encounted_bodies.add(uuid_a)
+            self._encounted_bodies.add(uuid_b)
+            body_a = self._find_body_by_uuid(uuid_a)
+            body_b = self._find_body_by_uuid(uuid_b)
             all_encounts.append(Encount(body_a, body_b))
         return all_encounts
 
@@ -225,11 +235,10 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self._accumulate_sensor_data(body, self._body_sensor_handler, sensor_data[0])
         self._accumulate_sensor_data(body, self._food_sensor_handler, sensor_data[1])
         self._accumulate_sensor_data(body, self._static_sensor_handler, sensor_data[2])
-        uuid = body.uuid
         collision_data = observation[-1, :]
-        collision_data[0] = uuid in self._encounted_bodies
-        collision_data[1] = self._food_handler.n_eaten_foods[uuid]
-        collision_data[2] = uuid in self._static_handler.collided_bodies
+        collision_data[0] = body.uuid in self._encounted_bodies
+        collision_data[1] = self._food_handler.n_eaten_foods[body.uuid]
+        collision_data[2] = body.uuid in self._static_handler.collided_bodies
 
         if self._normalize_obs:
             sensor_data /= self._sensor_mask_value
@@ -263,7 +272,7 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
     def dead(self, body: FgBody) -> None:
         body._remove(self._space)
         self._bodies.remove(body)
-        del self._body_indexes[body._body]
+        del self._body_uuids[body._body]
 
     def is_extinct(self) -> bool:
         return len(self._bodies) == 0
@@ -320,11 +329,11 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         )
         return nearest is None
 
-    def _find_body_by_index(self, index: int) -> FgBody:
+    def _find_body_by_uuid(self, uuid: UUID) -> FgBody:
         for body in self._bodies:
-            if body.index == index:
+            if body.uuid == uuid:
                 return body
-        raise ValueError(f"Invalid agent index: {index}")
+        raise ValueError(f"Invalid agent uuid: {uuid}")
 
     def _initialize_bodies_and_foods(self) -> None:
         assert len(self._bodies) == 0 and len(self._foods) == 0
@@ -350,24 +359,28 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
 
     def _make_body(self, generation: int, loc: Vec2d) -> FgBody:
         body = self._make_pymunk_body()
-        index = self._agent_index
-        self._body_indexes[body.body] = index
-        self._agent_index += 1
         if self._normalize_obs:
             obs_max = 1.0
         else:
             obs_max = self._sensor_mask_value
-        return FgBody(
-            body,
-            self._space,
-            generation,
-            self._sim_steps,
-            obs_max,
-            loc,
+        fgbody = FgBody(
+            body_with_sensors=body,
+            space=self._space,
+            generation=generation,
+            birthtime=self._sim_steps,
+            act_max_abs=self._max_abs_force,
+            obs_max=obs_max,
+            loc=loc,
         )
+        self._body_uuids[body.body] = fgbody.uuid
+        return fgbody
 
     def _make_food(self, loc: Vec2d) -> FgFood:
         body, shape = self._make_pymunk_food()
+        if self._food_initial_force is not None:
+            mean, stddev = self._food_initial_force
+            force = self._generator.normal(loc=mean, scale=stddev, size=(2,))
+            body.apply_force_at_local_point(Vec2d(*force))
         return FgFood(self._space, body, shape, loc)
 
     def _try_placing_agent(self) -> Optional[NDArray]:
