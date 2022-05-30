@@ -2,9 +2,9 @@
 import abc
 
 from typing import (
-    Dict as DictType,
     Generic,
-    Mapping,
+    Iterable,
+    NamedTuple,
     Optional,
     OrderedDict,
     Sequence,
@@ -235,38 +235,17 @@ class Discrete(Space[int]):
         )
 
 
-class Dict(Space[DictType[str, Space]], Mapping):
-    """gym.spaces.Dict, but without RNG"""
+class NamedTuple(Space[NamedTuple], Iterable):
+    """Space that returns namedtuple of other spaces"""
 
-    def __init__(
-        self,
-        spaces: Optional[dict[str, Space]] = None,
-        **spaces_kwargs: Space,
-    ) -> None:
-        assert (spaces is None) or (
-            not spaces_kwargs
-        ), "Use either Dict(spaces=dict(...)) or Dict(foo=x, bar=z)"
-
-        if spaces is None:
-            spaces = spaces_kwargs
-        if isinstance(spaces, dict) and not isinstance(spaces, OrderedDict):
-            try:
-                spaces = OrderedDict(sorted(spaces.items()))
-            except TypeError:  # raise when sort by different types of keys
-                spaces = OrderedDict(spaces.items())
-        if isinstance(spaces, Sequence):
-            spaces = OrderedDict(spaces)
-
-        assert isinstance(spaces, OrderedDict), "spaces must be a dictionary"
+    def __init__(self, **spaces_kwargs: Space) -> None:
+        self.spaces = NamedTuple()
 
         self.spaces = spaces
         for space in spaces.values():
             assert isinstance(
                 space, Space
             ), "Values of the dict should be instances of gym.Space"
-        super().__init__(
-            None, None, seed  # type: ignore
-        )  # None for shape and dtype, since it'll require special handling
 
     def sample(self, generator: Generator) -> dict:
         return OrderedDict(
