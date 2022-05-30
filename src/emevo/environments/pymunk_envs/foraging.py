@@ -239,6 +239,8 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
             body_a = self._find_body_by_uuid(uuid_a)
             body_b = self._find_body_by_uuid(uuid_b)
             all_encounts.append(Encount(body_a, body_b))
+
+        self._sim_steps += 1
         return all_encounts
 
     def observe(self, body: FgBody) -> NDArray:
