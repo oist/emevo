@@ -46,7 +46,7 @@ class FgBody(Body):
             FgObs,
             sensor=BoxSpace(low=0.0, high=max_sensor_obs, shape=(n_sensors, 3)),
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
-            speed=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
+            velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
         )
         super().__init__(
             BoxSpace(low=act_low, high=act_high),
@@ -106,7 +106,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         food_mass: float = 0.5,
         food_initial_force: Optional[Tuple[float, float]] = None,
         max_abs_force: float = 1.0,
-        max_abs_velocity: Optional[float] = None,
+        max_abs_velocity: float = np.sqrt(2.0),
         dt: float = 0.05,
         encount_threshold: int = 2,
         n_physics_steps: int = 10,
@@ -370,26 +370,25 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
                 self._foods.append(food)
 
     def _make_body(self, generation: int, loc: Vec2d) -> FgBody:
-        body = self._make_pymunk_body()
+        body_with_sensors = self._make_pymunk_body()
+        body_with_sensors.body.velocify_func = pymunk_utils.limit_velocity(
+            self._max_abs_velocity
+        )
         if self._normalize_obs:
             sensor_max = 1.0
         else:
             sensor_max = self._sensor_mask_value
-        if self._max_abs_velocity is None:
-            max_abs_velocity = np.inf
-        else:
-            max_abs_velocity = self._max_abs_velocity
         fgbody = FgBody(
-            body_with_sensors=body,
+            body_with_sensors=body_with_sensors,
             space=self._space,
             generation=generation,
             birthtime=self._sim_steps,
             max_abs_act=self._max_abs_force,
             max_sensor_obs=sensor_max,
-            max_abs_velocity=max_abs_velocity,
+            max_abs_velocity=self._max_abs_velocity,
             loc=loc,
         )
-        self._body_uuids[body.body] = fgbody.uuid
+        self._body_uuids[body_with_sensors.body] = fgbody.uuid
         return fgbody
 
     def _make_food(self, loc: Vec2d) -> FgFood:

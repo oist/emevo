@@ -240,10 +240,18 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         assert all(
             [isinstance(s, Space) for s in spaces_kwargs.values()]
         ), "All arguments of NamedTuple space should be a subclass of Space"
+        name = cls.__name__
         self._cls = cls
         fields = cls._fields  # type: ignore
+        possibly_missing_keys = set(fields)
+        for key in spaces_kwargs:
+            if key not in fields:
+                raise ValueError(f"Invalid key for {name}: {key}")
+            possibly_missing_keys.remove(key)
+        if len(possibly_missing_keys):
+            raise ValueError(f"Missing keys: {list(possibly_missing_keys)}")
         spaces = [(field, spaces_kwargs[field].__class__) for field in fields]
-        self._space_cls = NamedTuple(cls.__name__ + "Space", spaces)
+        self._space_cls = NamedTuple(name + "Space", spaces)
         self.spaces = self._space_cls(**spaces_kwargs)
         dtype = self.spaces[0].dtype
         for space in self.spaces:

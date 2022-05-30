@@ -1,12 +1,10 @@
 """Example of using foraging environment"""
 
 import enum
-
 from typing import Optional, Tuple
 
 import numpy as np
 import typer
-
 from numpy.random import PCG64
 
 from emevo import make
@@ -37,6 +35,7 @@ def main(
         actions = {}
         for body in bodies:
             actions[body] = body.act_space.sample(gen)
+            print(body._body.velocity)
 
         _encounts = env.step(actions)
         if visualizer is not None:

@@ -1,14 +1,12 @@
 import abc
 import dataclasses
 import enum
-
 from collections import defaultdict
 from typing import Any, Callable, ClassVar, Dict, Iterable, List, NamedTuple, Set, Tuple
 from uuid import UUID
 
 import numpy as np
 import pymunk
-
 from pymunk.shapes import Circle
 
 
@@ -189,6 +187,24 @@ class BodyWithSensors(NamedTuple):
     body: pymunk.Body
     shape: pymunk.Shape
     sensors: List[pymunk.Segment]
+
+
+def limit_velocity(
+    max_velocity: float,
+) -> Callable[[pymunk.Body, Tuple[float, float], float, float], None]:
+    def velocity_callback(
+        body: pymunk.Body,
+        gravity: Tuple[float, float],
+        damping: float,
+        dt: float,
+    ) -> None:
+        pymunk.Body.update_velocity(body, gravity, damping, dt)
+        current_velocity = body.velocity.length
+        if current_velocity > max_velocity:
+            scale = max_velocity / current_velocity
+            body.velocity = body.velocity * scale
+
+    return velocity_callback
 
 
 def circle_body(
