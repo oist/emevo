@@ -1,10 +1,9 @@
 from functools import partial
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 from uuid import UUID
 
 import numpy as np
 import pymunk
-
 from loguru import logger
 from numpy.random import PCG64, Generator
 from numpy.typing import NDArray
@@ -15,7 +14,13 @@ from emevo.env import Env, Visualizer
 from emevo.environments.pymunk_envs import pymunk_env, pymunk_utils
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import InitLoc, InitLocFn
-from emevo.spaces import Box
+from emevo.spaces import BoxSpace, NamedTupleSpace
+
+
+class FgObs(NamedTuple):
+    sensor: NDArray
+    collision: NDArray
+    velocity: NDArray
 
 
 class FgBody(Body):
@@ -26,21 +31,26 @@ class FgBody(Body):
         space: pymunk.Space,
         generation: int,
         birthtime: int,
-        act_max_abs: float,
-        obs_max: float,
+        max_abs_act: float,
+        max_sensor_obs: float,
+        max_abs_velocity: float,
         loc: Vec2d,
     ) -> None:
         self._body, self._shape, self._sensors = body_with_sensors
         self._body.position = loc
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
-        act_low = np.ones(2, dtype=np.float32) * -act_max_abs
-        act_high = np.ones(2, dtype=np.float32) * act_max_abs
-        obs_low = np.zeros((n_sensors + 1, 3), dtype=np.float32)
-        obs_high = np.ones((n_sensors + 1, 3), dtype=np.float32) * obs_max
+        act_low = np.ones(2, dtype=np.float32) * -max_abs_act
+        act_high = np.ones(2, dtype=np.float32) * max_abs_act
+        obs_space = NamedTupleSpace(
+            FgObs,
+            sensor=BoxSpace(low=0.0, high=max_sensor_obs, shape=(n_sensors, 3)),
+            collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
+            speed=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
+        )
         super().__init__(
-            Box(low=act_low, high=act_high),
-            Box(low=obs_low, high=obs_high),
+            BoxSpace(low=act_low, high=act_high),
+            obs_space,
             "ForgagingBody",
             generation,
             birthtime,
@@ -77,7 +87,7 @@ def _range(segment: Tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
-class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
+class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
     _SENSOR_MASK_RATIO: float = 1.2
 
     def __init__(
@@ -96,6 +106,7 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         food_mass: float = 0.5,
         food_initial_force: Optional[Tuple[float, float]] = None,
         max_abs_force: float = 1.0,
+        max_abs_velocity: Optional[float] = None,
         dt: float = 0.05,
         encount_threshold: int = 2,
         n_physics_steps: int = 10,
@@ -115,6 +126,7 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
         self._sensor_mask_value = sensor_length * self._SENSOR_MASK_RATIO
         self._normalize_obs = normalize_obs
         self._max_abs_force = max_abs_force
+        self._max_abs_velocity = max_abs_velocity
         self._xlim = xlim
         self._ylim = ylim
         self._food_initial_force = food_initial_force
@@ -231,11 +243,11 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
 
     def observe(self, body: FgBody) -> NDArray:
         observation = np.zeros((self._n_sensors + 1, 3))
-        sensor_data = observation[:-1, :]
+        sensor_data = np.zeros((self._n_sensors, 3), dtype=np.float32)
         self._accumulate_sensor_data(body, self._body_sensor_handler, sensor_data[0])
         self._accumulate_sensor_data(body, self._food_sensor_handler, sensor_data[1])
         self._accumulate_sensor_data(body, self._static_sensor_handler, sensor_data[2])
-        collision_data = observation[-1, :]
+        collision_data = np.zeros(3, dtype=np.float32)
         collision_data[0] = body.uuid in self._encounted_bodies
         collision_data[1] = self._food_handler.n_eaten_foods[body.uuid]
         collision_data[2] = body.uuid in self._static_handler.collided_bodies
@@ -360,16 +372,21 @@ class Foraging(Env[FgBody, NDArray], pymunk_env.PymunkEnv):
     def _make_body(self, generation: int, loc: Vec2d) -> FgBody:
         body = self._make_pymunk_body()
         if self._normalize_obs:
-            obs_max = 1.0
+            sensor_max = 1.0
         else:
-            obs_max = self._sensor_mask_value
+            sensor_max = self._sensor_mask_value
+        if self._max_abs_velocity is None:
+            max_abs_velocity = np.inf
+        else:
+            max_abs_velocity = self._max_abs_velocity
         fgbody = FgBody(
             body_with_sensors=body,
             space=self._space,
             generation=generation,
             birthtime=self._sim_steps,
-            act_max_abs=self._max_abs_force,
-            obs_max=obs_max,
+            max_abs_act=self._max_abs_force,
+            max_sensor_obs=sensor_max,
+            max_abs_velocity=max_abs_velocity,
             loc=loc,
         )
         self._body_uuids[body.body] = fgbody.uuid

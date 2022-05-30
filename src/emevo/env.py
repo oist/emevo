@@ -2,19 +2,19 @@
 Abstract environment API.
 """
 import abc
-
 from typing import Any, Dict, Generic, List, Optional, TypeVar
-
-from numpy.typing import ArrayLike
 
 from emevo.body import Body, Encount
 
 Self = Any
+
+ACT = TypeVar("ACT")
 BODY = TypeVar("BODY", bound=Body)
 LOC = TypeVar("LOC")
+OBS = TypeVar("OBS")
 
 
-class Env(abc.ABC, Generic[BODY, LOC]):
+class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
     """Abstract API for emevo environments"""
 
     def __init__(self, *args, **kwargs) -> None:
@@ -27,7 +27,7 @@ class Env(abc.ABC, Generic[BODY, LOC]):
         pass
 
     @abc.abstractmethod
-    def step(self, actions: Dict[BODY, ArrayLike]) -> List[Encount]:
+    def step(self, actions: Dict[BODY, ACT]) -> List[Encount]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
         Returns the next state and all encounts.
@@ -35,7 +35,7 @@ class Env(abc.ABC, Generic[BODY, LOC]):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: BODY) -> ArrayLike:
+    def observe(self, body: BODY) -> OBS:
         """Construct the observation from the state"""
         pass
 

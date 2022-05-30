@@ -1,12 +1,11 @@
 """Similar to gym.spaces.Space, but doesn't have RNG"""
 import abc
-
 from typing import (
+    Any,
     Generic,
     Iterable,
     NamedTuple,
     Optional,
-    OrderedDict,
     Sequence,
     SupportsFloat,
     Tuple,
@@ -16,9 +15,8 @@ from typing import (
 )
 
 import numpy as np
-
 from numpy.random import Generator
-from numpy.typing import NDArray
+from numpy.typing import DTypeLike, NDArray
 
 INSTANCE = TypeVar("INSTANCE")
 
@@ -42,7 +40,7 @@ def _short_repr(arr: NDArray) -> str:
     return str(arr)
 
 
-class Box(Space[NDArray]):
+class BoxSpace(Space[NDArray]):
     """gym.spaces.Box, but without RNG"""
 
     def __init__(
@@ -50,7 +48,7 @@ class Box(Space[NDArray]):
         low: Union[SupportsFloat, NDArray],
         high: Union[SupportsFloat, NDArray],
         shape: Optional[Sequence[int]] = None,
-        dtype: Type = np.float32,
+        dtype: DTypeLike = np.float32,
     ) -> None:
         self.dtype = np.dtype(dtype)
 
@@ -143,7 +141,7 @@ class Box(Space[NDArray]):
     def __eq__(self, other) -> bool:
         """Check whether `other` is equivalent to this instance."""
         return (
-            isinstance(other, Box)
+            isinstance(other, self.__class__)
             and (self.shape == other.shape)
             and np.allclose(self.low, other.low)
             and np.allclose(self.high, other.high)
@@ -194,7 +192,7 @@ def _broadcast(
     return value
 
 
-class Discrete(Space[int]):
+class DiscreteSpace(Space[int]):
     """gym.spaces.Discrete, but without RNG"""
 
     def __init__(self, n: int, start: int = 0) -> None:
@@ -208,7 +206,7 @@ class Discrete(Space[int]):
     def sample(self, generator: Generator) -> int:
         return int(self.start + generator.integers(self.n))
 
-    def contains(self, x) -> bool:
+    def contains(self, x: int) -> bool:
         """Return boolean specifying if x is a valid member of this space."""
         if isinstance(x, int):
             as_int = x
@@ -229,60 +227,59 @@ class Discrete(Space[int]):
     def __eq__(self, other) -> bool:
         """Check whether ``other`` is equivalent to this instance."""
         return (
-            isinstance(other, Discrete)
+            isinstance(other, self.__class__)
             and self.n == other.n
             and self.start == other.start
         )
 
 
-class NamedTuple(Space[NamedTuple], Iterable):
+class NamedTupleSpace(Space[NamedTuple], Iterable):
     """Space that returns namedtuple of other spaces"""
 
-    def __init__(self, **spaces_kwargs: Space) -> None:
-        self.spaces = NamedTuple()
+    def __init__(self, cls: Type[Tuple], **spaces_kwargs: Space) -> None:
+        assert all(
+            [isinstance(s, Space) for s in spaces_kwargs.values()]
+        ), "All arguments of NamedTuple space should be a subclass of Space"
+        self._cls = cls
+        fields = cls._fields  # type: ignore
+        spaces = [(field, spaces_kwargs[field].__class__) for field in fields]
+        self._space_cls = NamedTuple(cls.__name__ + "Space", spaces)
+        self.spaces = self._space_cls(**spaces_kwargs)
+        dtype = self.spaces[0].dtype
+        for space in self.spaces:
+            if space.dtype != dtype:
+                raise ValueError("All dtype of NamedTuple space must be the same")
+        self.dtype = dtype
+        self.shape = tuple(space.shape for space in self.spaces)
 
-        self.spaces = spaces
-        for space in spaces.values():
-            assert isinstance(
-                space, Space
-            ), "Values of the dict should be instances of gym.Space"
+    def sample(self, generator: Generator) -> Any:
+        samples = tuple(space.sample(generator) for space in self.spaces)
+        return self._cls(*samples)
 
-    def sample(self, generator: Generator) -> dict:
-        return OrderedDict(
-            [(k, space.sample(generator)) for k, space in self.spaces.items()]
-        )
-
-    def contains(self, x) -> bool:
+    def contains(self, x: tuple) -> bool:
         """Return boolean specifying if x is a valid member of this space."""
-        if not isinstance(x, dict) or len(x) != len(self.spaces):
-            return False
-        for k, space in self.spaces.items():
-            if k not in x:
+        for instance, space in zip(x, self.spaces):
+            if not space.contains(instance):
                 return False
-            if not space.contains(x[k]):
-                return False
+
         return True
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Space:
         """Get the space that is associated to `key`."""
-        return self.spaces[key]
+        return getattr(self.spaces, key)
 
-    def __setitem__(self, key, value):
-        """Set the space that is associated to `key`."""
-        self.spaces[key] = value
-
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Space]:
         """Iterator through the keys of the subspaces."""
         yield from self.spaces
 
     def __len__(self) -> int:
-        """Gives the number of simpler spaces that make up the `Dict` space."""
+        """Gives the number of simpler spaces that make up the `NamedTuple` space."""
         return len(self.spaces)
 
     def __repr__(self) -> str:
         """Gives a string representation of this space."""
-        return (
-            "Dict("
-            + ", ".join([str(k) + ":" + str(s) for k, s in self.spaces.items()])
-            + ")"
+        spaces = ",".join(
+            [f"{k}:{s}" for k, s in zip(self._space_cls._fields, self.spaces)]
         )
+        name = self._space_cls.__name__
+        return f"{name}({spaces})"
