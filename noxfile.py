@@ -38,7 +38,7 @@ def lint(session: nox.Session) -> None:
 def smoke(session: nox.Session) -> None:
     """Run a smoke test"""
     _install_self(session)
-    session.install("-r", "requirements/example.txt")
+    session.install("-r", "requirements/smoketest.txt")
     DEFAULT = "smoke-tests/forgaging_loop.py"
     if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):
         session.run("python", *session.posargs)

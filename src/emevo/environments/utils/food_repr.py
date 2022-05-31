@@ -5,15 +5,18 @@ Utility functions to write food reproduction code in foraging environments.
 import abc
 import dataclasses
 import enum
-
 from typing import Any, Callable, Sequence
 
 import numpy as np
-
 from numpy.random import Generator
 from numpy.typing import ArrayLike, NDArray
 
-from emevo.environments.utils.locating import init_loc_gaussian, init_loc_uniform
+from emevo.environments.utils.locating import (
+    InitLocFn,
+    init_loc_gaussian,
+    init_loc_pre_defined,
+    init_loc_uniform,
+)
 
 _Location = ArrayLike
 
@@ -63,18 +66,23 @@ class ReprNum(str, enum.Enum):
 ReprLocFn = Callable[[Generator, Sequence[_Location]], NDArray]
 
 
+def _wrap_initloc(fn: InitLocFn) -> ReprLocFn:
+    return lambda generator, _locations: fn(generator)
+
+
 class ReprLoc(str, enum.Enum):
     """Methods to determine the location of new foods or agents"""
 
     GAUSSIAN = "gaussian"
+    PRE_DIFINED = "pre-defined"
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> ReprLocFn:
         if self is ReprLoc.GAUSSIAN:
-            fn = init_loc_gaussian(*args, **kwargs)
-            return lambda generator, _locations: fn(generator)
+            return _wrap_initloc(init_loc_gaussian(*args, **kwargs))
+        elif self is ReprLoc.PRE_DIFINED:
+            return _wrap_initloc(init_loc_pre_defined(*args, **kwargs))
         elif self is ReprLoc.UNIFORM:
-            fn = init_loc_uniform(*args, **kwargs)
-            return lambda generator, _locations: fn(generator)
+            return _wrap_initloc(init_loc_uniform(*args, **kwargs))
         else:
             assert False, "Unreachable"
