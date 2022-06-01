@@ -48,10 +48,8 @@ def main(
         visualizer = None
 
     for _ in range(n_steps):
-        actions = {}
-        for body in bodies:
-            actions[body] = body.act_space.sample(gen)
-
+        actions = {body: body.act_space.sample(gen) for body in bodies}
+        # actions = {body: np.array([0.0, 1.0]) for body in bodies}
         _encounts = env.step(actions)
         if visualizer is not None:
             visualizer.render(env)

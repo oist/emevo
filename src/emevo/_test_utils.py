@@ -24,10 +24,10 @@ def predefined_env(
         agent_locations = [
             np.array([50, 60]),
             np.array([50, 140]),
-            np.array([140, 60]),
+            np.array([150, 40]),
         ]
     if food_locations is None:
-        food_locations = [np.array([160, 160])]
+        food_locations = [np.array([150, 160])]
 
     return Foraging(
         n_initial_bodies=len(agent_locations),
