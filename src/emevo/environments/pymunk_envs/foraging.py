@@ -90,6 +90,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         ylim: Tuple[float, float] = (0.0, 200.0),
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
+        sensor_range: Tuple[float, float] = (-180.0, 180.0),
         agent_radius: float = 8.0,
         agent_mass: float = 1.0,
         food_radius: float = 4.0,
@@ -129,6 +130,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
             mass=agent_mass,
             friction=0.6,
             sensor_width=0.5,
+            sensor_range=sensor_range,
         )
         self._make_pymunk_food = partial(
             pymunk_utils.circle_body,

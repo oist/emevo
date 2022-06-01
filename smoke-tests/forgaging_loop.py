@@ -22,6 +22,7 @@ def main(
     food_initial_force: Optional[Tuple[float, float]] = None,
     seed: int = 1,
     debug: bool = False,
+    forward_sensor: bool = False,
     use_test_env: bool = False,
 ) -> None:
     if debug:
@@ -29,10 +30,15 @@ def main(
 
         loguru.logger.enable("emevo")
 
-    if use_test_env:
-        env = test_utils.predefined_env()
+    if forward_sensor:
+        env_kwargs = {"sensor_range": (-60, 60), "sensor_length": 16}
     else:
-        env = make("Forgaging-v0", food_initial_force=food_initial_force)
+        env_kwargs = {}
+
+    if use_test_env:
+        env = test_utils.predefined_env(**env_kwargs)
+    else:
+        env = make("Forgaging-v0", food_initial_force=food_initial_force, **env_kwargs)
     bodies = env.bodies()
     gen = np.random.Generator(PCG64(seed=seed))
 

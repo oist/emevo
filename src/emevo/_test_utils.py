@@ -15,8 +15,10 @@ from emevo.environments.utils.locating import InitLoc
 
 
 def predefined_env(
+    *,
     agent_locations: Optional[List[NDArray]] = None,
     food_locations: Optional[List[NDArray]] = None,
+    **kwargs,
 ) -> Foraging:
     if agent_locations is None:
         agent_locations = [
@@ -32,4 +34,5 @@ def predefined_env(
         body_loc_fn=InitLoc.PRE_DIFINED(agent_locations),
         food_num_fn=ReprNum.CONSTANT(len(food_locations)),
         food_loc_fn=ReprLoc.PRE_DIFINED(itertools.cycle(food_locations)),
+        **kwargs,
     )

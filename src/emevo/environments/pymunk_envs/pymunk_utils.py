@@ -228,6 +228,7 @@ def circle_body_with_sensors(
     mass: float = 1.0,
     sensor_width: float = 1.0,
     friction: float = 0.6,
+    sensor_range: Tuple[float, float] = (-180, 180),
 ) -> BodyWithSensors:
     body, circle = circle_body(
         radius=radius,
@@ -236,8 +237,8 @@ def circle_body_with_sensors(
         friction=friction,
     )
     sensors = []
-    for i in range(n_sensors):
-        theta = (2 * np.pi / n_sensors) * i
+    sensor_rad = np.deg2rad(sensor_range)
+    for theta in np.linspace(sensor_rad[0], sensor_rad[1], n_sensors):
         x, y = np.cos(theta), np.sin(theta)
         seg = pymunk.Segment(
             body,
