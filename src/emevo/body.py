@@ -4,7 +4,7 @@ Abstract API for bodily existance of agents
 
 import abc
 import dataclasses
-from typing import Any, NamedTuple, NoReturn, Union
+from typing import Any, Dict, NamedTuple, NoReturn, Union
 from uuid import uuid4
 
 from numpy.typing import ArrayLike
@@ -47,6 +47,10 @@ class Body(Locatable, abc.ABC):
         self.obs_space = obs_space
         self.uuid = uuid4()
         self._profile = Profile(name, generation, birthtime)
+
+    def info(self) -> Any:
+        """Returns some information useful for debugging"""
+        return None
 
     def __repr__(self) -> str:
         name, gen, birthtime = dataclasses.astuple(self._profile)

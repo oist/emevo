@@ -26,6 +26,11 @@ class FgObs(NamedTuple):
     velocity: NDArray
 
 
+class _FgBodyInfo(NamedTuple):
+    position: Vec2d
+    velocity: Vec2d
+
+
 class FgBody(Body):
     """Body of an agent."""
 
@@ -61,6 +66,9 @@ class FgBody(Body):
             birthtime,
         )
 
+    def info(self) -> _FgBodyInfo:
+        return _FgBodyInfo(position=self._body.position, velocity=self._body.velocity)
+
     def _apply_force(self, force: NDArray) -> None:
         self._body.apply_force_at_local_point(Vec2d(*force))
 
@@ -92,7 +100,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         sensor_length: float = 10.0,
         sensor_range: Tuple[float, float] = (-180.0, 180.0),
         agent_radius: float = 8.0,
-        agent_mass: float = 1.0,
+        agent_mass: float = 1.4,
         food_radius: float = 4.0,
         food_mass: float = 0.25,
         food_initial_force: Optional[Tuple[float, float]] = None,
@@ -235,8 +243,9 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         locations = [body.position for body in self._foods.keys()]
         n_new_foods = self._food_num_fn(len(locations))
         if n_new_foods > 0:
-            logger.debug(f"{n_new_foods} foods are (maybe) created")
-            self._place_n_foods(n_new_foods, locations)
+            n_created = self._place_n_foods(n_new_foods, locations)
+            if n_created > 0:
+                logger.debug(f"{n_created} foods are created")
         # Increment the step
         self._sim_steps += 1
         return self._all_encounts()
@@ -249,7 +258,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         - Collisiont to food/agent/static object
         - Velocity of the body
         """
-        sensor_data = np.zeros((self._n_sensors, 3), dtype=np.float32)
+        sensor_data = np.zeros((3, self._n_sensors), dtype=np.float32)
         self._accumulate_sensor_data(body, self._body_sensor_handler, sensor_data[0])
         self._accumulate_sensor_data(body, self._food_sensor_handler, sensor_data[1])
         self._accumulate_sensor_data(body, self._static_sensor_handler, sensor_data[2])
@@ -421,9 +430,10 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         self,
         n_foods: int,
         food_locations: Optional[List[pymunk.Vec2d]] = None,
-    ) -> None:
+    ) -> int:
         if food_locations is None:
             food_locations = []
+        success = 0
         for _ in range(n_foods):
             point = self._try_placing_food(food_locations)
             if point is None:
@@ -433,6 +443,8 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
                 food_locations.append(loc)
                 food_body, food_shape = self._make_food(loc=Vec2d(*point))
                 self._foods[food_body] = food_shape
+                success += 1
+        return success
 
     def _try_placing_agent(self) -> Optional[NDArray]:
         for _ in range(self._max_place_attempts):
