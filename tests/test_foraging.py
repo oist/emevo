@@ -43,7 +43,6 @@ def env() -> Foraging:
         agent_radius=AGENT_RADIUS,
         sensor_length=SENSOR_LENGTH,
         n_agent_sensors=4,
-        normalize_obs=False,
         n_physics_steps=1,
     )
 
@@ -96,7 +95,7 @@ def test_eating(env: Foraging) -> None:
                 break
         else:
             if "eaten" in handler:
-                assert_almost_equal(observation.collision[1], 1.0)
+                assert_almost_equal(observation.collision[2], 1.0)
                 already_ate = True
             else:
                 assert observation.collision[1] == 0.0
@@ -132,21 +131,6 @@ def test_encounts(env: Foraging) -> None:
         # Test touch sensor
         distance = body_higher.info().position.y - body_lower.info().position.y
 
-        if SENSOR_LENGTH + AGENT_RADIUS * 2 < distance:
-            assert_almost_equal(obs_low.sensor[0], env._sensor_mask_value)
-            assert_almost_equal(obs_high.sensor[0], env._sensor_mask_value)
-        else:
-            assert_almost_equal_to_a_or_b(
-                obs_low.sensor[0],
-                distance - AGENT_RADIUS * 2,
-                env._sensor_mask_value,
-            )
-            assert_almost_equal_to_a_or_b(
-                obs_high.sensor[0],
-                distance - AGENT_RADIUS * 2,
-                env._sensor_mask_value,
-            )
-
         # Test encount
         if len(encounts) > 0:
             assert_almost_equal(obs_low.collision[0], 1.0)
@@ -160,3 +144,19 @@ def test_encounts(env: Foraging) -> None:
         else:
             assert_almost_equal(obs_low.collision[0], 0.0)
             assert_almost_equal(obs_high.collision[0], 0.0)
+
+        if SENSOR_LENGTH + AGENT_RADIUS * 2 < distance:
+            assert_almost_equal(obs_low.sensor[0], env._SENSOR_MASK_VALUE)
+            assert_almost_equal(obs_high.sensor[0], env._SENSOR_MASK_VALUE)
+        else:
+            alpha = max(0.0, (distance - AGENT_RADIUS * 2) / SENSOR_LENGTH)
+            assert_almost_equal_to_a_or_b(
+                obs_low.sensor[0],
+                alpha,
+                env._SENSOR_MASK_VALUE,
+            )
+            assert_almost_equal_to_a_or_b(
+                obs_high.sensor[0],
+                alpha,
+                env._SENSOR_MASK_VALUE,
+            )

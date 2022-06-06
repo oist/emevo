@@ -1,20 +1,37 @@
 import dataclasses
 import enum
 from collections import defaultdict
-from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
 from uuid import UUID
 
 import numpy as np
 import pymunk
 from pymunk.shapes import Circle
 
+SENSOR_OFFSET: float = 1e-6
+
 
 class CollisionType(enum.IntEnum):
-    AGENT = 1
-    SENSOR = 2
-    FOOD = 3
-    POISON = 4
-    STATIC = 5
+    AGENT = 0
+    FOOD = 1
+    STATIC = 2
+    POISON = 3
+    SENSOR = 4
+
+    def categ_filter(self) -> pymunk.ShapeFilter:
+        return pymunk.ShapeFilter(categories=1 << self.value)
+
+
+def _reorder(
+    shapes: Tuple[pymunk.Shape, pymunk.Shape],
+    target_type: CollisionType,
+) -> Tuple[pymunk.Shape, pymunk.Shape]:
+    if shapes[0].collision_type == target_type:
+        return shapes
+    elif shapes[1].collision_type == target_type:
+        return shapes[1], shapes[0]
+    else:
+        raise RuntimeError(f"Collision type {target_type} is not found in {shapes}")
 
 
 def _select(
@@ -24,18 +41,17 @@ def _select(
     for shape in shapes:
         if shape.collision_type == target_type.value:
             return shape
-    raise RuntimeError(
-        f"Specified collision type {target_type} is not found in {shapes}"
-    )
+    raise RuntimeError(f"Collision type {target_type} is not found in {shapes}")
 
 
-def add_presolve_handler(
+def add_pre_handler(
     space: pymunk.Space,
     type_a: CollisionType,
     type_b: CollisionType,
     callback: Callable[[pymunk.arbiter.Arbiter, pymunk.Space, Any], bool],
 ) -> None:
-    collision_handler = space.add_collision_handler(type_a, type_b)
+    """Add pre_solve handler to the space."""
+    collision_handler = space.add_collision_handler(type_a.value, type_b.value)
     collision_handler.pre_solve = callback
 
 
@@ -140,42 +156,22 @@ class StaticHandler:
         self.collided_bodies.clear()
 
 
-@dataclasses.dataclass
-class SensorHandler:
-    """
-    Handle collisions between sensor and something.
-    Here we store only the distance to the object. I.e., we don't distinguish objects.
-
-    Distance is strored as a non-negative wrapping distance.
-    """
-
-    # Here distances are reset per each (environment) step.
-    # So the use of Shape as key is fine.
-    distances: Dict[pymunk.Shape, float] = dataclasses.field(default_factory=dict)
-    accumulator: Callable[[float, float], float] = lambda a, b: max(a, b, 0.0)
-
-    def __call__(
-        self,
-        arbiter: pymunk.arbiter.Arbiter,
-        _space: pymunk.Space,
-        _info: Any,
-    ) -> bool:
-        """
-        Store accumulated distance for each sensor.
-        Always return False.
-        """
-        assert len(arbiter.contact_point_set.points) == 1
-        contact_point = arbiter.contact_point_set.points[0]
-        sensor = _select(arbiter.shapes, CollisionType.SENSOR)
-        if sensor in self.distances:
-            old_dist = self.distances[sensor]
-            self.distances[sensor] = self.accumulator(old_dist, -contact_point.distance)
-        else:
-            self.distances[sensor] = -contact_point.distance
-        return False
-
-    def clear(self) -> None:
-        self.distances.clear()
+def sensor_query(
+    space: pymunk.Space,
+    body: pymunk.Body,
+    segment: pymunk.Segment,
+    mask: int = pymunk.ShapeFilter.ALL_MASKS() ^ (1 << CollisionType.SENSOR.value),
+) -> Optional[Tuple[CollisionType, float]]:
+    """Get the nearest object aligned with given segment"""
+    start = body.position + segment.a
+    end = body.position + segment.b
+    shape_filter = pymunk.ShapeFilter(mask=mask)
+    query_result = space.segment_query_first(start, end, 0.0, shape_filter)
+    if query_result is None or query_result.shape is None:
+        return None
+    else:
+        collision_type = query_result.shape.collision_type
+        return collision_type, query_result.alpha
 
 
 class BodyWithSensors(NamedTuple):
@@ -215,6 +211,7 @@ def circle_body(
     circle.mass = mass
     circle.friction = friction
     circle.collision_type = collision_type
+    circle.filter = collision_type.categ_filter()
     return body, circle
 
 
@@ -223,7 +220,6 @@ def circle_body_with_sensors(
     n_sensors: int,
     sensor_length: float,
     mass: float = 1.0,
-    sensor_width: float = 1.0,
     friction: float = 0.6,
     sensor_range: Tuple[float, float] = (-180, 180),
 ) -> BodyWithSensors:
@@ -239,12 +235,13 @@ def circle_body_with_sensors(
         x, y = np.cos(theta), np.sin(theta)
         seg = pymunk.Segment(
             body,
-            (x * radius, y * radius),
+            (x * (radius + SENSOR_OFFSET), y * (radius + SENSOR_OFFSET)),
             (x * (radius + sensor_length), (y * (radius + sensor_length))),
-            sensor_width,
+            0.5,  # This is not used
         )
         seg.sensor = True
         seg.collision_type = CollisionType.SENSOR
+        seg.filter = pymunk.ShapeFilter(categories=CollisionType.SENSOR.value, mask=0)
         sensors.append(seg)
     return BodyWithSensors(body=body, shape=circle, sensors=sensors)
 
