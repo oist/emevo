@@ -1,8 +1,7 @@
-import abc
 import dataclasses
 import enum
 from collections import defaultdict
-from typing import Any, Callable, ClassVar, Dict, Iterable, List, NamedTuple, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Set, Tuple
 from uuid import UUID
 
 import numpy as np
@@ -28,10 +27,6 @@ def _select(
     raise RuntimeError(
         f"Specified collision type {target_type} is not found in {shapes}"
     )
-
-
-def _clipped_min(value1: float, value2: float) -> float:
-    return max(0.0, min(value1, value2))
 
 
 def add_presolve_handler(
@@ -150,12 +145,14 @@ class SensorHandler:
     """
     Handle collisions between sensor and something.
     Here we store only the distance to the object. I.e., we don't distinguish objects.
+
+    Distance is strored as a non-negative wrapping distance.
     """
 
     # Here distances are reset per each (environment) step.
     # So the use of Shape as key is fine.
     distances: Dict[pymunk.Shape, float] = dataclasses.field(default_factory=dict)
-    accumulator: Callable[[float, float], float] = _clipped_min
+    accumulator: Callable[[float, float], float] = lambda a, b: max(a, b, 0.0)
 
     def __call__(
         self,
@@ -172,9 +169,9 @@ class SensorHandler:
         sensor = _select(arbiter.shapes, CollisionType.SENSOR)
         if sensor in self.distances:
             old_dist = self.distances[sensor]
-            self.distances[sensor] = self.accumulator(old_dist, contact_point.distance)
+            self.distances[sensor] = self.accumulator(old_dist, -contact_point.distance)
         else:
-            self.distances[sensor] = contact_point.distance
+            self.distances[sensor] = -contact_point.distance
         return False
 
     def clear(self) -> None:
@@ -238,7 +235,7 @@ def circle_body_with_sensors(
     )
     sensors = []
     sensor_rad = np.deg2rad(sensor_range)
-    for theta in np.linspace(sensor_rad[0], sensor_rad[1], n_sensors):
+    for theta in np.linspace(sensor_rad[0], sensor_rad[1], n_sensors + 1)[:-1]:
         x, y = np.cos(theta), np.sin(theta)
         seg = pymunk.Segment(
             body,

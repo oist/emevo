@@ -5,16 +5,47 @@ import numpy as np
 import pytest
 from loguru import logger
 from numpy.testing import assert_almost_equal
+from numpy.typing import NDArray
 
 from emevo import _test_utils as utils
 from emevo.environments.pymunk_envs import Foraging
 
+
+def assert_almost_equal_to_a_or_b(
+    actual: NDArray,
+    desired_a: float,
+    desired_b: float,
+) -> None:
+    def almost_equal(actual: NDArray, desired: float) -> NDArray:
+        diff = np.abs(actual - desired)
+        return diff < 1e-6
+
+    almost_equal_to_a = almost_equal(actual, desired_a)
+    almost_equal_to_b = almost_equal(actual, desired_b)
+    almost_equal_to_a_or_b = np.logical_or(almost_equal_to_a, almost_equal_to_b)
+    if not np.all(almost_equal_to_a_or_b):
+        raise AssertionError(
+            f"Some elements of {actual} are not equal to"
+            + f" either of {desired_a} or {desired_b}"
+        )
+
+
 logger.enable("emevo")
+
+# Not to depend on the default argument
+AGENT_RADIUS: float = 8.0
+SENSOR_LENGTH: float = 10.0
 
 
 @pytest.fixture
 def env() -> Foraging:
-    return utils.predefined_env()
+    return utils.predefined_env(
+        agent_radius=AGENT_RADIUS,
+        sensor_length=SENSOR_LENGTH,
+        n_agent_sensors=4,
+        normalize_obs=False,
+        n_physics_steps=1,
+    )
 
 
 @dataclasses.dataclass
@@ -94,10 +125,29 @@ def test_encounts(env: Foraging) -> None:
     assert body_higher is not None and body_lower is not None
     actions = {body_higher: np.array([0.0, -1.0]), body_lower: np.array([0.0, 1.0])}
 
-    for i in range(100):
+    while True:
         encounts = env.step(actions)
         obs_high = env.observe(body_higher)
         obs_low = env.observe(body_lower)
+        # Test touch sensor
+        distance = body_higher.info().position.y - body_lower.info().position.y
+
+        if SENSOR_LENGTH + AGENT_RADIUS * 2 < distance:
+            assert_almost_equal(obs_low.sensor[0], env._sensor_mask_value)
+            assert_almost_equal(obs_high.sensor[0], env._sensor_mask_value)
+        else:
+            assert_almost_equal_to_a_or_b(
+                obs_low.sensor[0],
+                distance - AGENT_RADIUS * 2,
+                env._sensor_mask_value,
+            )
+            assert_almost_equal_to_a_or_b(
+                obs_high.sensor[0],
+                distance - AGENT_RADIUS * 2,
+                env._sensor_mask_value,
+            )
+
+        # Test encount
         if len(encounts) > 0:
             assert_almost_equal(obs_low.collision[0], 1.0)
             assert_almost_equal(obs_high.collision[0], 1.0)

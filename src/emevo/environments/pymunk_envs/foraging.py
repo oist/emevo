@@ -123,6 +123,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         self._encount_threshold = encount_threshold
         self._n_sensors = n_agent_sensors
         self._sensor_mask_value = sensor_length * self._SENSOR_MASK_RATIO
+        self._sensor_length = sensor_length
         self._normalize_obs = normalize_obs
         self._max_abs_force = max_abs_force
         self._max_abs_velocity = max_abs_velocity
@@ -341,7 +342,12 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         src: NDArray,
     ) -> None:
         for i, sensor in enumerate(body._sensors):
-            src[i] = handler.distances.get(sensor, self._sensor_mask_value)
+            sensor_dist = handler.distances.get(sensor, None)
+            if sensor_dist is not None:
+                # Convert the wrapping distance to surface-to-oject distance
+                src[i] = self._sensor_length - sensor_dist
+            else:
+                src[i] = self._sensor_mask_value
 
     def _all_encounts(self) -> List[Encount]:
         all_encounts = []

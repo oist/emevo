@@ -1,24 +1,24 @@
 import typing as t
-
 from functools import partial
 
 import numpy as np
 import pytest
-
 from numpy.typing import NDArray
 
-from emevo import Body, Encount, birth_and_death as bd, spaces
+from emevo import Body, Encount
+from emevo import birth_and_death as bd
+from emevo import spaces
 
 DEFAULT_ENERGY_LEVEL: int = 10
 
 
 class FakeBody(Body):
     def __init__(self, name: str) -> None:
-        act_space = spaces.Box(
+        act_space = spaces.BoxSpace(
             np.zeros(1, dtype=np.float32),
             np.ones(1, dtype=np.float32),
         )
-        obs_space = spaces.Box(
+        obs_space = spaces.BoxSpace(
             np.zeros(1, dtype=np.float32),
             np.ones(1, dtype=np.float32),
         )
