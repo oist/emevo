@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List
+from typing import List, Tuple, Union
 
 import numpy as np
 import pytest
@@ -11,15 +11,16 @@ from emevo import _test_utils as utils
 from emevo.environments.pymunk_envs import Foraging
 
 
+def almost_equal(actual: NDArray, desired: float) -> NDArray:
+    diff = np.abs(actual - desired)
+    return diff < 1e-6
+
+
 def assert_almost_equal_to_a_or_b(
     actual: NDArray,
     desired_a: float,
     desired_b: float,
 ) -> None:
-    def almost_equal(actual: NDArray, desired: float) -> NDArray:
-        diff = np.abs(actual - desired)
-        return diff < 1e-6
-
     almost_equal_to_a = almost_equal(actual, desired_a)
     almost_equal_to_b = almost_equal(actual, desired_b)
     almost_equal_to_a_or_b = np.logical_or(almost_equal_to_a, almost_equal_to_b)
@@ -34,7 +35,10 @@ logger.enable("emevo")
 
 # Not to depend on the default argument
 AGENT_RADIUS: float = 8.0
+DT: float = 0.05
+MAX_ABS_VELOCITY: float = 1.0
 SENSOR_LENGTH: float = 10.0
+YLIM: Tuple[float, float] = 0.0, 200
 
 
 @pytest.fixture
@@ -44,6 +48,9 @@ def env() -> Foraging:
         sensor_length=SENSOR_LENGTH,
         n_agent_sensors=4,
         n_physics_steps=1,
+        max_abs_velocity=MAX_ABS_VELOCITY,
+        ylim=YLIM,
+        dt=DT,
     )
 
 
@@ -81,12 +88,11 @@ def test_eating(env: Foraging) -> None:
     , and we add force only to the lower right agent.
     """
     handler = DebugLogHandler()
-    bodies = env.bodies()
-    body = next(filter(lambda body: body.info().position.x > 100.0, bodies))
+    body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
+    actions = {body: np.array([0.0, 1.0])}
     already_ate = False
 
     while True:
-        actions = {body: np.array([0.0, 1.0])}
         _ = env.step(actions)
         observation = env.observe(body)
 
@@ -160,3 +166,27 @@ def test_encounts(env: Foraging) -> None:
                 alpha,
                 env._SENSOR_MASK_VALUE,
             )
+
+
+def test_static(env: Foraging) -> None:
+    """
+    Confirm that collision detection to walls correctly works.
+    Again, food (F) and agent (A) are placed like
+    A  F
+
+    A  A
+    , and we push the lower right agent to right wall.
+    """
+    body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
+    actions = {body: np.array([0.0, -1.0])}
+
+    while True:
+        _ = env.step(actions)
+        observation = env.observe(body)
+        distance_to_wall = body.info().position.y - AGENT_RADIUS - env._WALL_RADIUS
+        if distance_to_wall < MAX_ABS_VELOCITY * DT:
+            if np.abs(1.0 - observation.collision[1]) < 1e-6:
+                break
+        else:
+            print(distance_to_wall)
+            assert_almost_equal(observation.collision[1], 0.0)

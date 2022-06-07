@@ -257,6 +257,8 @@ def add_static_line(
     line = pymunk.Segment(space.static_body, start, end, radius)
     line.elasticity = elasticity
     line.friction = friction
+    line.collision_type = CollisionType.STATIC
+    line.filter = CollisionType.STATIC.categ_filter()
     space.add(line)
     return line
 

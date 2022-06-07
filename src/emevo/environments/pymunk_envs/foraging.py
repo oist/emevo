@@ -90,6 +90,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
     _SENSOR_MASK_VALUE = 2.0
+    _WALL_RADIUS = 1.0
 
     def __init__(
         self,
@@ -159,7 +160,13 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         # Make pymunk world and add bodies
         self._space = pymunk.Space()
         # Setup physical objects
-        pymunk_utils.add_static_square(self._space, *xlim, *ylim, friction=0.4)
+        pymunk_utils.add_static_square(
+            self._space,
+            *xlim,
+            *ylim,
+            friction=0.4,
+            radius=self._WALL_RADIUS,
+        )
         self._bodies = []
         self._body_uuids = {}
         self._foods: Dict[pymunk.Body, pymunk.Shape] = {}
