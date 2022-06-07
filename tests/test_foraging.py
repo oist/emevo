@@ -92,10 +92,9 @@ class DebugLogHandler:
 
 def test_birth(env: Foraging) -> None:
     """
-    A  F
-
-    A  A
-    Kill the lower right body.
+    Test that
+    1. we can't place body if it overlaps another object
+    2. we can place body otherwise.
     """
     assert len(env.bodies()) == 3
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
