@@ -16,10 +16,11 @@ def almost_equal(actual: NDArray, desired: float) -> NDArray:
     return diff < 1e-6
 
 
-def assert_almost_equal_to_a_or_b(
+def assert_either_a_or_b(
     actual: NDArray,
     desired_a: float,
     desired_b: float,
+    require_both: bool = True,
 ) -> None:
     almost_equal_to_a = almost_equal(actual, desired_a)
     almost_equal_to_b = almost_equal(actual, desired_b)
@@ -29,6 +30,15 @@ def assert_almost_equal_to_a_or_b(
             f"Some elements of {actual} are not equal to"
             + f" either of {desired_a} or {desired_b}"
         )
+    if require_both:
+        if not np.any(almost_equal_to_a):
+            raise AssertionError(
+                f"At least one element of {actual} should be {desired_a}"
+            )
+        if not np.any(almost_equal_to_b):
+            raise AssertionError(
+                f"At least one element of {actual} should be {desired_b}"
+            )
 
 
 logger.enable("emevo")
@@ -36,6 +46,7 @@ logger.enable("emevo")
 # Not to depend on the default argument
 AGENT_RADIUS: float = 8.0
 DT: float = 0.05
+FOOD_RADIUS: float = 4.0
 MAX_ABS_VELOCITY: float = 1.0
 SENSOR_LENGTH: float = 10.0
 YLIM: Tuple[float, float] = 0.0, 200
@@ -89,6 +100,7 @@ def test_eating(env: Foraging) -> None:
     """
     handler = DebugLogHandler()
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
+    food = next(iter(env._foods.keys()))
     actions = {body: np.array([0.0, 1.0])}
     already_ate = False
 
@@ -101,10 +113,26 @@ def test_eating(env: Foraging) -> None:
                 break
         else:
             if "eaten" in handler:
-                assert_almost_equal(observation.collision[2], 1.0)
+                assert_almost_equal(observation.collision[1], 1.0)
                 already_ate = True
             else:
                 assert observation.collision[1] == 0.0
+
+        if already_ate:
+            continue
+
+        distance_to_food = (
+            food.position.y - body.info().position.y - AGENT_RADIUS - FOOD_RADIUS
+        )
+        if SENSOR_LENGTH < distance_to_food:
+            assert_almost_equal(observation.sensor[1], env._SENSOR_MASK_VALUE)
+        else:
+            alpha = max(0.0, distance_to_food / SENSOR_LENGTH)
+            assert_either_a_or_b(
+                observation.sensor[1],
+                alpha,
+                env._SENSOR_MASK_VALUE,
+            )
 
     assert handler.once("eaten")
     assert handler.once("created")
@@ -156,12 +184,12 @@ def test_encounts(env: Foraging) -> None:
             assert_almost_equal(obs_high.sensor[0], env._SENSOR_MASK_VALUE)
         else:
             alpha = max(0.0, (distance - AGENT_RADIUS * 2) / SENSOR_LENGTH)
-            assert_almost_equal_to_a_or_b(
+            assert_either_a_or_b(
                 obs_low.sensor[0],
                 alpha,
                 env._SENSOR_MASK_VALUE,
             )
-            assert_almost_equal_to_a_or_b(
+            assert_either_a_or_b(
                 obs_high.sensor[0],
                 alpha,
                 env._SENSOR_MASK_VALUE,
@@ -184,9 +212,20 @@ def test_static(env: Foraging) -> None:
         _ = env.step(actions)
         observation = env.observe(body)
         distance_to_wall = body.info().position.y - AGENT_RADIUS - env._WALL_RADIUS
+
+        if SENSOR_LENGTH < distance_to_wall:
+            assert_almost_equal(observation.sensor[2], env._SENSOR_MASK_VALUE)
+        else:
+            alpha = max(0.0, distance_to_wall / SENSOR_LENGTH)
+            assert_either_a_or_b(
+                observation.sensor[2],
+                alpha,
+                env._SENSOR_MASK_VALUE,
+            )
+
+        # Collision
         if distance_to_wall < MAX_ABS_VELOCITY * DT:
-            if np.abs(1.0 - observation.collision[1]) < 1e-6:
+            if np.abs(1.0 - observation.collision[2]) < 1e-6:
                 break
         else:
-            print(distance_to_wall)
-            assert_almost_equal(observation.collision[1], 0.0)
+            assert_almost_equal(observation.collision[2], 0.0)

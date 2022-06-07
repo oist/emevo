@@ -7,6 +7,7 @@ import pymunk
 from loguru import logger
 from numpy.random import PCG64, Generator
 from numpy.typing import NDArray
+from pymunk.collision_handler import CollisionHandler
 from pymunk.vec2d import Vec2d
 
 from emevo.body import Body, Encount
@@ -239,15 +240,15 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         """
         Observe the environment.
         More specifically, an observation of each agent consists of:
-        - Sensor observation for food/agent/static object
-        - Collision to food/agent/static object
+        - Sensor observation for agent/food/static object
+        - Collision to agent/food/static object
         - Velocity of the body
         """
         sensor_data = self._accumulate_sensor_data(body)
         collision_data = np.zeros(3, dtype=np.float32)
         collision_data[0] = body.uuid in self._encounted_bodies
-        collision_data[1] = body.uuid in self._static_handler.collided_bodies
-        collision_data[2] = min(self._food_handler.n_eaten_foods[body.uuid], 1)
+        collision_data[1] = min(self._food_handler.n_eaten_foods[body.uuid], 1)
+        collision_data[2] = body.uuid in self._static_handler.collided_bodies
 
         return FgObs(
             sensor=sensor_data,
@@ -320,7 +321,12 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
             query_result = pymunk_utils.sensor_query(self._space, body._body, sensor)
             if query_result is not None:
                 categ, dist = query_result
-                sensor_data[categ][i] = dist
+                assert categ in [
+                    pymunk_utils.CollisionType.AGENT,
+                    pymunk_utils.CollisionType.FOOD,
+                    pymunk_utils.CollisionType.STATIC,
+                ]
+                sensor_data[categ.value][i] = dist
         return sensor_data
 
     def _all_encounts(self) -> List[Encount]:

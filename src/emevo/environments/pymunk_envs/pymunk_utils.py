@@ -170,7 +170,7 @@ def sensor_query(
     if query_result is None or query_result.shape is None:
         return None
     else:
-        collision_type = query_result.shape.collision_type
+        collision_type = CollisionType(query_result.shape.collision_type)
         return collision_type, query_result.alpha
 
 
