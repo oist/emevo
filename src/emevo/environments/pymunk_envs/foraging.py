@@ -7,7 +7,6 @@ import pymunk
 from loguru import logger
 from numpy.random import PCG64, Generator
 from numpy.typing import NDArray
-from pymunk.collision_handler import CollisionHandler
 from pymunk.vec2d import Vec2d
 
 from emevo.body import Body, Encount
@@ -87,7 +86,7 @@ def _range(segment: Tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
-class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
+class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
     _SENSOR_MASK_VALUE = 2.0
@@ -270,14 +269,13 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         self._generator = Generator(PCG64(seed=seed))
         self._initialize_bodies_and_foods()
 
-    def born(self, location: NDArray, generation: int) -> Optional[FgBody]:
-        loc_tuple = tuple(location)
-        if self._can_place(loc_tuple, self._agent_radius):
-            body = self._make_body(generation=generation, loc=Vec2d(*loc_tuple))
+    def born(self, location: Vec2d, generation: int) -> Optional[FgBody]:
+        if self._can_place(location, self._agent_radius):
+            body = self._make_body(generation=generation, loc=location)
             self._bodies.append(body)
             return body
         else:
-            logger.warning(f"Failed to place the body at {loc_tuple}")
+            logger.warning(f"Failed to place the body at {location}")
             return None
 
     def dead(self, body: FgBody) -> None:
@@ -348,7 +346,7 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
         self._static_handler.clear()
         self._encounted_bodies.clear()
 
-    def _can_place(self, point: Tuple[float, float], radius: float) -> bool:
+    def _can_place(self, point: Vec2d, radius: float) -> bool:
         nearest = self._space.point_query_nearest(
             point,
             radius,
@@ -427,13 +425,13 @@ class Foraging(Env[NDArray, FgBody, NDArray, FgObs], pymunk_env.PymunkEnv):
     def _try_placing_agent(self) -> Optional[NDArray]:
         for _ in range(self._max_place_attempts):
             sampled = self._body_loc_fn(self._generator)
-            if self._can_place(tuple(sampled), self._agent_radius):
+            if self._can_place(Vec2d(*sampled), self._agent_radius):
                 return sampled
         return None
 
     def _try_placing_food(self, locations: List[Vec2d]) -> Optional[NDArray]:
         for _ in range(self._max_place_attempts):
             sampled = self._food_loc_fn(self._generator, locations)
-            if self._can_place(tuple(sampled), self._food_radius):
+            if self._can_place(Vec2d(*sampled), self._food_radius):
                 return sampled
         return None

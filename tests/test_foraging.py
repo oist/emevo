@@ -6,6 +6,7 @@ import pytest
 from loguru import logger
 from numpy.testing import assert_almost_equal
 from numpy.typing import NDArray
+from pymunk.vec2d import Vec2d
 
 from emevo import _test_utils as utils
 from emevo.environments.pymunk_envs import Foraging
@@ -87,6 +88,36 @@ class DebugLogHandler:
             if query in log:
                 n_occurance += 1
         return n_occurance == 1
+
+
+def test_birth(env: Foraging) -> None:
+    """
+    A  F
+
+    A  A
+    Kill the lower right body.
+    """
+    assert len(env.bodies()) == 3
+    body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
+    place = body.info().position
+    assert env.born(place, 1) is None
+    assert env.born(place + Vec2d(6.5, -5.0), 1) is None
+    assert env.born(place + Vec2d(-16.0, 0.0), 1) is not None
+    env.dead(body)
+    assert env.born(place, 1) is not None
+
+
+def test_death(env: Foraging) -> None:
+    """
+    A  F
+
+    A  A
+    Kill the lower right body.
+    """
+    assert len(env.bodies()) == 3
+    body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
+    env.dead(body)
+    assert len(env.bodies()) == 2
 
 
 def test_eating(env: Foraging) -> None:
