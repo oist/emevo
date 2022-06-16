@@ -4,7 +4,7 @@ Abstract API for bodily existance of agents
 
 import abc
 import dataclasses
-from typing import Any, Dict, NamedTuple, NoReturn, Optional, Union
+from typing import Any, NamedTuple, NoReturn, Union
 from uuid import uuid4
 
 from numpy.typing import ArrayLike

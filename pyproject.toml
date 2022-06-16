@@ -4,3 +4,6 @@ requires = ["setuptools>=42"]
 
 [tool.isort]
 profile = "black"
+
+[tool.pyright]
+include = ["src"]

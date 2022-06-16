@@ -1,7 +1,6 @@
 """ Gym-like make/register system
 """
 import dataclasses
-
 from typing import Any, Dict, NoReturn, Optional, Type
 
 import numpy as np

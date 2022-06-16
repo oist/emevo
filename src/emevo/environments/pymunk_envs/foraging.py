@@ -86,6 +86,11 @@ def _range(segment: Tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
+_FOOD_NUM_FN_DEFAULT = ReprNum.CONSTANT(10)
+_FOOD_LOC_FN_DEFAULT = ReprLoc.GAUSSIAN((150.0, 150.0), (20.0, 20.0))
+_BODY_LOC_FN_DEFAULT = InitLoc.UNIFORM((0.0, 0.0), (150, 150))
+
+
 class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
@@ -95,9 +100,9 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
     def __init__(
         self,
         n_initial_bodies: int = 6,
-        food_num_fn: ReprNumFn = ReprNum.CONSTANT(10),
-        food_loc_fn: ReprLocFn = ReprLoc.GAUSSIAN((150.0, 150.0), (20.0, 20.0)),
-        body_loc_fn: InitLocFn = InitLoc.UNIFORM((0.0, 0.0), (150, 150)),
+        food_num_fn: ReprNumFn = _FOOD_NUM_FN_DEFAULT,
+        food_loc_fn: ReprLocFn = _FOOD_LOC_FN_DEFAULT,
+        body_loc_fn: InitLocFn = _BODY_LOC_FN_DEFAULT,
         xlim: Tuple[float, float] = (0.0, 200.0),
         ylim: Tuple[float, float] = (0.0, 200.0),
         n_agent_sensors: int = 8,
@@ -111,7 +116,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
         food_friction: float = 0.6,
         food_initial_force: Optional[Tuple[float, float]] = None,
         max_abs_force: float = 1.0,
-        max_abs_velocity: float = np.sqrt(2.0),
+        max_abs_velocity: float = 1.4142135623730951,
         dt: float = 0.05,
         encount_threshold: int = 2,
         n_physics_steps: int = 10,

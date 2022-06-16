@@ -2,11 +2,10 @@ import pathlib
 
 import nox
 
-SOURCES = ["src/emevo", "tests", "examples"]
+SOURCES = ["src/emevo", "tests", "smoke-tests"]
 
 
 def _install_self(session: nox.Session) -> None:
-    session.install("setuptools", "--upgrade")
     session.install("-e", ".")
 
 
@@ -49,5 +48,6 @@ def smoke(session: nox.Session) -> None:
 @nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])
 def tests(session: nox.Session) -> None:
     _install_self(session)
+    session.run("pip", "tests", *session.posargs)
     session.install("pytest")
     session.run("pytest", "tests", *session.posargs)

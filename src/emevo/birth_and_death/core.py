@@ -4,7 +4,6 @@
 import abc
 import dataclasses
 import datetime as dt
-
 from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np

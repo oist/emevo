@@ -23,7 +23,7 @@ class InitLoc(str, enum.Enum):
         elif self is InitLoc.UNIFORM:
             return init_loc_uniform(*args, **kwargs)
         else:
-            assert False, "Unreachable"
+            raise AssertionError("Unreachable")
 
 
 def init_loc_gaussian(mean: ArrayLike, stddev: ArrayLike) -> InitLocFn:

@@ -60,7 +60,7 @@ class ReprNum(str, enum.Enum):
         elif self is ReprNum.LOGISTIC:
             return ReprNumLogistic(*args, **kwargs)
         else:
-            assert False, "Unreachable"
+            raise AssertionError("Unreachable")
 
 
 ReprLocFn = Callable[[Generator, Sequence[_Location]], NDArray]
@@ -85,4 +85,4 @@ class ReprLoc(str, enum.Enum):
         elif self is ReprLoc.UNIFORM:
             return _wrap_initloc(init_loc_uniform(*args, **kwargs))
         else:
-            assert False, "Unreachable"
+            raise AssertionError("Unreachable")
