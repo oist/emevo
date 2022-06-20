@@ -9,6 +9,11 @@ def _install_self(session: nox.Session) -> None:
     session.install("-e", ".")
 
 
+def _sync(session: nox.Session, requirements: str) -> None:
+    session.install("pip-tools")
+    session.run("pip-sync", requirements)
+
+
 @nox.session(reuse_venv=True)
 def compile(session: nox.Session) -> None:
     session.install("pip-tools")
@@ -20,14 +25,14 @@ def compile(session: nox.Session) -> None:
 
 @nox.session(reuse_venv=True)
 def format(session: nox.Session) -> None:
-    session.install("-r", "requirements/format.txt")
+    _sync(session, "requirements/format.txt")
     session.run("black", *SOURCES)
     session.run("isort", *SOURCES)
 
 
 @nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])
 def lint(session: nox.Session) -> None:
-    session.install("-r", "requirements/lint.txt")
+    _sync(session, "requirements/lint.txt")
     session.run("flake8", *SOURCES)
     session.run("black", *SOURCES, "--check")
     session.run("isort", *SOURCES, "--check")
@@ -36,8 +41,8 @@ def lint(session: nox.Session) -> None:
 @nox.session(reuse_venv=True)
 def smoke(session: nox.Session) -> None:
     """Run a smoke test"""
-    _install_self(session)
     session.install("-r", "requirements/smoketest.txt")
+    _install_self(session)
     DEFAULT = "smoke-tests/forgaging_loop.py"
     if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):
         session.run("python", *session.posargs)
