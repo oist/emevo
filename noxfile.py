@@ -11,8 +11,12 @@ def _install_self(session: nox.Session) -> None:
 
 
 def _sync(session: nox.Session, requirements: str) -> None:
-    session.install("pip-tools")
-    session.run("pip-sync", requirements)
+    if (
+        not session._runner.global_config.no_install
+        or session._runner.global_config.install_only
+    ):
+        session.install("pip-tools")
+        session.run("pip-sync", requirements)
 
 
 @nox.session(reuse_venv=True)
@@ -42,8 +46,7 @@ def lint(session: nox.Session) -> None:
 @nox.session(reuse_venv=True)
 def smoke(session: nox.Session) -> None:
     """Run a smoke test"""
-    session.install("-r", "requirements/smoketest.txt")
-    _install_self(session)
+    _sync(session, "requirements/smoketest.txt")
     DEFAULT = "smoke-tests/forgaging_loop.py"
     if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):
         session.run("python", *session.posargs)
@@ -53,6 +56,5 @@ def smoke(session: nox.Session) -> None:
 
 @nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])
 def tests(session: nox.Session) -> None:
-    _install_self(session)
-    session.install("pytest")
+    _sync(session, "requirements/tests.txt")
     session.run("pytest", "tests", *session.posargs)
