@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from functools import partial
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, NamedTuple
 from uuid import UUID
 
 import numpy as np
@@ -82,7 +84,7 @@ class FgBody(Body):
         return self._body.position
 
 
-def _range(segment: Tuple[float, float]) -> float:
+def _range(segment: tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
@@ -103,25 +105,25 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
         food_num_fn: ReprNumFn = _FOOD_NUM_FN_DEFAULT,
         food_loc_fn: ReprLocFn = _FOOD_LOC_FN_DEFAULT,
         body_loc_fn: InitLocFn = _BODY_LOC_FN_DEFAULT,
-        xlim: Tuple[float, float] = (0.0, 200.0),
-        ylim: Tuple[float, float] = (0.0, 200.0),
+        xlim: tuple[float, float] = (0.0, 200.0),
+        ylim: tuple[float, float] = (0.0, 200.0),
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
-        sensor_range: Tuple[float, float] = (-180.0, 180.0),
+        sensor_range: tuple[float, float] = (-180.0, 180.0),
         agent_radius: float = 8.0,
         agent_mass: float = 1.4,
         agent_friction: float = 0.6,
         food_radius: float = 4.0,
         food_mass: float = 0.25,
         food_friction: float = 0.6,
-        food_initial_force: Optional[Tuple[float, float]] = None,
+        food_initial_force: tuple[float, float] | None = None,
         max_abs_force: float = 1.0,
         max_abs_velocity: float = 1.4142135623730951,
         dt: float = 0.05,
         encount_threshold: int = 2,
         n_physics_steps: int = 10,
         max_place_attempts: int = 10,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ) -> None:
         # Just copy some invariable configs
         self._dt = dt
@@ -174,7 +176,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
         )
         self._bodies = []
         self._body_uuids = {}
-        self._foods: Dict[pymunk.Body, pymunk.Shape] = {}
+        self._foods: dict[pymunk.Body, pymunk.Shape] = {}
         self._encounted_bodies = set()
         self._generator = Generator(PCG64(seed=seed))
         # Shape filter
@@ -210,11 +212,11 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
     def get_space(self) -> pymunk.Space:
         return self._space
 
-    def bodies(self) -> List[FgBody]:
+    def bodies(self) -> list[FgBody]:
         """Return the list of all bodies"""
         return self._bodies
 
-    def step(self, actions: Dict[FgBody, NDArray]) -> List[Encount]:
+    def step(self, actions: dict[FgBody, NDArray]) -> list[Encount]:
         self._before_step()
         # Add force
         for body, action in actions.items():
@@ -294,7 +296,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
     def visualizer(
         self,
         mode: str,
-        figsize: Optional[Tuple[float, float]] = None,
+        figsize: tuple[float, float] | None = None,
     ) -> Visualizer:
         mode = mode.lower()
         if mode == "mpl":
@@ -332,7 +334,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
                 sensor_data[categ.value][i] = dist
         return sensor_data
 
-    def _all_encounts(self) -> List[Encount]:
+    def _all_encounts(self) -> list[Encount]:
         all_encounts = []
         for uuid_a, uuid_b in self._mating_handler.filter_pairs(
             self._encount_threshold
@@ -396,7 +398,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
         self._body_uuids[body_with_sensors.body] = fgbody.uuid
         return fgbody
 
-    def _make_food(self, loc: Vec2d) -> Tuple[pymunk.Body, pymunk.Shape]:
+    def _make_food(self, loc: Vec2d) -> tuple[pymunk.Body, pymunk.Shape]:
         body, shape = self._make_pymunk_food()
         shape.color = self._FOOD_COLOR
         if self._food_initial_force is not None:
@@ -410,7 +412,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
     def _place_n_foods(
         self,
         n_foods: int,
-        food_locations: Optional[List[pymunk.Vec2d]] = None,
+        food_locations: list[pymunk.Vec2d] | None = None,
     ) -> int:
         if food_locations is None:
             food_locations = []
@@ -427,14 +429,14 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
                 success += 1
         return success
 
-    def _try_placing_agent(self) -> Optional[NDArray]:
+    def _try_placing_agent(self) -> NDArray | None:
         for _ in range(self._max_place_attempts):
             sampled = self._body_loc_fn(self._generator)
             if self._can_place(Vec2d(*sampled), self._agent_radius):
                 return sampled
         return None
 
-    def _try_placing_food(self, locations: List[Vec2d]) -> Optional[NDArray]:
+    def _try_placing_food(self, locations: list[Vec2d]) -> NDArray | None:
         for _ in range(self._max_place_attempts):
             sampled = self._food_loc_fn(self._generator, locations)
             if self._can_place(Vec2d(*sampled), self._food_radius):

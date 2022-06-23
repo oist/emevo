@@ -1,18 +1,8 @@
 """Similar to gym.spaces.Space, but doesn't have RNG"""
+from __future__ import annotations
+
 import abc
-from typing import (
-    Any,
-    Generic,
-    Iterable,
-    NamedTuple,
-    Optional,
-    Sequence,
-    SupportsFloat,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import Any, Generic, Iterable, NamedTuple, Sequence, Type, TypeVar
 
 import numpy as np
 from numpy.random import Generator
@@ -23,7 +13,7 @@ INSTANCE = TypeVar("INSTANCE")
 
 class Space(abc.ABC, Generic[INSTANCE]):
     dtype: np.dtype
-    shape: Tuple[int, ...]
+    shape: tuple[int, ...]
 
     @abc.abstractmethod
     def contains(self, x: INSTANCE) -> bool:
@@ -45,9 +35,9 @@ class BoxSpace(Space[NDArray]):
 
     def __init__(
         self,
-        low: Union[SupportsFloat, NDArray],
-        high: Union[SupportsFloat, NDArray],
-        shape: Optional[Sequence[int]] = None,
+        low: int | float | NDArray,
+        high: int | float | NDArray,
+        shape: Sequence[int] | None = None,
         dtype: DTypeLike = np.float32,
     ) -> None:
         self.dtype = np.dtype(dtype)
@@ -148,7 +138,7 @@ class BoxSpace(Space[NDArray]):
         )
 
 
-def get_inf(dtype, sign: str) -> SupportsFloat:
+def get_inf(dtype, sign: str) -> int | float:
     """Returns an infinite that doesn't break things.
     Args:
         dtype: An `np.dtype`
@@ -173,7 +163,7 @@ def get_inf(dtype, sign: str) -> SupportsFloat:
 
 
 def _broadcast(
-    value: Union[SupportsFloat, NDArray],
+    value: int | float | NDArray,
     dtype,
     shape: tuple[int, ...],
     inf_sign: str,
@@ -236,7 +226,7 @@ class DiscreteSpace(Space[int]):
 class NamedTupleSpace(Space[NamedTuple], Iterable):
     """Space that returns namedtuple of other spaces"""
 
-    def __init__(self, cls: Type[Tuple], **spaces_kwargs: Space) -> None:
+    def __init__(self, cls: Type[tuple], **spaces_kwargs: Space) -> None:
         assert all(
             [isinstance(s, Space) for s in spaces_kwargs.values()]
         ), "All arguments of NamedTuple space should be a subclass of Space"

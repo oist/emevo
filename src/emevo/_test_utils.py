@@ -2,9 +2,9 @@
 Common utilities used in smoke tests and unit tests.
 Not expected to use externally.
 """
+from __future__ import annotations
 
 import itertools
-from typing import List, Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -16,8 +16,8 @@ from emevo.environments.utils.locating import InitLoc
 
 def predefined_env(
     *,
-    agent_locations: Optional[List[NDArray]] = None,
-    food_locations: Optional[List[NDArray]] = None,
+    agent_locations: list[NDArray] | None = None,
+    food_locations: list[NDArray] | None = None,
     **kwargs,
 ) -> Foraging:
     if agent_locations is None:

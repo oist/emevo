@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from __future__ import annotations
 
 import pygame
 import pymunk.pygame_util
@@ -12,7 +12,7 @@ class PygameVisualizer(Visualizer):
         self,
         x_range: float,
         y_range: float,
-        figsize: Optional[Tuple[float, float]] = None,
+        figsize: tuple[float, float] | None = None,
     ) -> None:
         if figsize is None:
             self._figsize = 600, 600

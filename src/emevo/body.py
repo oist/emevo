@@ -2,9 +2,11 @@
 Abstract API for bodily existance of agents
 """
 
+from __future__ import annotations
+
 import abc
 import dataclasses
-from typing import Any, NamedTuple, NoReturn, Union
+from typing import Any, NamedTuple, NoReturn
 from uuid import uuid4
 
 from numpy.typing import ArrayLike
@@ -24,7 +26,7 @@ class Profile:
 
     name: str
     generation: int
-    birthtime: Union[int, float]
+    birthtime: int | float
 
     def __deepcopy__(self) -> NoReturn:
         raise RuntimeError("Profile cannot be copied")
@@ -33,7 +35,21 @@ class Profile:
 class Body(Locatable, abc.ABC):
     """
     Reprsents the bodily existance of the agent, also works as an effecient key object.
-    """
+        return success
+
+    def _try_placing_agent(self) -> NDArray | None:
+        for _ in range(self._max_place_attempts):
+            sampled = self._body_loc_fn(self._generator)
+            if self._can_place(Vec2d(*sampled), self._agent_radius):
+                return sampled
+        return None
+
+    def _try_placing_food(self, locations: list[Vec2d]) -> NDArray | None:
+        for _ in range(self._max_place_attempts):
+            sampled = self._food_loc_fn(self._generator, locations)
+            if self._can_place(Vec2d(*sampled), self._food_radius):
+                return sampled
+        return None"""
 
     def __init__(
         self,
@@ -41,7 +57,7 @@ class Body(Locatable, abc.ABC):
         obs_space: Space,
         name: str = "NoName",
         generation: int = 0,
-        birthtime: Union[int, float] = 0,
+        birthtime: int | float = 0,
     ) -> None:
         self.act_space = act_space
         self.obs_space = obs_space

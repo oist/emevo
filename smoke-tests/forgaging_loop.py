@@ -1,7 +1,7 @@
 """Example of using foraging environment"""
 
 import enum
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import typer
@@ -19,7 +19,7 @@ class Rendering(str, enum.Enum):
 def main(
     n_steps: int = 100,
     rendering: Optional[Rendering] = None,
-    food_initial_force: Optional[Tuple[float, float]] = None,
+    food_initial_force: Optional[tuple[float, float]] = None,
     seed: int = 1,
     debug: bool = False,
     forward_sensor: bool = False,

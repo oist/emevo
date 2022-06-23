@@ -1,8 +1,10 @@
 """
 Abstract environment API.
 """
+from __future__ import annotations
+
 import abc
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from emevo.body import Body, Encount
 
@@ -22,12 +24,12 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def bodies(self) -> List[BODY]:
+    def bodies(self) -> list[BODY]:
         """Returns all 'alive' bodies in the environment"""
         pass
 
     @abc.abstractmethod
-    def step(self, actions: Dict[BODY, ACT]) -> List[Encount]:
+    def step(self, actions: dict[BODY, ACT]) -> list[Encount]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
         Returns the next state and all encounts.
@@ -40,12 +42,12 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def reset(self, seed: Optional[int] = None) -> None:
+    def reset(self, seed: int | None = None) -> None:
         """Do some initialization"""
         pass
 
     @abc.abstractmethod
-    def born(self, location: LOC, generation: int) -> Optional[BODY]:
+    def born(self, location: LOC, generation: int) -> BODY | None:
         """Taken a location, generate and place a newborn in the environment."""
         pass
 

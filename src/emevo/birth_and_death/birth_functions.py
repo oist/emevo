@@ -14,9 +14,9 @@ def _scaled_log(value: float, scale: float) -> float:
 def log_prod(
     scale_energy: float,
     scale_prob: float,
-) -> t.Callable[[t.Tuple[AgeAndEnergy, AgeAndEnergy], Encount], float]:
+) -> t.Callable[[tuple[AgeAndEnergy, AgeAndEnergy], Encount], float]:
     def success_prob(
-        statuses: t.Tuple[AgeAndEnergy, AgeAndEnergy],
+        statuses: tuple[AgeAndEnergy, AgeAndEnergy],
         encount: Encount,
     ) -> float:
         log_e1, log_e2 = map(

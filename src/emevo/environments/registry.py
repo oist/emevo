@@ -1,7 +1,9 @@
 """ Gym-like make/register system
 """
+from __future__ import annotations
+
 import dataclasses
-from typing import Any, Dict, NoReturn, Optional, Type
+from typing import Any, NoReturn, Type
 
 import numpy as np
 
@@ -11,11 +13,11 @@ from emevo import Env
 @dataclasses.dataclass(frozen=True)
 class _EnvSpec:
     cls: Type[Env]
-    description: Optional[str]
-    default_kwargs: Dict[str, Any]
+    description: str | None
+    default_kwargs: dict[str, Any]
 
 
-_REGISTERED_ENVS: Dict[str, _EnvSpec] = {}
+_REGISTERED_ENVS: dict[str, _EnvSpec] = {}
 
 
 def _levenshtein_distance(s_: str, t_: str) -> int:
@@ -78,8 +80,8 @@ def make(
 def register(
     name: str,
     env_class: Type[Env],
-    description: Optional[str] = None,
-    default_kwargs: Optional[Dict[str, Any]] = None,
+    description: str | None = None,
+    default_kwargs: dict[str, Any] | None = None,
 ) -> None:
     if name in _REGISTERED_ENVS:
         raise ValueError(f"{name} is already registered")

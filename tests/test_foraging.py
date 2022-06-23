@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List, Tuple
+from typing import Tuple
 
 import numpy as np
 import pytest
@@ -50,7 +50,7 @@ DT: float = 0.05
 FOOD_RADIUS: float = 4.0
 MAX_ABS_VELOCITY: float = 1.0
 SENSOR_LENGTH: float = 10.0
-YLIM: Tuple[float, float] = 0.0, 200
+YLIM: tuple[float, float] = 0.0, 200
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def env() -> Foraging:
 
 @dataclasses.dataclass
 class DebugLogHandler:
-    logs: List[str] = dataclasses.field(default_factory=list)
+    logs: list[str] = dataclasses.field(default_factory=list)
 
     def __post_init__(self) -> None:
         logger.add(self, format="{message}", level="DEBUG")

@@ -104,7 +104,7 @@ def test_sexual(newborn_kind: str) -> None:
     STEPS_TO_BIRTH: int = 3
 
     def success_prob(
-        statuses: t.Tuple[bd.Status, bd.Status],
+        statuses: tuple[bd.Status, bd.Status],
         encount: Encount,
     ) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)

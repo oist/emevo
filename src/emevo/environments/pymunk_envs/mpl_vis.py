@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from __future__ import annotations
 
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
@@ -12,10 +12,10 @@ from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
 class MplVisualizer(Visualizer):
     def __init__(
         self,
-        xlim: Tuple[float, float],
-        ylim: Tuple[float, float],
-        figsize: Optional[Tuple[float, float]] = None,
-        ax: Optional[Axes] = None,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+        figsize: tuple[float, float] | None = None,
+        ax: Axes | None = None,
     ) -> None:
         if figsize is None:
             figsize = 8.0, 8.0

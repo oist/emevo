@@ -4,7 +4,7 @@
 import abc
 import dataclasses
 import datetime as dt
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Iterable, Optional, Tuple, Union
 
 import numpy as np
 
@@ -38,8 +38,8 @@ class AsexualReprManager:
 
 @dataclasses.dataclass(frozen=True)
 class SexualReprManager:
-    success_prob: Callable[[Tuple[Status, Status], Encount], float]
-    produce: Callable[[Tuple[Status, Status], Encount], Newborn]
+    success_prob: Callable[[tuple[Status, Status], Encount], float]
+    produce: Callable[[tuple[Status, Status], Encount], Newborn]
 
 
 @dataclasses.dataclass
@@ -53,8 +53,8 @@ class Manager:
     death_prob_fn: Callable[[Status], float]
     repr_manager: Union[AsexualReprManager, SexualReprManager]
     rng: Callable[[], float] = np.random.rand
-    statuses: Dict[Body, Status] = dataclasses.field(default_factory=dict)
-    pending_newborns: List[Newborn] = dataclasses.field(default_factory=list)
+    statuses: dict[Body, Status] = dataclasses.field(default_factory=dict)
+    pending_newborns: list[Newborn] = dataclasses.field(default_factory=list)
 
     def available_bodies(self) -> Iterable[Body]:
         return self.statuses.keys()
@@ -83,7 +83,7 @@ class Manager:
         else:
             return None
 
-    def step(self) -> Tuple[List[DeadBody], List[Newborn]]:
+    def step(self) -> Tuple[list[DeadBody], list[Newborn]]:
         deads, newborns = [], []
 
         for body, status in self.statuses.items():
@@ -107,6 +107,6 @@ class Manager:
     def update_status(self, body: Body, **updates) -> None:
         self.statuses[body].update(**updates)
 
-    def stats(self, stats_fn: Callable[[Status], float]) -> Dict[str, float]:
+    def stats(self, stats_fn: Callable[[Status], float]) -> dict[str, float]:
         stats = np.array(list(map(stats_fn, self.statuses.values())))
         return {"Average": np.mean(stats), "Max": np.max(stats), "Min": np.min(stats)}

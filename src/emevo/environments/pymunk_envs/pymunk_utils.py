@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import dataclasses
 import enum
 from collections import defaultdict
-from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Set, Tuple
+from typing import Any, Callable, Iterable, NamedTuple
 from uuid import UUID
 
 import numpy as np
@@ -23,9 +25,9 @@ class CollisionType(enum.IntEnum):
 
 
 def _reorder(
-    shapes: Tuple[pymunk.Shape, pymunk.Shape],
+    shapes: tuple[pymunk.Shape, pymunk.Shape],
     target_type: CollisionType,
-) -> Tuple[pymunk.Shape, pymunk.Shape]:
+) -> tuple[pymunk.Shape, pymunk.Shape]:
     if shapes[0].collision_type == target_type:
         return shapes
     elif shapes[1].collision_type == target_type:
@@ -35,7 +37,7 @@ def _reorder(
 
 
 def _select(
-    shapes: Tuple[pymunk.Shape, pymunk.Shape],
+    shapes: tuple[pymunk.Shape, pymunk.Shape],
     target_type: CollisionType,
 ) -> pymunk.Shape:
     for shape in shapes:
@@ -61,9 +63,9 @@ class FoodHandler:
     Handle collisions between agent and food.
     """
 
-    body_uuids: Dict[pymunk.Body, UUID]
-    eaten_bodies: Set[pymunk.Body] = dataclasses.field(default_factory=set)
-    n_eaten_foods: Dict[UUID, int] = dataclasses.field(
+    body_uuids: dict[pymunk.Body, UUID]
+    eaten_bodies: set[pymunk.Body] = dataclasses.field(default_factory=set)
+    n_eaten_foods: dict[UUID, int] = dataclasses.field(
         default_factory=lambda: defaultdict(lambda: 0)
     )
 
@@ -103,8 +105,8 @@ class MatingHandler:
     Handle collisions between agents.
     """
 
-    body_uuids: Dict[pymunk.Body, UUID]
-    collided_steps: Dict[Tuple[UUID, UUID], int] = dataclasses.field(
+    body_uuids: dict[pymunk.Body, UUID]
+    collided_steps: dict[tuple[UUID, UUID], int] = dataclasses.field(
         default_factory=lambda: defaultdict(lambda: 0)
     )
 
@@ -127,7 +129,7 @@ class MatingHandler:
         for key in self.collided_steps.keys():
             self.collided_steps[key] = 0
 
-    def filter_pairs(self, threshold: int) -> Iterable[Tuple[UUID, UUID]]:
+    def filter_pairs(self, threshold: int) -> Iterable[tuple[UUID, UUID]]:
         """Iterate pairs that collided more than threshold"""
         for pair, n_collided in self.collided_steps.items():
             if threshold <= n_collided:
@@ -138,8 +140,8 @@ class MatingHandler:
 class StaticHandler:
     """Handle collisions between agents and static objects."""
 
-    body_uuids: Dict[pymunk.Body, UUID]
-    collided_bodies: Set[UUID] = dataclasses.field(default_factory=set)
+    body_uuids: dict[pymunk.Body, UUID]
+    collided_bodies: set[UUID] = dataclasses.field(default_factory=set)
 
     def __call__(
         self,
@@ -161,7 +163,7 @@ def sensor_query(
     body: pymunk.Body,
     segment: pymunk.Segment,
     mask: int = pymunk.ShapeFilter.ALL_MASKS() ^ (1 << CollisionType.SENSOR.value),
-) -> Optional[Tuple[CollisionType, float]]:
+) -> tuple[CollisionType, float] | None:
     """Get the nearest object aligned with given segment"""
     start = body.position + segment.a
     end = body.position + segment.b
@@ -179,15 +181,15 @@ class BodyWithSensors(NamedTuple):
 
     body: pymunk.Body
     shape: pymunk.Shape
-    sensors: List[pymunk.Segment]
+    sensors: list[pymunk.Segment]
 
 
 def limit_velocity(
     max_velocity: float,
-) -> Callable[[pymunk.Body, Tuple[float, float], float, float], None]:
+) -> Callable[[pymunk.Body, tuple[float, float], float, float], None]:
     def velocity_callback(
         body: pymunk.Body,
-        gravity: Tuple[float, float],
+        gravity: tuple[float, float],
         damping: float,
         dt: float,
     ) -> None:
@@ -205,7 +207,7 @@ def circle_body(
     collision_type: CollisionType,
     mass: float = 1.0,
     friction: float = 0.6,
-) -> Tuple[pymunk.Body, Circle]:
+) -> tuple[pymunk.Body, Circle]:
     body = pymunk.Body()
     circle = pymunk.Circle(body, radius)
     circle.mass = mass
@@ -221,7 +223,7 @@ def circle_body_with_sensors(
     sensor_length: float,
     mass: float = 1.0,
     friction: float = 0.6,
-    sensor_range: Tuple[float, float] = (-180, 180),
+    sensor_range: tuple[float, float] = (-180, 180),
 ) -> BodyWithSensors:
     body, circle = circle_body(
         radius=radius,
@@ -248,8 +250,8 @@ def circle_body_with_sensors(
 
 def add_static_line(
     space: pymunk.Space,
-    start: Tuple[float, float],
-    end: Tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
     elasticity: float = 0.95,
     friction: float = 0.5,
     radius: float = 1.0,
@@ -270,7 +272,7 @@ def add_static_square(
     ymin: float,
     ymax: float,
     **kwargs,
-) -> List[pymunk.Segment]:
+) -> list[pymunk.Segment]:
     p1 = xmin, ymin
     p2 = xmin, ymax
     p3 = xmax, ymax
