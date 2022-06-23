@@ -1,10 +1,10 @@
 """A common interface for pymunk envs."""
-import abc
+
+from typing import Protocol
 
 import pymunk
 
 
-class PymunkEnv(abc.ABC):
-    @abc.abstractmethod
+class PymunkEnv(Protocol):
     def get_space(self) -> pymunk.Space:
-        pass
+        ...

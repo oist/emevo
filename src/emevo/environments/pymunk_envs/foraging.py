@@ -13,7 +13,7 @@ from pymunk.vec2d import Vec2d
 
 from emevo.body import Body, Encount
 from emevo.env import Env, Visualizer
-from emevo.environments.pymunk_envs import pymunk_env, pymunk_utils
+from emevo.environments.pymunk_envs import pymunk_utils
 from emevo.environments.utils.color import Color
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import InitLoc, InitLocFn
@@ -93,7 +93,7 @@ _FOOD_LOC_FN_DEFAULT = ReprLoc.GAUSSIAN((150.0, 150.0), (20.0, 20.0))
 _BODY_LOC_FN_DEFAULT = InitLoc.UNIFORM((0.0, 0.0), (150, 150))
 
 
-class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
+class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
     _SENSOR_MASK_VALUE = 2.0
@@ -262,7 +262,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
             velocity=np.array(body._body.velocity),
         )
 
-    def reset(self, seed: Optional[Union[NDArray, int]] = None) -> None:
+    def reset(self, seed: int | NDArray | None = None) -> None:
         # Reset indices
         self._sim_steps = 0
         # Remove agents
@@ -276,7 +276,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs], pymunk_env.PymunkEnv):
         self._generator = Generator(PCG64(seed=seed))
         self._initialize_bodies_and_foods()
 
-    def born(self, location: Vec2d, generation: int) -> Optional[FgBody]:
+    def born(self, location: Vec2d, generation: int) -> FgBody | None:
         if self._can_place(location, self._agent_radius):
             body = self._make_body(generation=generation, loc=location)
             self._bodies.append(body)

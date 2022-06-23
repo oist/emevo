@@ -2,10 +2,10 @@
 Utility functions to write food reproduction code in foraging environments.
 """
 
-import abc
+
 import dataclasses
 import enum
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Protocol, Sequence
 
 import numpy as np
 from numpy.random import Generator
@@ -21,12 +21,11 @@ from emevo.environments.utils.locating import (
 _Location = ArrayLike
 
 
-class ReprNumFn(abc.ABC):
+class ReprNumFn(Protocol):
     initial: int
 
-    @abc.abstractmethod
     def __call__(self, current_num: int) -> int:
-        pass
+        ...
 
 
 @dataclasses.dataclass
