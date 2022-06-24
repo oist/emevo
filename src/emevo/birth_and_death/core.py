@@ -1,16 +1,16 @@
 """Core components of birth_and_death, including Manager
 """
+from __future__ import annotations
 
 import abc
 import dataclasses
 import datetime as dt
-from typing import Callable, Iterable, Optional, Tuple, Union
+from typing import Callable, Iterable
 
 import numpy as np
 
+from emevo.birth_and_death.newborn import Newborn
 from emevo.body import Body, Encount
-
-from .newborn import Newborn
 
 
 class Status(abc.ABC):
@@ -51,7 +51,7 @@ class Manager:
 
     status_fn: Callable[..., Status]
     death_prob_fn: Callable[[Status], float]
-    repr_manager: Union[AsexualReprManager, SexualReprManager]
+    repr_manager: AsexualReprManager | SexualReprManager
     rng: Callable[[], float] = np.random.rand
     statuses: dict[Body, Status] = dataclasses.field(default_factory=dict)
     pending_newborns: list[Newborn] = dataclasses.field(default_factory=list)
@@ -66,7 +66,7 @@ class Manager:
     def register(self, body: Body, *status_args, **status_kwargs) -> None:
         self.statuses[body] = self.status_fn(*status_args, **status_kwargs)
 
-    def reproduce(self, body_or_encount: Union[Body, Encount]) -> Optional[Newborn]:
+    def reproduce(self, body_or_encount: Body | Encount) -> Newborn | None:
         if isinstance(body_or_encount, Encount):
             statuses = tuple((self.statuses[body] for body in body_or_encount))
             args = statuses, body_or_encount
@@ -83,7 +83,7 @@ class Manager:
         else:
             return None
 
-    def step(self) -> Tuple[list[DeadBody], list[Newborn]]:
+    def step(self) -> tuple[list[DeadBody], list[Newborn]]:
         deads, newborns = [], []
 
         for body, status in self.statuses.items():
