@@ -4,28 +4,16 @@
 #
 #    pip-compile --output-file=requirements/tests.txt requirements/tests.in
 #
--e file:///home/yu/Programs/emevo
-    # via -r requirements/dev.in
 attrs==21.4.0
     # via pytest
-cffi==1.15.0
-    # via pymunk
 iniconfig==1.1.1
     # via pytest
-loguru==0.6.0
-    # via emevo
-numpy==1.22.4
-    # via emevo
 packaging==21.3
     # via pytest
 pluggy==1.0.0
     # via pytest
 py==1.11.0
     # via pytest
-pycparser==2.21
-    # via cffi
-pymunk==6.2.1
-    # via emevo
 pyparsing==3.0.9
     # via packaging
 pytest==7.1.2

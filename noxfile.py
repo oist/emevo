@@ -23,6 +23,12 @@ def _sync(session: nox.Session, requirements: str) -> None:
 def compile(session: nox.Session) -> None:
     session.install("pip-tools")
     requirements_dir = pathlib.Path("requirements")
+    session.run(
+        "pip-compile",
+        "pyproject.toml",
+        "--output-file",
+        "requirements/self.txt",
+    )
     for path in requirements_dir.glob("*.in"):
         txt_file = f"requirements/{path.stem}.txt"
         session.run("pip-compile", path.as_posix(), "--output-file", txt_file)
@@ -47,6 +53,7 @@ def lint(session: nox.Session) -> None:
 def smoke(session: nox.Session) -> None:
     """Run a smoke test"""
     _sync(session, "requirements/smoketest.txt")
+    session.install("-e", ".")
     DEFAULT = "smoke-tests/forgaging_loop.py"
     if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):
         session.run("python", *session.posargs)
@@ -57,4 +64,5 @@ def smoke(session: nox.Session) -> None:
 @nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])
 def tests(session: nox.Session) -> None:
     _sync(session, "requirements/tests.txt")
+    session.install("-e", ".")
     session.run("pytest", "tests", *session.posargs)

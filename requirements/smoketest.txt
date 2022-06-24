@@ -4,21 +4,9 @@
 #
 #    pip-compile --output-file=requirements/smoketest.txt requirements/smoketest.in
 #
--e file:///home/yu/Programs/emevo
-    # via -r requirements/dev.in
-cffi==1.15.0
-    # via pymunk
 click==8.0.3
     # via typer
-loguru==0.6.0
-    # via emevo
-numpy==1.22.4
-    # via emevo
-pycparser==2.21
-    # via cffi
 pygame==2.1.2
     # via -r requirements/smoketest.in
-pymunk==6.2.1
-    # via emevo
 typer==0.4.0
     # via -r requirements/smoketest.in

@@ -1,2 +1,2 @@
--r dev.in
+-c self.txt
 pytest
