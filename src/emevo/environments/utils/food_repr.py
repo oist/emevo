@@ -29,7 +29,7 @@ class ReprNumFn(Protocol):
 
 
 @dataclasses.dataclass
-class ReprNumConstant(ReprNumFn):
+class ReprNumConstant:
     initial: int
 
     def __call__(self, current_num: int) -> int:
@@ -37,7 +37,7 @@ class ReprNumConstant(ReprNumFn):
 
 
 @dataclasses.dataclass
-class ReprNumLogistic(ReprNumFn):
+class ReprNumLogistic:
     initial: int
     growth_rate: float
     capacity: float

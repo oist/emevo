@@ -4,7 +4,7 @@ Abstract environment API.
 from __future__ import annotations
 
 import abc
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
 from emevo.body import Body, Encount
 
@@ -67,15 +67,13 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
 
-class Visualizer:
+class Visualizer(Protocol):
     def close(self) -> None:
         """Close this visualizer"""
-        pass
 
     def render(self, env: Any) -> Any:
         """Render image"""
-        raise NotImplementedError("render is not implemented")
+        ...
 
     def show(self) -> None:
         """Open a GUI window"""
-        pass
