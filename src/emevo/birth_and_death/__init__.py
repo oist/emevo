@@ -1,5 +1,4 @@
-"""
-birth_and_death module provides some utilities for handling birth and death of agents.
+"""Utilities for handling birth and death of agents.
 """
 
 from . import birth_functions, death_functions, statuses  # noqa

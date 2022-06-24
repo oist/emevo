@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import typing as t
 
 import numpy as np
-from scipy.stats import norm
 
 from emevo import Body, Encount
+
 from .statuses import AgeAndEnergy
 
 
@@ -14,9 +16,9 @@ def _scaled_log(value: float, scale: float) -> float:
 def log_prod(
     scale_energy: float,
     scale_prob: float,
-) -> t.Callable[[t.Tuple[AgeAndEnergy, AgeAndEnergy], Encount], float]:
+) -> t.Callable[[tuple[AgeAndEnergy, AgeAndEnergy], Encount], float]:
     def success_prob(
-        statuses: t.Tuple[AgeAndEnergy, AgeAndEnergy],
+        statuses: tuple[AgeAndEnergy, AgeAndEnergy],
         encount: Encount,
     ) -> float:
         log_e1, log_e2 = map(
@@ -39,6 +41,8 @@ def normal(
     stddev: float,
     energy_max: float = 8.0,
 ) -> t.Callable[[AgeAndEnergy], float]:
+    from scipy.stats import norm
+
     def success_prob(status: AgeAndEnergy, _body: Body) -> float:
         energy_coef = max(0.0, status.energy) / energy_max
         return norm.pdf(status.age, loc=mean, scale=stddev) * energy_coef

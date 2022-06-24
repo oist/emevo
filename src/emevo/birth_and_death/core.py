@@ -1,16 +1,16 @@
 """Core components of birth_and_death, including Manager
 """
+from __future__ import annotations
 
 import abc
 import dataclasses
 import datetime as dt
-import typing as t
+from typing import Callable, Iterable
 
 import numpy as np
 
+from emevo.birth_and_death.newborn import Newborn
 from emevo.body import Body, Encount
-
-from .newborn import Newborn
 
 
 class Status(abc.ABC):
@@ -32,14 +32,14 @@ class DeadBody:
 
 @dataclasses.dataclass(frozen=True)
 class AsexualReprManager:
-    success_prob: t.Callable[[Status, Body], float]
-    produce: t.Callable[[Status, Body], Newborn]
+    success_prob: Callable[[Status, Body], float]
+    produce: Callable[[Status, Body], Newborn]
 
 
 @dataclasses.dataclass(frozen=True)
 class SexualReprManager:
-    success_prob: t.Callable[[t.Tuple[Status, Status], Encount], float]
-    produce: t.Callable[[t.Tuple[Status, Status], Encount], Newborn]
+    success_prob: Callable[[tuple[Status, Status], Encount], float]
+    produce: Callable[[tuple[Status, Status], Encount], Newborn]
 
 
 @dataclasses.dataclass
@@ -49,14 +49,14 @@ class Manager:
     Note that Manager does not manage matings.
     """
 
-    status_fn: t.Callable[..., Status]
-    death_prob_fn: t.Callable[[Status], float]
-    repr_manager: t.Union[AsexualReprManager, SexualReprManager]
-    rng: t.Callable[[], float] = np.random.rand
-    statuses: t.Dict[Body, Status] = dataclasses.field(default_factory=dict)
-    pending_newborns: t.List[Newborn] = dataclasses.field(default_factory=list)
+    status_fn: Callable[..., Status]
+    death_prob_fn: Callable[[Status], float]
+    repr_manager: AsexualReprManager | SexualReprManager
+    rng: Callable[[], float] = np.random.rand
+    statuses: dict[Body, Status] = dataclasses.field(default_factory=dict)
+    pending_newborns: list[Newborn] = dataclasses.field(default_factory=list)
 
-    def available_bodies(self) -> t.Iterable[Body]:
+    def available_bodies(self) -> Iterable[Body]:
         return self.statuses.keys()
 
     @property
@@ -66,9 +66,9 @@ class Manager:
     def register(self, body: Body, *status_args, **status_kwargs) -> None:
         self.statuses[body] = self.status_fn(*status_args, **status_kwargs)
 
-    def reproduce(self, body_or_encount: t.Union[Body, Encount]) -> t.Optional[Newborn]:
+    def reproduce(self, body_or_encount: Body | Encount) -> Newborn | None:
         if isinstance(body_or_encount, Encount):
-            statuses = tuple((self.statuses[body] for body in body_or_encount.bodies))
+            statuses = tuple((self.statuses[body] for body in body_or_encount))
             args = statuses, body_or_encount
         else:
             assert isinstance(
@@ -83,7 +83,7 @@ class Manager:
         else:
             return None
 
-    def step(self) -> t.Tuple[t.List[DeadBody], t.List[Newborn]]:
+    def step(self) -> tuple[list[DeadBody], list[Newborn]]:
         deads, newborns = [], []
 
         for body, status in self.statuses.items():
@@ -107,6 +107,6 @@ class Manager:
     def update_status(self, body: Body, **updates) -> None:
         self.statuses[body].update(**updates)
 
-    def stats(self, stats_fn: t.Callable[[Status], float]) -> t.Dict[str, float]:
+    def stats(self, stats_fn: Callable[[Status], float]) -> dict[str, float]:
         stats = np.array(list(map(stats_fn, self.statuses.values())))
         return {"Average": np.mean(stats), "Max": np.max(stats), "Min": np.min(stats)}

@@ -1,0 +1,56 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=61", "setuptools-scm"]
+
+[project]
+name = "emevo"
+authors = [{name = "Yuji Kanagawa", email = "yuji.kanagawa@oist.jp"}]
+description = "A simulation platform for Embodied Evolution of learning agents"
+license = {text = "Apache2"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Life",
+    "Typing :: Typed",
+]
+requires-python = ">= 3.8"
+dependencies = [
+    "loguru >= 0.6",
+    "numpy >= 1.20",
+    "pymunk >= 6.0",
+]
+dynamic = ["version"]
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+[project.urls]
+homepage = "https://github.com/kngwyu/emevo"
+bug-tracker = "https://github.com/kngwyu/emevo/issues"
+
+[tool.setuptools]
+include-package-data = true
+license-files = ["LICENSE"]
+
+[tool.setuptools.dynamic]
+version = {attr = "emevo.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pyright]
+include = ["src", "smoke-tests", "tests"]
+extraPaths = [
+    ".nox/tests-3-8/lib/python3.8/site-packages/",
+    ".nox/tests-3-9/lib/python3.9/site-packages/",
+    ".nox/tests-3-10/lib/python3.10/site-packages/",
+    "src",
+]
