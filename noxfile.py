@@ -5,11 +5,6 @@ import nox
 SOURCES = ["src/emevo", "tests", "smoke-tests"]
 
 
-def _install_self(session: nox.Session) -> None:
-    session.install("--upgrade", "setuptools")
-    session.install("-e", ".")
-
-
 def _sync(session: nox.Session, requirements: str) -> None:
     if (
         not session._runner.global_config.no_install
