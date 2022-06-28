@@ -6,14 +6,28 @@
 #
 attrs==21.4.0
     # via pytest
+cffi==1.15.0
+    # via
+    #   -r requirements/self.txt
+    #   pymunk
 iniconfig==1.1.1
     # via pytest
+loguru==0.6.0
+    # via -r requirements/self.txt
+numpy==1.23.0
+    # via -r requirements/self.txt
 packaging==21.3
     # via pytest
 pluggy==1.0.0
     # via pytest
 py==1.11.0
     # via pytest
+pycparser==2.21
+    # via
+    #   -r requirements/self.txt
+    #   cffi
+pymunk==6.2.1
+    # via -r requirements/self.txt
 pyparsing==3.0.9
     # via packaging
 pytest==7.1.2

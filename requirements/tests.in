@@ -1,2 +1,2 @@
--c self.txt
+-r self.txt
 pytest
