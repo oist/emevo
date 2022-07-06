@@ -35,21 +35,7 @@ class Profile:
 class Body(Locatable, abc.ABC):
     """
     Reprsents the bodily existance of the agent, also works as an effecient key object.
-        return success
-
-    def _try_placing_agent(self) -> NDArray | None:
-        for _ in range(self._max_place_attempts):
-            sampled = self._body_loc_fn(self._generator)
-            if self._can_place(Vec2d(*sampled), self._agent_radius):
-                return sampled
-        return None
-
-    def _try_placing_food(self, locations: list[Vec2d]) -> NDArray | None:
-        for _ in range(self._max_place_attempts):
-            sampled = self._food_loc_fn(self._generator, locations)
-            if self._can_place(Vec2d(*sampled), self._food_radius):
-                return sampled
-        return None"""
+    """
 
     def __init__(
         self,
