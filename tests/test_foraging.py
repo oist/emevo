@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from pymunk.vec2d import Vec2d
 
 from emevo import _test_utils as utils
-from emevo.environments.pymunk_envs import Foraging
+from emevo.environments import Foraging
 
 
 def almost_equal(actual: NDArray, desired: float) -> NDArray:

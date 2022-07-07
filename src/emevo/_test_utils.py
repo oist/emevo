@@ -9,7 +9,7 @@ import itertools
 import numpy as np
 from numpy.typing import NDArray
 
-from emevo.environments.pymunk_envs import Foraging
+from emevo.environments import Foraging
 from emevo.environments.utils.food_repr import ReprLoc, ReprNum
 from emevo.environments.utils.locating import InitLoc
 
