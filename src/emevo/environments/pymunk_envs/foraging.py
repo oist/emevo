@@ -27,6 +27,10 @@ class FgObs(NamedTuple):
     collision: NDArray
     velocity: NDArray
 
+    def __array__(self) -> NDArray:
+        sensor = self.sensor.reshape(-1)
+        return np.concatenate([sensor, self.collision, self.velocity])
+
 
 class _FgBodyInfo(NamedTuple):
     position: Vec2d

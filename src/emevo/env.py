@@ -6,14 +6,34 @@ from __future__ import annotations
 import abc
 from typing import Any, Generic, Protocol, TypeVar
 
+from numpy.typing import NDArray
+
 from emevo.body import Body, Encount
 
 Self = Any
 
+
+class Observation(Protocol):
+    def __array__(self) -> NDArray:
+        ...
+
+
 ACT = TypeVar("ACT")
 BODY = TypeVar("BODY", bound=Body)
 LOC = TypeVar("LOC")
-OBS = TypeVar("OBS")
+OBS = TypeVar("OBS", bound=Observation)
+
+
+class Visualizer(Protocol):
+    def close(self) -> None:
+        """Close this visualizer"""
+
+    def render(self, env: Env) -> Any:
+        """Render image"""
+        ...
+
+    def show(self) -> None:
+        """Open a GUI window"""
 
 
 class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
@@ -62,18 +82,6 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def visualizer(self, *args, **kwargs) -> "Visualizer":
+    def visualizer(self, *args, **kwargs) -> Visualizer:
         """Create a visualizer for the environment"""
         pass
-
-
-class Visualizer(Protocol):
-    def close(self) -> None:
-        """Close this visualizer"""
-
-    def render(self, env: Any) -> Any:
-        """Render image"""
-        ...
-
-    def show(self) -> None:
-        """Open a GUI window"""

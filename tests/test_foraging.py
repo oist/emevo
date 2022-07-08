@@ -50,6 +50,7 @@ AGENT_RADIUS: float = 8.0
 DT: float = 0.05
 FOOD_RADIUS: float = 4.0
 MAX_ABS_VELOCITY: float = 1.0
+N_SENSORS: int = 4
 SENSOR_LENGTH: float = 10.0
 YLIM: tuple[float, float] = 0.0, 200
 
@@ -59,7 +60,7 @@ def env() -> Foraging:
     return utils.predefined_env(
         agent_radius=AGENT_RADIUS,
         sensor_length=SENSOR_LENGTH,
-        n_agent_sensors=4,
+        n_agent_sensors=N_SENSORS,
         n_physics_steps=1,
         max_abs_velocity=MAX_ABS_VELOCITY,
         ylim=YLIM,
@@ -260,3 +261,14 @@ def test_static(env: Foraging) -> None:
                 break
         else:
             assert_almost_equal(observation.collision[2], 0.0)
+
+
+def test_observe(env: Foraging) -> None:
+    """
+    Test the observation shape
+    """
+    body = env.bodies()[0]
+
+    _ = env.step({body: np.array([0.0, -1.0])})
+    observation = env.observe(body)
+    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2,)
