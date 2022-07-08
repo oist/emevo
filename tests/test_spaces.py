@@ -55,3 +55,5 @@ def test_namedtuple(gen: np.random.Generator) -> None:
     assert not nt.contains(
         (np.ones(10, dtype=np.float32) * 0.5, np.ones(3, dtype=np.float32) * 1.2),
     )
+    flattened = nt.flatten()
+    assert flattened.shape == (13,)

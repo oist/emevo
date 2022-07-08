@@ -10,8 +10,6 @@ from numpy.typing import NDArray
 
 from emevo.body import Body, Encount
 
-Self = Any
-
 
 class Observation(Protocol):
     def __array__(self) -> NDArray:

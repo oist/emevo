@@ -23,6 +23,10 @@ class Space(abc.ABC, Generic[INSTANCE]):
     def sample(self, generator: Generator) -> INSTANCE:
         pass
 
+    @abc.abstractmethod
+    def flatten(self) -> BoxSpace:
+        raise NotImplementedError()
+
 
 def _short_repr(arr: NDArray) -> str:
     if arr.size != 0 and np.min(arr) == np.max(arr):
@@ -137,6 +141,9 @@ class BoxSpace(Space[NDArray]):
             and np.allclose(self.high, other.high)
         )
 
+    def flatten(self) -> BoxSpace:
+        return self
+
 
 def get_inf(dtype, sign: str) -> int | float:
     """Returns an infinite that doesn't break things.
@@ -222,6 +229,9 @@ class DiscreteSpace(Space[int]):
             and self.start == other.start
         )
 
+    def flatten(self) -> BoxSpace:
+        return BoxSpace(low=np.zeros(self.n), high=np.ones(self.n))
+
 
 class NamedTupleSpace(Space[NamedTuple], Iterable):
     """Space that returns namedtuple of other spaces"""
@@ -281,3 +291,9 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         )
         name = self._space_cls.__name__
         return f"{name}({spaces})"
+
+    def flatten(self) -> BoxSpace:
+        spaces = [space.flatten() for space in self.spaces]
+        low = np.concatenate([space.low for space in spaces])
+        high = np.concatenate([space.high for space in spaces])
+        return BoxSpace(low=low, high=high)
