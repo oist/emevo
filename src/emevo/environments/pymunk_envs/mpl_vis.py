@@ -5,11 +5,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from pymunk.matplotlib_util import DrawOptions
 
-from emevo.env import Visualizer
 from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
 
 
-class MplVisualizer(Visualizer):
+class MplVisualizer:
     def __init__(
         self,
         xlim: tuple[float, float],
@@ -31,10 +30,16 @@ class MplVisualizer(Visualizer):
         self._ax.set_ylim(ylim)
         self._draw_options = DrawOptions(self._ax)
 
+    def close(self) -> None:
+        plt.close()
+
+    def get_image(self) -> Figure:
+        return self._fig
+
     def render(self, env: PymunkEnv) -> Figure:
         space = env.get_space()
         space.debug_draw(self._draw_options)
         return self._fig
 
-    def open(self) -> None:
-        raise NotImplementedError("Open is not implemented for MPL vis")
+    def show(self) -> None:
+        plt.show()

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pygame
 import pymunk.pygame_util
+from numpy.typing import NDArray
 
-from emevo.env import Visualizer
 from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
 
 
-class PygameVisualizer(Visualizer):
+class PygameVisualizer:
     def __init__(
         self,
         x_range: float,
@@ -28,6 +28,9 @@ class PygameVisualizer(Visualizer):
     def close(self) -> None:
         pygame.display.quit()
         pygame.quit()
+
+    def get_image(self) -> NDArray:
+        return pygame.surfarray.pixels3d(self._screen).copy()
 
     def render(self, env: PymunkEnv) -> None:
         pygame.draw.rect(self._pymunk_surface, (255, 255, 255), self._background)

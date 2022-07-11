@@ -25,6 +25,13 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+moderngl = [
+    "moderngl >= 5.6",
+    "moderngl-window >= 2.4"
+]
+pygame = ["pygame >= 2.0"]
+
 [project.readme]
 file = "README.md"
 content-type = "text/markdown"
