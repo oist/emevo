@@ -303,15 +303,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         figsize: tuple[float, float] | None = None,
     ) -> Visualizer:
         mode = mode.lower()
-        if mode == "mpl":
-            from emevo.environments.pymunk_envs import mpl_vis
-
-            return mpl_vis.MplVisualizer(
-                xlim=self._xlim,
-                ylim=self._ylim,
-                figsize=figsize,
-            )
-        elif mode == "pygame":
+        if mode == "pygame":
             from emevo.environments.pymunk_envs import pygame_vis
 
             return pygame_vis.PygameVisualizer(
