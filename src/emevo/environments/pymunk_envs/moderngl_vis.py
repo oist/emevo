@@ -209,6 +209,7 @@ class MglVisualizer:
             backend=backend,
             vsync=vsync,
         )
+        self._figsize = int(figsize[0]), int(figsize[1])
         self._pos_scaling = 1.0 / x_range, 1.0 / y_range
         self._size_scaling = figsize[0] / x_range * 2
         circle_program = _make_gl_program(
@@ -247,7 +248,13 @@ class MglVisualizer:
         self._window.close()
 
     def get_image(self) -> NDArray:
-        pass
+        output = np.frombuffer(
+            self._window.fbo.read(components=4, dtype="f4"),
+            dtype=np.float32,
+        )
+        output = output.reshape(*self._figsize, 4)
+        output = np.flip(output, axis=0)  # Reverse image
+        return np.multiply(output, 255).astype(np.uint8)
 
     def render(self, env: PymunkEnv) -> None:
         self._window.clear(1.0, 1.0, 1.0)
