@@ -13,7 +13,7 @@ from emevo import make
 
 class Rendering(str, enum.Enum):
     PYGAME = "pygame"
-    OPENGL = "opengl"
+    MODERNGL = "moderngl"
 
 
 def main(
@@ -42,8 +42,8 @@ def main(
     bodies = env.bodies()
     gen = np.random.Generator(PCG64(seed=seed))
 
-    if rendering == Rendering.PYGAME:
-        visualizer = env.visualizer(mode="pygame")
+    if rendering is not None:
+        visualizer = env.visualizer(mode=rendering.value)
     else:
         visualizer = None
 

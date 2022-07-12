@@ -10,17 +10,38 @@ cffi==1.15.0
     #   pymunk
 click==8.0.3
     # via typer
+glcontext==2.3.6
+    # via moderngl
 loguru==0.6.0
     # via -r requirements/self.txt
+moderngl==5.6.4
+    # via
+    #   -r requirements/smoke.in
+    #   moderngl-window
+moderngl-window==2.4.1
+    # via -r requirements/smoke.in
+multipledispatch==0.6.0
+    # via pyrr
 numpy==1.23.0
-    # via -r requirements/self.txt
+    # via
+    #   -r requirements/self.txt
+    #   moderngl-window
+    #   pyrr
+pillow==9.2.0
+    # via moderngl-window
 pycparser==2.21
     # via
     #   -r requirements/self.txt
     #   cffi
 pygame==2.1.2
     # via -r requirements/smoke.in
+pyglet==1.5.26
+    # via moderngl-window
 pymunk==6.2.1
     # via -r requirements/self.txt
+pyrr==0.10.3
+    # via moderngl-window
+six==1.16.0
+    # via multipledispatch
 typer==0.4.0
     # via -r requirements/smoke.in

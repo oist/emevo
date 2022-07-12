@@ -37,8 +37,7 @@ class MplVisualizer:
         return self._fig
 
     def render(self, env: PymunkEnv) -> Figure:
-        space = env.get_space()
-        space.debug_draw(self._draw_options)
+        env.get_space().debug_draw(self._draw_options)
         return self._fig
 
     def show(self) -> None:

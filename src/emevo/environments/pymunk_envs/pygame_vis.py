@@ -34,8 +34,7 @@ class PygameVisualizer:
 
     def render(self, env: PymunkEnv) -> None:
         pygame.draw.rect(self._pymunk_surface, (255, 255, 255), self._background)
-        space = env.get_space()
-        space.debug_draw(self._draw_options)
+        env.get_space().debug_draw(self._draw_options)
 
     def show(self) -> None:
         transform = pygame.transform.smoothscale(self._pymunk_surface, self._figsize)

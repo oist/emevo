@@ -319,6 +319,15 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
                 y_range=_range(self._ylim),
                 figsize=figsize,
             )
+        elif mode == "moderngl":
+            from emevo.environments.pymunk_envs import moderngl_vis
+
+            return moderngl_vis.MglVisualizer(
+                x_range=_range(self._xlim),
+                y_range=_range(self._ylim),
+                env=self,
+                figsize=figsize,
+            )
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
