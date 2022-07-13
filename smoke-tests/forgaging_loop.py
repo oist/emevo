@@ -18,7 +18,7 @@ class Rendering(str, enum.Enum):
 
 def main(
     n_steps: int = 100,
-    rendering: Rendering | None = None,
+    render: Rendering | None = None,
     food_initial_force: tuple[float, float] | None = None,
     seed: int = 1,
     debug: bool = False,
@@ -42,8 +42,8 @@ def main(
     bodies = env.bodies()
     gen = np.random.Generator(PCG64(seed=seed))
 
-    if rendering is not None:
-        visualizer = env.visualizer(mode=rendering.value)
+    if render is not None:
+        visualizer = env.visualizer(mode=render.value)
     else:
         visualizer = None
 

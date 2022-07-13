@@ -14,6 +14,8 @@ class PygameVisualizer:
         y_range: float,
         figsize: tuple[float, float] | None = None,
     ) -> None:
+        self.pix_fmt = "rgb24"
+
         if figsize is None:
             self._figsize = 600, 600
         else:

@@ -1,24 +1,20 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Protocol, TypeVar
+from os import PathLike
+from typing import Any, Protocol, TypeVar
 
 from numpy.typing import NDArray
 
-
-class Image(Protocol):
-    def __array__(self) -> NDArray:
-        ...
-
-
 ENV = TypeVar("ENV", contravariant=True)
-IMAGE = TypeVar("IMAGE", covariant=True, bound=Image)
 
 
-class Visualizer(Protocol[ENV, IMAGE]):
+class Visualizer(Protocol[ENV]):
+    pix_fmt: str
+
     def close(self) -> None:
         """Close this visualizer"""
 
-    def get_image(self) -> IMAGE:
+    def get_image(self) -> NDArray:
         ...
 
     def render(self, env: ENV) -> Any:
@@ -29,21 +25,42 @@ class Visualizer(Protocol[ENV, IMAGE]):
         """Open a GUI window"""
 
 
-def save_video(filename: str, size: tuple[int, int], frames: Iterable[Image]) -> None:
-    import imageio_ffmpeg
+class SaveVideoWrapper(Visualizer[ENV]):
+    def __init__(
+        self,
+        visualizer: Visualizer[ENV],
+        filename: PathLike,
+        **kwargs,
+    ) -> None:
+        self.unwrapped = visualizer
+        self.pix_fmt = self.unwrapped.pix_fmt
+        self._path = filename
+        self._writer = None
+        self._iio_kwargs = kwargs
 
-    writer = imageio_ffmpeg.write_frames(filename, size)
-    writer.send(None)
-    for frame in frames:
-        writer.send(frame)
-    writer.close()
+    def close(self) -> None:
+        self.unwrapped.close()
+        if self._writer is not None:
+            self._writer.close()
 
+    def get_image(self) -> NDArray:
+        return self.unwrapped.get_image()
 
-def save_gif(filename: str, size: tuple[int, int], frames: Iterable[Image]) -> None:
-    import imageio
+    def render(self, env: ENV) -> Any:
+        ret = self.unwrapped.render(env)
+        image = self.unwrapped.get_image()
+        if self._writer is None:
+            from imageio_ffmpeg import write_frames
 
-    writer = imageio_ffmpeg.write_frames(filename, size)
-    writer.send(None)
-    for frame in frames:
-        writer.send(frame)
-    writer.close()
+            self._writer = write_frames(
+                self._path,
+                image.shape[:2],
+                pix_fmt_in="rgba",
+                **self._iio_kwargs,
+            )
+            self._writer.send(None)  # seed the generator
+        self._writer.send(image)
+        return ret
+
+    def show(self) -> None:
+        self.unwrapped.show()

@@ -201,6 +201,8 @@ class MglVisualizer:
         backend: str = "pyglet",
         title: str = "Pymunk Env",
     ) -> None:
+        self.pix_fmt = "rgba"
+
         if figsize is None:
             figsize = 600.0, 600.0
         self._window = _make_window(
