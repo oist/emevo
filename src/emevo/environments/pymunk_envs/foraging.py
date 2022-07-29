@@ -301,6 +301,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         self,
         mode: str,
         figsize: tuple[float, float] | None = None,
+        headless: bool = False,
     ) -> Visualizer:
         mode = mode.lower()
         if mode == "pygame":
@@ -319,6 +320,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
                 y_range=_range(self._ylim),
                 env=self,
                 figsize=figsize,
+                backend="headless" if headless else "pyglet",
             )
         else:
             raise ValueError(f"Invalid mode: {mode}")
