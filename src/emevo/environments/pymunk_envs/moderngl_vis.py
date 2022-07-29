@@ -183,8 +183,9 @@ def _collect_segments(
     points = []
     for segment in filter(lambda shape: isinstance(shape, pymunk.Segment), shapes):
         pos = segment.body.position
-        ax, ay = segment.a + pos
-        bx, by = segment.b + pos
+        angle = segment.body.angle
+        ax, ay = segment.a.rotated(angle) + pos
+        bx, by = segment.b.rotated(angle) + pos
         points.append([ax * pos_scaling[0], ay * pos_scaling[1]])
         points.append([bx * pos_scaling[0], by * pos_scaling[1]])
     return np.array(points, dtype=np.float32)
