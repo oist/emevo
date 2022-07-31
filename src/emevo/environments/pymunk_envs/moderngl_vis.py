@@ -278,6 +278,22 @@ class MglVisualizer:
         self._window.swap_buffers()
 
 
+class _EglHeadlessWindow(mglw.context.headless.Window):
+    name = "egl-headless"
+
+    def init_mgl_context(self) -> None:
+        """Create an standalone context and framebuffer"""
+        self._ctx = mgl.create_standalone_context(
+            require=self.gl_version_code,
+            backend="egl",
+        )
+        self._fbo = self.ctx.framebuffer(
+            color_attachments=self.ctx.texture(self.size, 4, samples=self._samples),
+            depth_attachment=self.ctx.depth_texture(self.size, samples=self._samples),
+        )
+        self.use()
+
+
 def _make_window(
     *,
     title: str,
@@ -285,7 +301,10 @@ def _make_window(
     backend: str,
     **kwargs,
 ) -> mglw.BaseWindow:
-    window_cls = mglw.get_window_cls(f"moderngl_window.context.{backend}.Window")
+    if backend == "headless":
+        window_cls = _EglHeadlessWindow
+    else:
+        window_cls = mglw.get_window_cls(f"moderngl_window.context.{backend}.Window")
     window = window_cls(title=title, gl_version=(4, 1), size=size, **kwargs)
     mglw.activate_context(ctx=window.ctx)
     return window
