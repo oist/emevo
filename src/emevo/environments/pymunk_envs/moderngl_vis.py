@@ -10,6 +10,7 @@ import moderngl as mgl
 import moderngl_window as mglw
 import numpy as np
 import pymunk
+from moderngl_window.context import headless
 from numpy.typing import NDArray
 
 from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
@@ -278,7 +279,7 @@ class MglVisualizer:
         self._window.swap_buffers()
 
 
-class _EglHeadlessWindow(mglw.context.headless.Window):
+class _EglHeadlessWindow(headless.Window):
     name = "egl-headless"
 
     def init_mgl_context(self) -> None:
