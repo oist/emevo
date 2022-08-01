@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from functools import partial
+from types import prepare_class
 from typing import Any, NamedTuple
 from uuid import UUID
 
 import numpy as np
 import pymunk
 from loguru import logger
-from numpy.random import PCG64, Generator
+from numpy.random import PCG64, Generator, default_rng
 from numpy.typing import NDArray
 from pymunk.vec2d import Vec2d
 
@@ -92,11 +93,6 @@ def _range(segment: tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
-_FOOD_NUM_FN_DEFAULT = ReprNum.CONSTANT(10)
-_FOOD_LOC_FN_DEFAULT = ReprLoc.GAUSSIAN((150.0, 150.0), (20.0, 20.0))
-_BODY_LOC_FN_DEFAULT = InitLoc.UNIFORM((0.0, 0.0), (150, 150))
-
-
 class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
@@ -106,9 +102,9 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
     def __init__(
         self,
         n_initial_bodies: int = 6,
-        food_num_fn: ReprNumFn = _FOOD_NUM_FN_DEFAULT,
-        food_loc_fn: ReprLocFn = _FOOD_LOC_FN_DEFAULT,
-        body_loc_fn: InitLocFn = _BODY_LOC_FN_DEFAULT,
+        food_num_fn: ReprNumFn | str | tuple[str, ...] = "constant",
+        food_loc_fn: ReprLocFn | str | tuple[str, ...] = "uniform",
+        body_loc_fn: InitLocFn | str | tuple[str, ...] = "gaussian",
         xlim: tuple[float, float] = (0.0, 200.0),
         ylim: tuple[float, float] = (0.0, 200.0),
         n_agent_sensors: int = 8,
@@ -122,7 +118,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         food_friction: float = 0.6,
         food_initial_force: tuple[float, float] | None = None,
         max_abs_force: float = 1.0,
-        max_abs_velocity: float = 1.4142135623730951,
+        max_abs_velocity: float = 1.0,
         dt: float = 0.05,
         encount_threshold: int = 2,
         n_physics_steps: int = 10,
@@ -161,10 +157,42 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
             mass=food_mass,
             friction=food_friction,
         )
+
+        def _get_num_or_loc_fn(
+            arg: Any,
+            enum_type: type,
+            default_args: dict[str, tuple[Any, ...]],
+        ) -> Any:
+            if isinstance(arg, str):
+                return enum_type(arg)(*default_args[arg])
+            elif isinstance(arg, tuple):
+                name, *args = arg
+                return enum_type(name)(*args)
+            else:
+                return arg
+
         # Customizable functions
-        self._food_num_fn = food_num_fn
-        self._food_loc_fn = food_loc_fn
-        self._body_loc_fn = body_loc_fn
+        self._food_num_fn = _get_num_or_loc_fn(
+            food_num_fn,
+            ReprNum,
+            {"constant": (10,), "logistic": (8, 1.2, 12)},
+        )
+        self._food_loc_fn = _get_num_or_loc_fn(
+            food_loc_fn,
+            ReprLoc,
+            {
+                "gaussian": ((150.0, 150.0), (20.0, 20.0)),
+                "uniform": ((0.0, 0.0), (200, 200)),
+            },
+        )
+        self._body_loc_fn = _get_num_or_loc_fn(
+            body_loc_fn,
+            InitLoc,
+            {
+                "gaussian": ((50.0, 50.0), (30.0, 30.0)),
+                "uniform": ((0.0, 0.0), (150, 150)),
+            },
+        )
         # Variables
         self._sim_steps = 0
         self._n_foods = 0
