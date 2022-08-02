@@ -206,7 +206,7 @@ class MglVisualizer:
         self.pix_fmt = "rgba"
 
         if figsize is None:
-            figsize = 600.0, 600.0
+            figsize = x_range * 3.0, y_range * 3.0
         self._window = _make_window(
             title=title,
             size=figsize,

@@ -177,20 +177,27 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
             ReprNum,
             {"constant": (10,), "logistic": (8, 1.2, 12)},
         )
+        x_range, y_range = _range(xlim), _range(ylim)
         self._food_loc_fn = _get_num_or_loc_fn(
             food_loc_fn,
             ReprLoc,
             {
-                "gaussian": ((150.0, 150.0), (20.0, 20.0)),
-                "uniform": ((0.0, 0.0), (200, 200)),
+                "gaussian": (
+                    (xlim[1] * 0.75, ylim[1] * 0.75),
+                    (x_range * 0.1, y_range * 0.1),
+                ),
+                "uniform": ((xlim[0], ylim[0]), (xlim[1], ylim[1])),
             },
         )
         self._body_loc_fn = _get_num_or_loc_fn(
             body_loc_fn,
             InitLoc,
             {
-                "gaussian": ((50.0, 50.0), (30.0, 30.0)),
-                "uniform": ((0.0, 0.0), (150, 150)),
+                "gaussian": (
+                    (xlim[1] * 0.25, ylim[1] * 0.25),
+                    (x_range * 0.3, y_range * 0.3),
+                ),
+                "uniform": ((xlim[0], ylim[0]), (xlim[1] * 0.75, ylim[1] * 0.75)),
             },
         )
         # Variables

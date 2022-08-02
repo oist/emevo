@@ -17,7 +17,7 @@ class PygameVisualizer:
         self.pix_fmt = "rgb24"
 
         if figsize is None:
-            self._figsize = 600, 600
+            self._figsize = x_range * 3, y_range * 3
         else:
             self._figsize = figsize
         pygame.display.init()
