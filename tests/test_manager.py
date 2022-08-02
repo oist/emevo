@@ -29,40 +29,39 @@ class FakeBody(Body):
         return np.array(())
 
 
-def _get_manager(repr_manager, n_bodies: int = 5) -> bd.Manager:
-    manager = bd.Manager(
-        status_fn=partial(
-            bd.statuses.AgeAndEnergy,
-            age=1,
-            energy=DEFAULT_ENERGY_LEVEL,
-        ),
-        death_prob_fn=bd.death_functions.hunger_or_infirmity(0.5, 100.0),
-        repr_manager=repr_manager,
-    )
+@pytest.fixture
+def status_fn():
+    return partial(bd.statuses.AgeAndEnergy, age=1, energy=DEFAULT_ENERGY_LEVEL)
+
+
+@pytest.fixture
+def death_prob_fn():
+    return bd.death_functions.hunger_or_infirmity(0.5, 100.0)
+
+
+def _add_bodies(manager, n_bodies: int = 5) -> None:
     for _ in range(n_bodies):
         manager.register(FakeBody(name="FakeBody"))
-    return manager
 
 
-def test_asexual() -> None:
+def test_asexual(status_fn, death_prob_fn) -> None:
     """Test the most basic setting: Asexual reproduction + Oviparous birth"""
 
     # 10 steps to death, 11 steps to birth, 3 steps to newborn
     STEPS_TO_DEATH: int = DEFAULT_ENERGY_LEVEL
     STEPS_TO_BIRTH: int = 3
 
-    manager = _get_manager(
-        bd.AsexualReprManager(
-            success_prob=lambda status, _body: float(
-                status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
-            ),
-            produce=lambda _status, _body: bd.Oviparous(
-                context=(), time_to_birth=STEPS_TO_BIRTH
-            ),
-        )
+    manager = bd.AsexualReprManager(
+        initial_status_fn=status_fn,
+        death_prob_fn=death_prob_fn,
+        success_prob=lambda status: float(
+            status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
+        ),
+        produce=lambda _status: bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH),
     )
+    _add_bodies(manager)
+
     bodies = list(manager.available_bodies())
-    print(bodies, manager.statuses)
     for step_idx in range(STEPS_TO_DEATH):
         for body_idx, body in enumerate(bodies):
             manager.update_status(
@@ -76,7 +75,7 @@ def test_asexual() -> None:
             assert len(deads) == 2
             assert len(newborns) == 0
             for dead in deads:
-                assert dead.body not in manager.statuses
+                assert dead.body not in manager._statuses
                 bodies.remove(dead.body)
         else:
             assert len(deads) == 0, f"{step_idx}"
@@ -97,7 +96,7 @@ def test_asexual() -> None:
 
 
 @pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
-def test_sexual(newborn_kind: str) -> None:
+def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
     """Test Sexual reproduction"""
 
     # 10 steps to death, 11 steps to birth, 3 steps to newborn
@@ -113,30 +112,28 @@ def test_sexual(newborn_kind: str) -> None:
         return 1.0 if energy_ok else 0.0
 
     if newborn_kind == "oviparous":
-
-        repr_manager = bd.SexualReprManager(
-            success_prob=success_prob,
-            produce=lambda _, __: bd.Oviparous(
-                context=(), time_to_birth=STEPS_TO_BIRTH
-            ),
-        )
+        produce = lambda _, __: bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH)
 
     elif newborn_kind == "viviparous":
 
-        repr_manager = bd.SexualReprManager(
-            success_prob=success_prob,
-            produce=lambda _, encount: bd.Viviparous(
-                context=(),
-                parent=encount.a,
-                time_to_birth=STEPS_TO_BIRTH,
-            ),
+        produce = lambda _, encount: bd.Viviparous(
+            context=(),
+            parent=encount.a,
+            time_to_birth=STEPS_TO_BIRTH,
         )
 
     else:
 
         raise ValueError(f"Unknown newborn kind {newborn_kind}")
 
-    manager = _get_manager(repr_manager=repr_manager)
+    manager = bd.SexualReprManager(
+        initial_status_fn=status_fn,
+        death_prob_fn=death_prob_fn,
+        success_prob=success_prob,
+        produce=produce,
+    )
+    _add_bodies(manager)
+
     bodies = list(manager.available_bodies())
     for step_idx in range(STEPS_TO_DEATH):
         for body_idx, body in enumerate(bodies):
@@ -147,10 +144,10 @@ def test_sexual(newborn_kind: str) -> None:
             assert len(deads) == 2
             assert len(newborns) == 0
             for dead in deads:
-                assert dead.body not in manager.statuses
+                assert dead.body not in manager._statuses
                 bodies.remove(dead.body)
         else:
-            assert len(deads) == 0, f"{i}"
+            assert len(deads) == 0
             assert len(newborns) == 0
 
     for body in bodies:

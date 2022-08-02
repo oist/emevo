@@ -2,11 +2,5 @@
 """
 
 from . import birth_functions, death_functions, statuses  # noqa
-from .core import (  # noqa
-    AsexualReprManager,
-    DeadBody,
-    Manager,
-    SexualReprManager,
-    Status,
-)
+from .core import AsexualReprManager, DeadBody, SexualReprManager, Status  # noqa
 from .newborn import Newborn, Oviparous, Viviparous  # noqa

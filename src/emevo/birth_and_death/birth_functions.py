@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-import typing as t
+from typing import Callable, Protocol
 
 import numpy as np
 
-from emevo import Body, Encount
+from emevo import Encount
 
-from .statuses import AgeAndEnergy
+
+class HasAgeAndEnergy(Protocol):
+    age: float
+    energy: float
+
+
+class HasEnergy(Protocol):
+    energy: float
 
 
 def _scaled_log(value: float, scale: float) -> float:
@@ -16,10 +23,10 @@ def _scaled_log(value: float, scale: float) -> float:
 def log_prod(
     scale_energy: float,
     scale_prob: float,
-) -> t.Callable[[tuple[AgeAndEnergy, AgeAndEnergy], Encount], float]:
+) -> Callable[[tuple[HasAgeAndEnergy, HasAgeAndEnergy], Encount], float]:
     def success_prob(
-        statuses: tuple[AgeAndEnergy, AgeAndEnergy],
-        encount: Encount,
+        statuses: tuple[HasAgeAndEnergy, HasAgeAndEnergy],
+        _encount: Encount,
     ) -> float:
         log_e1, log_e2 = map(
             lambda status: _scaled_log(status.energy, scale_energy), statuses
@@ -29,8 +36,8 @@ def log_prod(
     return success_prob
 
 
-def log(scale_energy: float, scale_prob: float) -> t.Callable[[AgeAndEnergy], float]:
-    def success_prob(status: AgeAndEnergy, _body: Body) -> float:
+def log(scale_energy: float, scale_prob: float) -> Callable[[HasEnergy], float]:
+    def success_prob(status: HasEnergy) -> float:
         return min(1.0, _scaled_log(status.energy, scale_energy) * scale_prob)
 
     return success_prob
@@ -40,10 +47,10 @@ def normal(
     mean: float,
     stddev: float,
     energy_max: float = 8.0,
-) -> t.Callable[[AgeAndEnergy], float]:
+) -> Callable[[HasAgeAndEnergy], float]:
     from scipy.stats import norm
 
-    def success_prob(status: AgeAndEnergy, _body: Body) -> float:
+    def success_prob(status: HasAgeAndEnergy) -> float:
         energy_coef = max(0.0, status.energy) / energy_max
         return norm.pdf(status.age, loc=mean, scale=stddev) * energy_coef
 
