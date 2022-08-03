@@ -177,7 +177,7 @@ def _collect_circles(
     )
 
 
-def _collect_segments(
+def _collect_sensors(
     shapes: list[pymunk.Shape],
     pos_scaling: tuple[float, float],
 ) -> NDArray:
@@ -189,6 +189,21 @@ def _collect_segments(
         bx, by = segment.b.rotated(angle) + pos
         points.append([ax * pos_scaling[0], ay * pos_scaling[1]])
         points.append([bx * pos_scaling[0], by * pos_scaling[1]])
+    return np.array(points, dtype=np.float32)
+
+
+def _collect_heads(
+    shapes: list[pymunk.Shape],
+    pos_scaling: tuple[float, float],
+) -> NDArray:
+    points = []
+    for circle in filter(lambda shape: isinstance(shape, pymunk.Circle), shapes):
+        pos = circle.body.position + circle.offset
+        angle = circle.body.angle
+        p1 = pymunk.Vec2d(circle.radius * 0.4, circle.radius * 0.4).rotated(angle) + pos
+        p2 = pymunk.Vec2d(circle.radius * 0.6, circle.radius * 0.6).rotated(angle) + pos
+        points.append([p1.x * pos_scaling[0], p1.y * pos_scaling[1]])
+        points.append([p2.x * pos_scaling[0], p2.y * pos_scaling[1]])
     return np.array(points, dtype=np.float32)
 
 
@@ -234,18 +249,29 @@ class MglVisualizer:
             scales=scales,
             colors=colors,
         )
-        segments = _collect_segments(shapes, self._pos_scaling)
         segment_program = _make_gl_program(
             self._window.ctx,
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
         )
-        segment_program["color"].write(np.array([0.0, 0.0, 0.0, 0.4], dtype=np.float32))
-        self._segments = SegmentVA(
+        segment_program["color"].write(np.array([0.0, 0.0, 0.0, 0.3], dtype=np.float32))
+        self._sensors = SegmentVA(
             ctx=self._window.ctx,
             program=segment_program,
-            segments=segments,
+            segments=_collect_sensors(shapes, self._pos_scaling),
+        )
+        head_program = _make_gl_program(
+            self._window.ctx,
+            vertex_shader=_LINE_VERTEX_SHADER,
+            geometry_shader=_LINE_GEOMETRY_SHADER,
+            fragment_shader=_LINE_FRAGMENT_SHADER,
+        )
+        head_program["color"].write(np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32))
+        self._heads = SegmentVA(
+            ctx=self._window.ctx,
+            program=head_program,
+            segments=_collect_heads(shapes, self._pos_scaling),
         )
 
     def close(self) -> None:
@@ -271,9 +297,10 @@ class MglVisualizer:
         )
         self._circles.update(points, scales, colors)
         self._circles.render()
-        segments = _collect_segments(shapes, self._pos_scaling)
-        self._segments.update(segments)
-        self._segments.render()
+        self._sensors.update(_collect_sensors(shapes, self._pos_scaling))
+        self._sensors.render()
+        self._heads.update(_collect_heads(shapes, self._pos_scaling))
+        self._heads.render()
 
     def show(self) -> None:
         self._window.swap_buffers()
