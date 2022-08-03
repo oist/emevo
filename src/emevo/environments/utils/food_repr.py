@@ -28,7 +28,7 @@ class ReprNumFn(Protocol):
         ...
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class ReprNumConstant:
     initial: int
 
@@ -36,7 +36,7 @@ class ReprNumConstant:
         return max(0, self.initial - current_num)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class ReprNumLogistic:
     initial: int
     growth_rate: float
