@@ -1,10 +1,28 @@
-import dataclasses
+"""Status, protocols, and implementations """
 
-from emevo.birth_and_death.core import Status
+import dataclasses
+from typing import Protocol
+
+
+class HasAgeAndEnergy(Protocol):
+    age: float
+    energy: float
+
+
+class HasEnergy(Protocol):
+    energy: float
+
+
+class Status(Protocol):
+    def step(self) -> None:
+        ...
+
+    def update(self, **kwargs) -> None:
+        ...
 
 
 @dataclasses.dataclass
-class AgeAndEnergy(Status):
+class AgeAndEnergy(Status, HasAgeAndEnergy):
     """Status cons"""
 
     age: int
@@ -24,7 +42,7 @@ class AgeAndEnergy(Status):
 
 
 @dataclasses.dataclass
-class Energy(Status):
+class Energy(Status, HasEnergy):
     """
     Default implementation of agent's status.
     """

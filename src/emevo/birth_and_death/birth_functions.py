@@ -1,19 +1,11 @@
 from __future__ import annotations
 
-from typing import Callable, Protocol
+from typing import Callable
 
 import numpy as np
 
 from emevo import Encount
-
-
-class HasAgeAndEnergy(Protocol):
-    age: float
-    energy: float
-
-
-class HasEnergy(Protocol):
-    energy: float
+from emevo.birth_and_death.statuses import HasAgeAndEnergy, HasEnergy
 
 
 def _scaled_log(value: float, scale: float) -> float:

@@ -4,16 +4,16 @@ from typing import Callable
 
 import numpy as np
 
-from emevo.birth_and_death.statuses import AgeAndEnergy
+from emevo.birth_and_death.statuses import HasAgeAndEnergy
 
 
 def hunger_or_infirmity(
     energy_threshold: float,
     age_threshold: float,
-) -> Callable[[AgeAndEnergy], float]:
+) -> Callable[[HasAgeAndEnergy], float]:
     """A completely discretized death function"""
 
-    def death_prob_fn(status: AgeAndEnergy) -> float:
+    def death_prob_fn(status: HasAgeAndEnergy) -> float:
         if status.energy < energy_threshold or age_threshold < status.age:
             return 1.0
         else:
@@ -27,11 +27,11 @@ def gompertz_hazard(
     energy_min: float = -5.0,
     energy_max: float = 15.0,
     gompertz_alpha: float = 1e-4,
-) -> Callable[[AgeAndEnergy], float]:
+) -> Callable[[HasAgeAndEnergy], float]:
     """Gompertz hazard function is defined by λ(x) = R exp(αx)"""
     energy_range = energy_max - energy_min
 
-    def death_prob_fn(status: AgeAndEnergy) -> float:
+    def death_prob_fn(status: HasAgeAndEnergy) -> float:
         if status.energy < energy_threshold:
             return 1.0
         r = max(0.0, status.energy - energy_min) / energy_range

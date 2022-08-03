@@ -3,20 +3,13 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Callable, Iterable, Protocol
+from typing import Callable, Iterable
 
 import numpy as np
 
 from emevo.birth_and_death.newborn import Newborn
+from emevo.birth_and_death.statuses import Status
 from emevo.body import Body, Encount
-
-
-class Status(Protocol):
-    def step(self) -> None:
-        ...
-
-    def update(self, **kwargs) -> None:
-        ...
 
 
 @dataclasses.dataclass(frozen=True)

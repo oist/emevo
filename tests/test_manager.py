@@ -55,7 +55,7 @@ def test_asexual(status_fn, death_prob_fn) -> None:
         initial_status_fn=status_fn,
         death_prob_fn=death_prob_fn,
         success_prob=lambda status: float(
-            status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
+            status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH  # type: ignore
         ),
         produce=lambda _status: bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH),
     )
@@ -105,22 +105,25 @@ def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
 
     def success_prob(
         statuses: tuple[bd.Status, bd.Status],
-        encount: Encount,
+        _encount: Encount,
     ) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
-        energy_ok = all(map(lambda status: status.energy > threshold, statuses))
+        energy_ok = all(map(lambda status: status.energy > threshold, statuses))  # type: ignore
         return 1.0 if energy_ok else 0.0
 
     if newborn_kind == "oviparous":
-        produce = lambda _, __: bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH)
+
+        def produce(*_args) -> bd.Oviparous:
+            return bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH)
 
     elif newborn_kind == "viviparous":
 
-        produce = lambda _, encount: bd.Viviparous(
-            context=(),
-            parent=encount.a,
-            time_to_birth=STEPS_TO_BIRTH,
-        )
+        def produce(_, encount) -> bd.Viviparous:
+            return bd.Viviparous(
+                context=(),
+                parent=encount.a,
+                time_to_birth=STEPS_TO_BIRTH,
+            )
 
     else:
 

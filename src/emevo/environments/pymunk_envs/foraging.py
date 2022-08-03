@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from functools import partial
-from types import prepare_class
 from typing import Any, NamedTuple
 from uuid import UUID
 
@@ -117,7 +116,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         food_mass: float = 0.25,
         food_friction: float = 0.1,
         food_initial_force: tuple[float, float] | None = None,
-        wall_friction: float = 0.2,
+        wall_friction: float = 0.05,
         max_abs_force: float = 1.0,
         max_abs_velocity: float = 1.0,
         dt: float = 0.05,
