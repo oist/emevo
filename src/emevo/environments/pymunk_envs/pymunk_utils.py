@@ -24,18 +24,6 @@ class CollisionType(enum.IntEnum):
         return pymunk.ShapeFilter(categories=1 << self.value)
 
 
-def _reorder(
-    shapes: tuple[pymunk.Shape, pymunk.Shape],
-    target_type: CollisionType,
-) -> tuple[pymunk.Shape, pymunk.Shape]:
-    if shapes[0].collision_type == target_type:
-        return shapes
-    elif shapes[1].collision_type == target_type:
-        return shapes[1], shapes[0]
-    else:
-        raise RuntimeError(f"Collision type {target_type} is not found in {shapes}")
-
-
 def _select(
     shapes: tuple[pymunk.Shape, pymunk.Shape],
     target_type: CollisionType,

@@ -56,12 +56,12 @@ _LINE_GEOMETRY_SHADER = """
 layout (lines) in;
 layout (triangle_strip, max_vertices = 4) out;
 uniform mat4 proj;
+uniform float width;
 void main() {
-    const float size = 0.002;
     vec2 a = gl_in[0].gl_Position.xy;
     vec2 b = gl_in[1].gl_Position.xy;
     vec2 a2b = a - b;
-    vec2 a2left = vec2(-a2b.y, a2b.x) / length(a2b) * size;
+    vec2 a2left = vec2(-a2b.y, a2b.x) / length(a2b) * width;
 
     gl_Position = vec4(a - a2left, 0.0, 1.0) * proj;
     EmitVertex();
@@ -183,6 +183,9 @@ def _collect_sensors(
 ) -> NDArray:
     points = []
     for segment in filter(lambda shape: isinstance(shape, pymunk.Segment), shapes):
+        body = segment.body
+        if body.body_type == pymunk.Body.STATIC:
+            continue
         pos = segment.body.position
         angle = segment.body.angle
         ax, ay = segment.a.rotated(angle) + pos
@@ -200,8 +203,8 @@ def _collect_heads(
     for circle in filter(lambda shape: isinstance(shape, pymunk.Circle), shapes):
         pos = circle.body.position + circle.offset
         angle = circle.body.angle
-        p1 = pymunk.Vec2d(circle.radius * 0.4, circle.radius * 0.4).rotated(angle) + pos
-        p2 = pymunk.Vec2d(circle.radius * 0.6, circle.radius * 0.6).rotated(angle) + pos
+        p1 = pymunk.Vec2d(0.0, circle.radius * 0.9).rotated(angle) + pos
+        p2 = pymunk.Vec2d(0.0, circle.radius * 1.2).rotated(angle) + pos
         points.append([p1.x * pos_scaling[0], p1.y * pos_scaling[1]])
         points.append([p2.x * pos_scaling[0], p2.y * pos_scaling[1]])
     return np.array(points, dtype=np.float32)
@@ -218,8 +221,6 @@ class MglVisualizer:
         backend: str = "pyglet",
         title: str = "Pymunk Env",
     ) -> None:
-        self.pix_fmt = "rgba"
-
         if figsize is None:
             figsize = x_range * 3.0, y_range * 3.0
         self._window = _make_window(
@@ -255,7 +256,8 @@ class MglVisualizer:
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
         )
-        segment_program["color"].write(np.array([0.0, 0.0, 0.0, 0.3], dtype=np.float32))
+        segment_program["color"].write(np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32))
+        segment_program["width"].write(np.array([0.002], dtype=np.float32))
         self._sensors = SegmentVA(
             ctx=self._window.ctx,
             program=segment_program,
@@ -268,6 +270,7 @@ class MglVisualizer:
             fragment_shader=_LINE_FRAGMENT_SHADER,
         )
         head_program["color"].write(np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32))
+        head_program["width"].write(np.array([0.004], dtype=np.float32))
         self._heads = SegmentVA(
             ctx=self._window.ctx,
             program=head_program,
