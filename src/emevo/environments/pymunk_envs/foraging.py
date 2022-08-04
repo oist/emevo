@@ -132,6 +132,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         encount_threshold: int = 2,
         n_physics_steps: int = 5,
         max_place_attempts: int = 10,
+        nofriction: bool = False,
         seed: int | None = None,
     ) -> None:
         # Just copy some invariable configs
@@ -149,6 +150,13 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         self._xlim = xlim
         self._ylim = ylim
         self._food_initial_force = food_initial_force
+
+        # nofriction overrides friction values
+        if nofriction:
+            agent_friction = 0.0
+            food_friction = 0.0
+            wall_friction = 0.0
+
         # Save pymunk params in closures
         self._make_pymunk_body = partial(
             utils.circle_body_with_sensors,
