@@ -118,7 +118,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
         sensor_range: tuple[float, float] = (-180.0, 180.0),
-        agent_radius: float = 8.0,
+        agent_radius: float = 12.0,
         agent_mass: float = 1.4,
         agent_friction: float = 0.1,
         food_radius: float = 4.0,
@@ -130,7 +130,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         max_abs_velocity: float = 1.0,
         dt: float = 0.05,
         encount_threshold: int = 2,
-        n_physics_steps: int = 10,
+        n_physics_steps: int = 5,
         max_place_attempts: int = 10,
         seed: int | None = None,
     ) -> None:
