@@ -271,18 +271,18 @@ def test_observe(env: Foraging) -> None:
 
     _ = env.step({body: np.array([0.0, -1.0])})
     observation = env.observe(body)
-    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2,)
+    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 1 + 1,)
 
 
 def test_can_place(env: Foraging) -> None:
     """Test that invalid position is correctly rejected"""
     assert not env._can_place(Vec2d(-10.0, -10.0), 1.0)
     assert not env._can_place(Vec2d(0.0, 0.0), 1.0)
-    assert not env._can_place(Vec2d(1.9, 1.9), 1.0)
-    assert env._can_place(Vec2d(2.0, 2.0), 1.0)
+    assert not env._can_place(Vec2d(0.9, 0.9), 1.0)
+    assert env._can_place(Vec2d(1.5, 1.5), 1.0)
     assert not env._can_place(Vec2d(200.0, 200.0), 1.0)
     assert not env._can_place(Vec2d(220.0, 220.0), 1.0)
-    assert not env._can_place(Vec2d(198.1, 198.1), 1.0)
-    assert env._can_place(Vec2d(198.0, 198.0), 1.0)
+    assert not env._can_place(Vec2d(198.6, 198.6), 1.0)
+    assert env._can_place(Vec2d(198.5, 198.5), 1.0)
     assert not env._can_place(Vec2d(50.0, 48.0), 5.0)
     assert env._can_place(Vec2d(50.0, 48.0), 4.0)

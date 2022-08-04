@@ -25,11 +25,14 @@ class FgObs(NamedTuple):
 
     sensor: NDArray
     collision: NDArray
-    velocity: NDArray
+    velocity: Vec2d
+    angle: float
+    angular_velocity: float
 
     def __array__(self) -> NDArray:
         sensor = self.sensor.reshape(-1)
-        return np.concatenate([sensor, self.collision, self.velocity])
+        v_a_av = np.array((*self.velocity, self.angle, self.angular_velocity))
+        return np.concatenate((sensor, self.collision, v_a_av))
 
 
 class _FgBodyInfo(NamedTuple):
@@ -66,6 +69,12 @@ class FgBody(Body):
             ),
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
             velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
+            angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
+            angular_velocity=BoxSpace(
+                low=-max_abs_velocity,
+                high=max_abs_velocity,
+                shape=(1,),
+            ),
         )
         super().__init__(
             BoxSpace(low=act_low, high=act_high),
@@ -96,7 +105,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
     _SENSOR_MASK_VALUE = 2.0
-    _WALL_RADIUS = 1.0
+    _WALL_RADIUS = 0.5
 
     def __init__(
         self,
@@ -298,7 +307,9 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         return FgObs(
             sensor=sensor_data,
             collision=collision_data,
-            velocity=np.array(body._body.velocity),
+            velocity=body._body.velocity,
+            angle=body._body.angle % (2.0 * np.pi),
+            angular_velocity=body._body.angular_velocity,
         )
 
     def reset(self, seed: int | NDArray | None = None) -> None:
