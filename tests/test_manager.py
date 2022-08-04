@@ -5,6 +5,7 @@ from functools import partial
 import numpy as np
 import pytest
 from numpy.typing import NDArray
+from pymunk.vec2d import operator
 
 from emevo import Body, Encount
 from emevo import birth_and_death as bd
@@ -108,17 +109,20 @@ def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
         _encount: Encount,
     ) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
-        energy_ok = all(map(lambda status: status.energy > threshold, statuses))  # type: ignore
-        return 1.0 if energy_ok else 0.0
+        e1, e2 = map(operator.attrgetter("energy"), statuses)
+        if e1 > threshold and e2 > threshold:
+            return 1.0
+        else:
+            return 0.0
 
     if newborn_kind == "oviparous":
 
-        def produce(*_args) -> bd.Oviparous:
+        def produce(_statuses, _encount) -> bd.Oviparous:
             return bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH)
 
     elif newborn_kind == "viviparous":
 
-        def produce(_, encount) -> bd.Viviparous:
+        def produce(_statuses, encount) -> bd.Viviparous:
             return bd.Viviparous(
                 context=(),
                 parent=encount.a,
