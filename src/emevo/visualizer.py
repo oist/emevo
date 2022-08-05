@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from os import PathLike
-from typing import Any, Protocol, TypeVar
+from typing import Any, Callable, Iterable, Literal, Protocol, TypeVar
 
+import numpy as np
 from numpy.typing import NDArray
 
 ENV = TypeVar("ENV", contravariant=True)
@@ -23,6 +24,60 @@ class Visualizer(Protocol[ENV]):
 
     def show(self) -> None:
         """Open a GUI window"""
+
+
+ImageSource = Callable[[], NDArray]
+
+
+class ImageComposeWrapper(Visualizer[ENV]):
+    def __init__(
+        self,
+        visualizer: Visualizer[ENV],
+        image_sources: Iterable[ImageSource],
+        compose_rules: Iterable[Literal["h", "v"]],
+        **kwargs,
+    ) -> None:
+        self.unwrapped = visualizer
+        self.pix_fmt = self.unwrapped.pix_fmt
+        self._image_sources = image_sources
+        self._compose_rules = compose_rules
+
+    def close(self) -> None:
+        self.unwrapped.close()
+
+    def get_image(self) -> NDArray:
+        images = [self.unwrapped.get_image()]
+        orig_image = images[0]
+        total_w, total_h = orig_image.shape[:2]
+        offsets: list[tuple[int, int]] = [(0, 0)]
+        for rule, source in zip(self._compose_rules, self._image_sources):
+            image = source()
+            images.append(image)
+            w, h = image.shape[:2]
+            if rule == "h":
+                offsets.append((0, total_h))
+                total_w = max(w, total_w)
+                total_h += h
+            elif rule == "v":
+                offsets.append((total_w, 0))
+                total_w += w
+                total_h = max(h, total_h)
+            else:
+                raise ValueError(f"Invalid image composition rule: {rule}")
+        new_image = np.zeros(
+            (total_w, total_h, *orig_image.shape[2:]),
+            dtype=orig_image.dtype,
+        )
+        for (w_offset, h_offset), image in zip(offsets, images):
+            w, h = image.shape[:2]
+            new_image[w_offset : w_offset + w, h_offset : h_offset + h] = image
+        return new_image
+
+    def render(self, env: ENV) -> Any:
+        self.unwrapped.render(env)
+
+    def show(self) -> None:
+        self.unwrapped.show()
 
 
 class SaveVideoWrapper(Visualizer[ENV]):
