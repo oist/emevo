@@ -124,7 +124,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         food_radius: float = 4.0,
         food_mass: float = 0.25,
         food_friction: float = 0.1,
-        food_initial_force: tuple[float, float] | None = None,
+        food_initial_force: tuple[float, float] = (0.0, 0.0),
         wall_friction: float = 0.05,
         max_abs_force: float = 1.0,
         max_abs_velocity: float = 1.0,
@@ -473,7 +473,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
     def _make_food(self, loc: Vec2d) -> tuple[pymunk.Body, pymunk.Shape]:
         body, shape = self._make_pymunk_food()
         shape.color = self._FOOD_COLOR
-        if self._food_initial_force is not None:
+        if any(map(lambda value: value != 0.0, self._food_initial_force)):
             mean, stddev = self._food_initial_force
             force = self._generator.normal(loc=mean, scale=stddev, size=(2,))
             body.apply_force_at_local_point(Vec2d(*force))
