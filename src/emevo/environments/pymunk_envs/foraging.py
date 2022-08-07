@@ -182,7 +182,7 @@ class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
         ) -> Any:
             if isinstance(arg, str):
                 return enum_type(arg)(*default_args[arg])
-            elif isinstance(arg, tuple):
+            elif isinstance(arg, tuple) or isinstance(arg, list):
                 name, *args = arg
                 return enum_type(name)(*args)
             else:
