@@ -14,6 +14,7 @@ class Visualizer(Protocol[ENV]):
 
     def close(self) -> None:
         """Close this visualizer"""
+        ...
 
     def get_image(self) -> NDArray:
         ...
@@ -24,12 +25,29 @@ class Visualizer(Protocol[ENV]):
 
     def show(self) -> None:
         """Open a GUI window"""
+        ...
+
+
+class VisWrapper(Visualizer[ENV], Protocol):
+    unwrapped: Visualizer[ENV]
+
+    def close(self) -> None:
+        self.unwrapped.close()
+
+    def get_image(self) -> NDArray:
+        return self.unwrapped.get_image()
+
+    def render(self, env: ENV) -> Any:
+        return self.unwrapped.render(env)
+
+    def show(self) -> None:
+        return self.unwrapped.show()
 
 
 ImageSource = Callable[[], NDArray]
 
 
-class ImageComposeWrapper(Visualizer[ENV]):
+class ImageComposeWrapper(VisWrapper[ENV]):
     def __init__(
         self,
         visualizer: Visualizer[ENV],
@@ -41,9 +59,6 @@ class ImageComposeWrapper(Visualizer[ENV]):
         self.pix_fmt = self.unwrapped.pix_fmt
         self._image_sources = image_sources
         self._compose_rules = compose_rules
-
-    def close(self) -> None:
-        self.unwrapped.close()
 
     def get_image(self) -> NDArray:
         images = [self.unwrapped.get_image()]
@@ -73,14 +88,8 @@ class ImageComposeWrapper(Visualizer[ENV]):
             new_image[w_offset : w_offset + w, h_offset : h_offset + h] = image
         return new_image
 
-    def render(self, env: ENV) -> Any:
-        self.unwrapped.render(env)
 
-    def show(self) -> None:
-        self.unwrapped.show()
-
-
-class SaveVideoWrapper(Visualizer[ENV]):
+class SaveVideoWrapper(VisWrapper[ENV]):
     def __init__(
         self,
         visualizer: Visualizer[ENV],
@@ -98,9 +107,6 @@ class SaveVideoWrapper(Visualizer[ENV]):
         if self._writer is not None:
             self._writer.close()
 
-    def get_image(self) -> NDArray:
-        return self.unwrapped.get_image()
-
     def render(self, env: ENV) -> Any:
         ret = self.unwrapped.render(env)
         image = self.unwrapped.get_image()
@@ -116,6 +122,3 @@ class SaveVideoWrapper(Visualizer[ENV]):
             self._writer.send(None)  # seed the generator
         self._writer.send(image)
         return ret
-
-    def show(self) -> None:
-        self.unwrapped.show()
