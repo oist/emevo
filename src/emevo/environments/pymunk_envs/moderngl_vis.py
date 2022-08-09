@@ -63,14 +63,16 @@ void main() {
     vec2 a2b = a - b;
     vec2 a2left = vec2(-a2b.y, a2b.x) / length(a2b) * width;
 
-    gl_Position = vec4(a - a2left, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(a + a2left, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(b - a2left, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(b + a2left, 0.0, 1.0) * proj;
-    EmitVertex();
+    vec4[4] positions = vec4[](
+        vec4(a - a2left, 0.0, 1.0),
+        vec4(a + a2left, 0.0, 1.0),
+        vec4(b + a2left, 0.0, 1.0),
+        vec4(b - a2left, 0.0, 1.0),
+    );
+    for (int i = 0; i < 4; ++i) {
+        gl_Position = positions[i] * proj;
+        EmitVertex();
+    }
     EndPrimitive();
 }
 """
@@ -81,6 +83,39 @@ out vec4 f_color;
 uniform vec4 color;
 void main() {
     f_color = color;
+}
+"""
+
+
+_ARRAY_GEOMETRY_SHADER = """
+#version 330
+layout (lines) in;
+layout (triangle_strip, max_vertices = 4) out;
+uniform mat4 proj;
+uniform float width;
+void main() {
+    vec2 a = gl_in[0].gl_Position.xy;
+    vec2 b = gl_in[1].gl_Position.xy;
+    vec2 a2b = a - b;
+    vec2 a2left = vec2(-a2b.y, a2b.x) / length(a2b) * width;
+    vec2 c = a + a2b * 0.6;
+    vec2 c2head = a2left * 3.0;
+
+    gl_Position = vec4(a - a2left, 0.0, 1.0) * proj;
+    EmitVertex();
+    gl_Position = vec4(a + a2left, 0.0, 1.0) * proj;
+    EmitVertex();
+    gl_Position = vec4(c + a2left, 0.0, 1.0) * proj;
+    EmitVertex();
+    gl_Position = vec4(c + c2head, 0.0, 1.0) * proj;
+    EmitVertex();
+    gl_Position = vec4(b, 0.0, 1.0) * proj;
+    EmitVertex();
+    gl_Position = vec4(c - c2head, 0.0, 1.0) * proj;
+    EmitVertex();
+    gl_Position = vec4(c + c2head, 0.0, 1.0) * proj;
+    EmitVertex();
+    EndPrimitive();
 }
 """
 
