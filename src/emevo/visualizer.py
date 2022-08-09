@@ -44,48 +44,28 @@ class VisWrapper(Visualizer[ENV], Protocol):
         return self.unwrapped.show()
 
 
-ImageSource = Callable[[], NDArray]
-
-
-class ImageComposeWrapper(VisWrapper[ENV]):
+class ImageStackWrapper(VisWrapper[ENV]):
     def __init__(
         self,
         visualizer: Visualizer[ENV],
-        image_sources: Iterable[ImageSource],
-        compose_rules: Iterable[Literal["h", "v"]],
+        image_source: Callable[[], NDArray],
+        vstack: bool = False,
         **kwargs,
     ) -> None:
         self.unwrapped = visualizer
         self.pix_fmt = self.unwrapped.pix_fmt
-        self._image_sources = image_sources
-        self._compose_rules = compose_rules
+        self._image_source = image_source
+        self._vstack = vstack
 
     def get_image(self) -> NDArray:
-        images = [self.unwrapped.get_image()]
-        orig_image = images[0]
-        total_w, total_h = orig_image.shape[:2]
-        offsets: list[tuple[int, int]] = [(0, 0)]
-        for rule, source in zip(self._compose_rules, self._image_sources):
-            image = source()
-            images.append(image)
-            w, h = image.shape[:2]
-            if rule == "h":
-                offsets.append((0, total_h))
-                total_w = max(w, total_w)
-                total_h += h
-            elif rule == "v":
-                offsets.append((total_w, 0))
-                total_w += w
-                total_h = max(h, total_h)
-            else:
-                raise ValueError(f"Invalid image composition rule: {rule}")
-        new_image = np.zeros(
-            (total_w, total_h, *orig_image.shape[2:]),
-            dtype=orig_image.dtype,
-        )
-        for (w_offset, h_offset), image in zip(offsets, images):
-            w, h = image.shape[:2]
-            new_image[w_offset : w_offset + w, h_offset : h_offset + h] = image
+        orig_image = self.unwrapped.get_image()
+        additional_image = self._image_source()
+        if self._vstack:
+            new_image = np.append(orig_image, additional_image, axis=0)
+        else:
+            print(orig_image.shape, additional_image.shape)
+            new_image = np.append(orig_image, additional_image, axis=0)
+            print(new_image.shape)
         return new_image
 
 
@@ -116,7 +96,7 @@ class SaveVideoWrapper(VisWrapper[ENV]):
             self._writer = write_frames(
                 self._path,
                 image.shape[:2],
-                pix_fmt_in="rgba",
+                pix_fmt_in=self.pix_fmt,
                 **self._iio_kwargs,
             )
             self._writer.send(None)  # seed the generator
