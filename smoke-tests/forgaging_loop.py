@@ -19,7 +19,7 @@ class Rendering(str, enum.Enum):
 def main(
     n_steps: int = 100,
     render: Rendering | None = None,
-    food_initial_force: tuple[float, float] | None = None,
+    food_initial_force: tuple[float, float] = (0.0, 0.0),
     seed: int = 1,
     debug: bool = False,
     forward_sensor: bool = False,
