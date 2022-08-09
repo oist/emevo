@@ -10,8 +10,6 @@ ENV = TypeVar("ENV", contravariant=True)
 
 
 class Visualizer(Protocol[ENV]):
-    pix_fmt: str
-
     def close(self) -> None:
         """Close this visualizer"""
         ...
@@ -53,7 +51,6 @@ class ImageStackWrapper(VisWrapper[ENV]):
         **kwargs,
     ) -> None:
         self.unwrapped = visualizer
-        self.pix_fmt = self.unwrapped.pix_fmt
         self._image_source = image_source
         self._vstack = vstack
 
@@ -77,7 +74,6 @@ class SaveVideoWrapper(VisWrapper[ENV]):
         **kwargs,
     ) -> None:
         self.unwrapped = visualizer
-        self.pix_fmt = self.unwrapped.pix_fmt
         self._path = filename
         self._writer = None
         self._iio_kwargs = kwargs
@@ -96,7 +92,7 @@ class SaveVideoWrapper(VisWrapper[ENV]):
             self._writer = write_frames(
                 self._path,
                 image.shape[:2],
-                pix_fmt_in=self.pix_fmt,
+                pix_fmt_in="rgb" if image.shape[2] == 3 else "rgba",
                 **self._iio_kwargs,
             )
             self._writer.send(None)  # seed the generator
