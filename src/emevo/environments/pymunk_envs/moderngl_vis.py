@@ -4,7 +4,7 @@ Currently, only supports circles and lines.
 """
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar, Iterable
 
 import moderngl as mgl
 import moderngl_window as mglw
@@ -60,14 +60,14 @@ uniform float width;
 void main() {
     vec2 a = gl_in[0].gl_Position.xy;
     vec2 b = gl_in[1].gl_Position.xy;
-    vec2 a2b = a - b;
+    vec2 a2b = b - a;
     vec2 a2left = vec2(-a2b.y, a2b.x) / length(a2b) * width;
 
-    vec4[4] positions = vec4[](
+    vec4 positions[4] = vec4[4](
         vec4(a - a2left, 0.0, 1.0),
         vec4(a + a2left, 0.0, 1.0),
-        vec4(b + a2left, 0.0, 1.0),
         vec4(b - a2left, 0.0, 1.0),
+        vec4(b + a2left, 0.0, 1.0)
     );
     for (int i = 0; i < 4; ++i) {
         gl_Position = positions[i] * proj;
@@ -87,34 +87,34 @@ void main() {
 """
 
 
-_ARRAY_GEOMETRY_SHADER = """
+_ARROW_GEOMETRY_SHADER = """
 #version 330
 layout (lines) in;
-layout (triangle_strip, max_vertices = 4) out;
+layout (triangle_strip, max_vertices = 7) out;
 uniform mat4 proj;
-uniform float width;
 void main() {
     vec2 a = gl_in[0].gl_Position.xy;
     vec2 b = gl_in[1].gl_Position.xy;
-    vec2 a2b = a - b;
+    vec2 a2b = b - a;
+    float a2b_len = length(a2b);
+    float width = min(0.004, a2b_len * 0.12);
     vec2 a2left = vec2(-a2b.y, a2b.x) / length(a2b) * width;
-    vec2 c = a + a2b * 0.6;
-    vec2 c2head = a2left * 3.0;
+    vec2 c = a + a2b * 0.5;
+    vec2 c2head = a2left * 2.5;
 
-    gl_Position = vec4(a - a2left, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(a + a2left, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(c + a2left, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(c + c2head, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(b, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(c - c2head, 0.0, 1.0) * proj;
-    EmitVertex();
-    gl_Position = vec4(c + c2head, 0.0, 1.0) * proj;
-    EmitVertex();
+    vec4 positions[7] = vec4[7](
+        vec4(a - a2left, 0.0, 1.0),
+        vec4(a + a2left, 0.0, 1.0),
+        vec4(c - a2left, 0.0, 1.0),
+        vec4(c + a2left, 0.0, 1.0),
+        vec4(c - c2head, 0.0, 1.0),
+        vec4(b, 0.0, 1.0),
+        vec4(c + c2head, 0.0, 1.0)
+    );
+    for (int i = 0; i < 7; ++i) {
+        gl_Position = positions[i] * proj;
+        EmitVertex();
+    }
     EndPrimitive();
 }
 """
@@ -245,6 +245,25 @@ def _collect_heads(
     return np.array(points, dtype=np.float32)
 
 
+def _collect_policies(
+    bodies_and_policies: Iterable[tuple[pymunk.Body, float, float]],
+    pos_scaling: tuple[float, float],
+    max_arrow_length: float,
+) -> NDArray:
+    max_policy = max(
+        map(lambda pp: np.sqrt(pp[1] ** 2 + pp[2] ** 2), bodies_and_policies)
+    )
+    policy_scaling = max_arrow_length / max_policy
+    points = []
+    for body, px, py in bodies_and_policies:
+        a = body.position
+        policy = pymunk.Vec2d(px * policy_scaling, py * policy_scaling)
+        b = a + policy.rotated(body.angle)
+        points.append([a.x * pos_scaling[0], a.y * pos_scaling[1]])
+        points.append([b.x * pos_scaling[0], b.y * pos_scaling[1]])
+    return np.array(points, dtype=np.float32)
+
+
 class MglVisualizer:
     def __init__(
         self,
@@ -268,6 +287,7 @@ class MglVisualizer:
         )
         self._figsize = int(figsize[0]), int(figsize[1])
         self._pos_scaling = 1.0 / x_range, 1.0 / y_range
+        self._range_min = min(x_range, y_range)
         self._size_scaling = figsize[0] / x_range * 2
         circle_program = _make_gl_program(
             self._window.ctx,
@@ -313,6 +333,7 @@ class MglVisualizer:
             program=head_program,
             segments=_collect_heads(shapes, self._pos_scaling),
         )
+        self._overlays = {}
 
     def close(self) -> None:
         self._window.close()
@@ -341,6 +362,35 @@ class MglVisualizer:
         self._sensors.render()
         self._heads.update(_collect_heads(shapes, self._pos_scaling))
         self._heads.render()
+
+    def overlay(self, name: str, value: Any) -> Any:
+        """Render additional value as an overlay"""
+        if name.lower() == "arrow":
+            segments = _collect_policies(
+                value,
+                self._pos_scaling,
+                self._range_min * 0.1,
+            )
+            if "arrow" in self._overlays:
+                self._overlays["arrow"].update(segments)
+            else:
+                arrow_program = _make_gl_program(
+                    self._window.ctx,
+                    vertex_shader=_LINE_VERTEX_SHADER,
+                    geometry_shader=_ARROW_GEOMETRY_SHADER,
+                    fragment_shader=_LINE_FRAGMENT_SHADER,
+                )
+                arrow_program["color"].write(
+                    np.array([0.98, 0.45, 0.45, 1.0], dtype=np.float32)
+                )
+                self._overlays["arrow"] = SegmentVA(
+                    ctx=self._window.ctx,
+                    program=arrow_program,
+                    segments=segments,
+                )
+            self._overlays["arrow"].render()
+        else:
+            raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
 
     def show(self) -> None:
         self._window.swap_buffers()

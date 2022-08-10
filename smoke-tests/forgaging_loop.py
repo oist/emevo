@@ -17,7 +17,7 @@ class Rendering(str, enum.Enum):
 
 
 def main(
-    n_steps: int = 100,
+    steps: int = 100,
     render: Rendering | None = None,
     food_initial_force: tuple[float, float] = (0.0, 0.0),
     seed: int = 1,
@@ -47,7 +47,7 @@ def main(
     else:
         visualizer = None
 
-    for _ in range(n_steps):
+    for _ in range(steps):
         actions = {body: body.act_space.sample(gen) for body in bodies}
         # Samples for adding constant force for debugging
         # actions = {body: np.array([0.0, -1.0]) for body in bodies}

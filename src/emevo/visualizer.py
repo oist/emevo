@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from os import PathLike
-from typing import Any, Callable, Iterable, Literal, Protocol, TypeVar
+from typing import Any, Callable, Protocol, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -24,6 +24,10 @@ class Visualizer(Protocol[ENV]):
     def show(self) -> None:
         """Open a GUI window"""
         ...
+
+    def overlay(self, _name: str, _value: Any) -> Any:
+        """Render additional value as an overlay"""
+        pass
 
 
 class VisWrapper(Visualizer[ENV], Protocol):
