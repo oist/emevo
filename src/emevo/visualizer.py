@@ -43,7 +43,7 @@ class VisWrapper(Visualizer[ENV], Protocol):
         return self.unwrapped.render(env)
 
     def show(self) -> None:
-        return self.unwrapped.show()
+        self.unwrapped.show()
 
 
 class ImageStackWrapper(VisWrapper[ENV]):
@@ -64,9 +64,7 @@ class ImageStackWrapper(VisWrapper[ENV]):
         if self._vstack:
             new_image = np.append(orig_image, additional_image, axis=0)
         else:
-            print(orig_image.shape, additional_image.shape)
-            new_image = np.append(orig_image, additional_image, axis=0)
-            print(new_image.shape)
+            new_image = np.append(orig_image, additional_image, axis=1)
         return new_image
 
 
@@ -87,8 +85,7 @@ class SaveVideoWrapper(VisWrapper[ENV]):
         if self._writer is not None:
             self._writer.close()
 
-    def render(self, env: ENV) -> Any:
-        ret = self.unwrapped.render(env)
+    def show(self) -> None:
         image = self.unwrapped.get_image()
         if self._writer is None:
             from imageio_ffmpeg import write_frames
@@ -101,4 +98,4 @@ class SaveVideoWrapper(VisWrapper[ENV]):
             )
             self._writer.send(None)  # seed the generator
         self._writer.send(image)
-        return ret
+        self.unwrapped.show()
