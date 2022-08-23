@@ -41,8 +41,12 @@ class _BaseManager:
     def available_bodies(self) -> Iterable[Body]:
         return self._statuses.keys()
 
-    def register(self, body: Body, *args, **kwargs) -> None:
-        self._statuses[body] = self._initial_status_fn(*args, **kwargs)
+    def register(self, body: Body | Iterable[Body], *args, **kwargs) -> None:
+        if isinstance(body, Body):
+            self._statuses[body] = self._initial_status_fn(*args, **kwargs)
+        else:
+            for body_i in body:
+                self._statuses[body_i] = self._initial_status_fn(*args, **kwargs)
 
     def step(self) -> tuple[list[DeadBody], list[Newborn]]:
         deads, newborns = [], []
@@ -75,21 +79,33 @@ class AsexualReprManager(_BaseManager):
         initial_status_fn: Callable[..., Status],
         death_prob_fn: Callable[[Status], float],
         success_prob: Callable[[Status], float],
-        produce: Callable[[Status], Newborn],
+        produce: Callable[[Status, Body], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         super().__init__(initial_status_fn, death_prob_fn, rng)
         self._success_prob = success_prob
         self._produce = produce
 
-    def reproduce(self, body: Body) -> Newborn | None:
+    def _reproduce_impl(self, body: Body) -> Newborn | None:
         success_prob = self._success_prob(self._statuses[body])
         if self._rng() < success_prob:
-            newborn = self._produce(self._statuses[body])
+            newborn = self._produce(self._statuses[body], body)
             self._pending_newborns.append(newborn)
             return newborn
         else:
             return None
+
+    def reproduce(self, body: Body | Iterable[Body]) -> list[Newborn]:
+        if isinstance(body, Body):
+            bodies = [body]
+        else:
+            bodies = body
+        res = []
+        for body in bodies:
+            newborn = self._reproduce_impl(body)
+            if newborn is not None:
+                res.append(newborn)
+        return res
 
 
 class SexualReprManager(_BaseManager):
@@ -105,7 +121,7 @@ class SexualReprManager(_BaseManager):
         self._success_prob = success_prob
         self._produce = produce
 
-    def reproduce(self, encount: Encount) -> Newborn | None:
+    def _reproduce_impl(self, encount: Encount) -> Newborn | None:
         statuses = tuple((self._statuses[body] for body in encount))
         success_prob = self._success_prob(statuses, encount)
         if self._rng() < success_prob:
@@ -114,3 +130,15 @@ class SexualReprManager(_BaseManager):
             return newborn
         else:
             return None
+
+    def reproduce(self, encount: Encount | Iterable[Encount]) -> list[Newborn]:
+        if isinstance(encount, Encount):
+            encounts = [encount]
+        else:
+            encounts = encount
+        res = []
+        for encount in encounts:
+            newborn = self._reproduce_impl(encount)
+            if newborn is not None:
+                res.append(newborn)
+        return res

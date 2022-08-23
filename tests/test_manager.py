@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from functools import partial
 
 import numpy as np
@@ -12,6 +13,12 @@ from emevo import birth_and_death as bd
 from emevo import spaces
 
 DEFAULT_ENERGY_LEVEL: int = 10
+
+
+@dataclasses.dataclass
+class FakeContext:
+    generation: int
+    location: int
 
 
 class FakeBody(Body):
@@ -58,7 +65,10 @@ def test_asexual(status_fn, death_prob_fn) -> None:
         success_prob=lambda status: float(
             status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH  # type: ignore
         ),
-        produce=lambda _status: bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH),
+        produce=lambda _status, body: bd.Oviparous(
+            context=FakeContext(body.generation + 1, 0),
+            time_to_birth=STEPS_TO_BIRTH,
+        ),
     )
     _add_bodies(manager)
 
@@ -117,14 +127,17 @@ def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
 
     if newborn_kind == "oviparous":
 
-        def produce(_statuses, _encount) -> bd.Oviparous:
-            return bd.Oviparous(context=(), time_to_birth=STEPS_TO_BIRTH)
+        def produce(_statuses, encount) -> bd.Oviparous:
+            return bd.Oviparous(
+                context=FakeContext(encount.a.generation + 1, 0),
+                time_to_birth=STEPS_TO_BIRTH,
+            )
 
     elif newborn_kind == "viviparous":
 
         def produce(_statuses, encount) -> bd.Viviparous:
             return bd.Viviparous(
-                context=(),
+                context=FakeContext(encount.a.generation + 1, 0),
                 parent=encount.a,
                 time_to_birth=STEPS_TO_BIRTH,
             )

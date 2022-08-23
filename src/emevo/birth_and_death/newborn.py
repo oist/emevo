@@ -1,15 +1,21 @@
 import abc
 import dataclasses
-import typing as t
+from typing import Generic, Protocol
 
 from emevo.body import Body
+from emevo.env import LOC
+
+
+class NewbornContext(Protocol[LOC]):
+    generation: int
+    location: LOC
 
 
 @dataclasses.dataclass
-class Newborn(abc.ABC):
+class Newborn(abc.ABC, Generic[LOC]):
     """A class that contains information of birth type."""
 
-    context: t.Any
+    context: NewbornContext[LOC]
 
     @abc.abstractmethod
     def is_ready(self) -> bool:

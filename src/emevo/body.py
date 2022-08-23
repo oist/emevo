@@ -50,6 +50,10 @@ class Body(Locatable, abc.ABC):
         self.uuid = uuid4()
         self._profile = Profile(name, generation, birthtime)
 
+    @property
+    def generation(self) -> int:
+        return self._profile.generation
+
     def info(self) -> Any:
         """Returns some information useful for debugging"""
         return None
