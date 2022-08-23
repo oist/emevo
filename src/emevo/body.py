@@ -6,15 +6,17 @@ from __future__ import annotations
 
 import abc
 import dataclasses
-from typing import Any, NamedTuple, NoReturn
+from typing import Any, Generic, NamedTuple, NoReturn, TypeVar
 from uuid import uuid4
 
 from numpy.typing import ArrayLike
 
 from emevo.spaces import Space
 
+LOC = TypeVar("LOC")
 
-class Locatable(abc.ABC):
+
+class Locatable(abc.ABC, Generic[LOC]):
     @abc.abstractmethod
     def location(self) -> ArrayLike:
         pass
@@ -32,7 +34,7 @@ class Profile:
         raise RuntimeError("Profile cannot be copied")
 
 
-class Body(Locatable, abc.ABC):
+class Body(Locatable[LOC], abc.ABC):
     """
     Reprsents the bodily existance of the agent, also works as an effecient key object.
     """

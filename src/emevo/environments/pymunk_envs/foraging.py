@@ -40,7 +40,7 @@ class _FgBodyInfo(NamedTuple):
     velocity: Vec2d
 
 
-class FgBody(Body):
+class FgBody(Body[Vec2d]):
     """Body of an agent."""
 
     def __init__(
@@ -101,7 +101,7 @@ def _range(segment: tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
-class Foraging(Env[NDArray, FgBody, Vec2d, FgObs]):
+class Foraging(Env[NDArray, Vec2d, FgObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
     _SENSOR_MASK_VALUE = 2.0

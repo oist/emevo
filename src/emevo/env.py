@@ -8,7 +8,7 @@ from typing import Generic, Protocol, TypeVar
 
 from numpy.typing import NDArray
 
-from emevo.body import Body, Encount
+from emevo.body import LOC, Body, Encount
 from emevo.visualizer import Visualizer
 
 
@@ -18,12 +18,10 @@ class Observation(Protocol):
 
 
 ACT = TypeVar("ACT")
-BODY = TypeVar("BODY", bound=Body)
-LOC = TypeVar("LOC")
 OBS = TypeVar("OBS", bound=Observation)
 
 
-class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
+class Env(abc.ABC, Generic[ACT, LOC, OBS]):
     """Abstract API for emevo environments"""
 
     def __init__(self, *args, **kwargs) -> None:
@@ -31,12 +29,12 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def bodies(self) -> list[BODY]:
+    def bodies(self) -> list[Body[LOC]]:
         """Returns all 'alive' bodies in the environment"""
         pass
 
     @abc.abstractmethod
-    def step(self, actions: dict[BODY, ACT]) -> list[Encount]:
+    def step(self, actions: dict[Body[LOC], ACT]) -> list[Encount]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
         Returns the next state and all encounts.
@@ -44,7 +42,7 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: BODY) -> OBS:
+    def observe(self, body: Body[LOC]) -> OBS:
         """Construct the observation from the state"""
         pass
 
@@ -54,12 +52,12 @@ class Env(abc.ABC, Generic[ACT, BODY, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def born(self, location: LOC, generation: int) -> BODY | None:
+    def born(self, location: LOC, generation: int) -> Body[LOC] | None:
         """Taken a location, generate and place a newborn in the environment."""
         pass
 
     @abc.abstractmethod
-    def dead(self, body: BODY) -> None:
+    def dead(self, body: Body[LOC]) -> None:
         """Remove a dead body from the environment."""
         pass
 

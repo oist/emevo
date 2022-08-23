@@ -5,17 +5,16 @@ import pymunk.pygame_util
 from numpy.typing import NDArray
 
 from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
+from emevo.visualizer import Visualizer
 
 
-class PygameVisualizer:
+class PygameVisualizer(Visualizer):
     def __init__(
         self,
         x_range: float,
         y_range: float,
         figsize: tuple[float, float] | None = None,
     ) -> None:
-        self.pix_fmt = "rgb24"
-
         if figsize is None:
             self._figsize = x_range * 3, y_range * 3
         else:
