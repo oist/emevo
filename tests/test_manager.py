@@ -37,7 +37,7 @@ def status_fn():
 
 @pytest.fixture
 def death_prob_fn():
-    return bd.death_functions.hunger_or_infirmity(0.5, 100.0)
+    return bd.death.hunger_or_infirmity(0.5, 100.0)
 
 
 def _add_bodies(manager, n_bodies: int = 5) -> None:
