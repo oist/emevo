@@ -25,9 +25,9 @@ class Visualizer(Protocol[ENV]):
         """Open a GUI window"""
         ...
 
-    def overlay(self, _name: str, _value: Any) -> Any:
+    def overlay(self, name: str, _value: Any) -> Any:
         """Render additional value as an overlay"""
-        pass
+        raise ValueError(f"Unsupported overlay: {name}")
 
 
 class VisWrapper(Visualizer[ENV], Protocol):
@@ -44,6 +44,9 @@ class VisWrapper(Visualizer[ENV], Protocol):
 
     def show(self) -> None:
         self.unwrapped.show()
+
+    def overlay(self, name: str, value: Any) -> Any:
+        return self.unwrapped.overlay(name, value)
 
 
 class ImageStackWrapper(VisWrapper[ENV]):
