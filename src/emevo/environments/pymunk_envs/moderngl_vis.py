@@ -154,7 +154,7 @@ class CircleVA(Renderable):
             ],
         )
 
-    def update(self, points: NDArray, scales: NDArray, colors: NDArray) -> None:
+    def update(self, points: NDArray, scales: NDArray, colors: NDArray) -> bool:
         length = points.shape[0]
         if self._length != length:
             self._length = length
@@ -164,6 +164,7 @@ class CircleVA(Renderable):
         self._points.write(points)
         self._scales.write(scales)
         self._colors.write(colors)
+        return length > 0
 
 
 class SegmentVA(Renderable):
@@ -184,12 +185,13 @@ class SegmentVA(Renderable):
             [(self._segments, "2f", "in_position")],
         )
 
-    def update(self, segments: NDArray) -> None:
+    def update(self, segments: NDArray) -> bool:
         length = segments.shape[0]
         if self._length != length:
             self._length = length
             self._segments.orphan(length * 4 * 2)
         self._segments.write(segments)
+        return length > 0
 
 
 def _collect_circles(
@@ -356,12 +358,12 @@ class MglVisualizer:
             self._pos_scaling,
             self._size_scaling,
         )
-        self._circles.update(points, scales, colors)
-        self._circles.render()
-        self._sensors.update(_collect_sensors(shapes, self._pos_scaling))
-        self._sensors.render()
-        self._heads.update(_collect_heads(shapes, self._pos_scaling))
-        self._heads.render()
+        if self._circles.update(points, scales, colors):
+            self._circles.render()
+        if self._sensors.update(_collect_sensors(shapes, self._pos_scaling)):
+            self._sensors.render()
+        if self._heads.update(_collect_heads(shapes, self._pos_scaling)):
+            self._heads.render()
 
     def overlay(self, name: str, value: Any) -> Any:
         """Render additional value as an overlay"""
@@ -372,7 +374,7 @@ class MglVisualizer:
                 self._range_min * 0.1,
             )
             if "arrow" in self._overlays:
-                self._overlays["arrow"].update(segments)
+                do_render = self._overlays["arrow"].update(segments)
             else:
                 arrow_program = _make_gl_program(
                     self._window.ctx,
@@ -388,7 +390,9 @@ class MglVisualizer:
                     program=arrow_program,
                     segments=segments,
                 )
-            self._overlays["arrow"].render()
+                do_render = True
+            if do_render:
+                self._overlays["arrow"].render()
         else:
             raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
 

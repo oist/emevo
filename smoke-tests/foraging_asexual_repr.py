@@ -14,13 +14,7 @@ from pymunk.vec2d import Vec2d
 from emevo import birth_and_death as bd
 from emevo import make
 
-
-def status_fn():
-    return partial(bd.statuses.AgeAndEnergy, age=1, energy=10)
-
-
-def death_prob_fn():
-    return bd.death.hunger_or_infirmity(0.5, 100.0)
+INITIAL_ENERGY_LEVEL = 10
 
 
 @dataclasses.dataclass
@@ -47,11 +41,9 @@ def main(
         loguru.logger.enable("emevo")
 
     manager = bd.AsexualReprManager(
-        initial_status_fn=status_fn,  # type: ignore
-        death_prob_fn=death_prob_fn,  # type: ignore
-        success_prob=lambda status: float(
-            status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH  # type: ignore
-        ),
+        initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=INITIAL_ENERGY_LEVEL),  # type: ignore
+        death_prob_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),  # type: ignore
+        success_prob=lambda status: float(status.energy > INITIAL_ENERGY_LEVEL * 2),
         produce=lambda status, body: bd.Oviparous(
             context=SimpleContext(body.generation + 1, body.location()),
             time_to_birth=5,
@@ -70,14 +62,9 @@ def main(
     for _ in range(steps):
         bodies = env.bodies()
         actions = {body: body.act_space.sample(gen) for body in bodies}
-        # Samples for adding constant force for debugging
-        # actions = {body: np.array([0.0, -1.0]) for body in bodies}
         _ = env.step(actions)
-        for body_idx, body in enumerate(bodies):
-            manager.update_status(
-                body,
-                energy_update=-1.0 if body_idx % 2 == 1 else 1.0,
-            )
+        for body in bodies:
+            manager.update_status(body, energy_update=gen.normal(loc=0.0))
         _ = manager.reproduce(bodies)
         deads, newborns = manager.step()
 
