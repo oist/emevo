@@ -9,8 +9,6 @@ import dataclasses
 from typing import Any, Generic, NamedTuple, NoReturn, TypeVar
 from uuid import uuid4
 
-from numpy.typing import ArrayLike
-
 from emevo.spaces import Space
 
 LOC = TypeVar("LOC")
@@ -18,7 +16,7 @@ LOC = TypeVar("LOC")
 
 class Locatable(abc.ABC, Generic[LOC]):
     @abc.abstractmethod
-    def location(self) -> ArrayLike:
+    def location(self) -> LOC:
         pass
 
 

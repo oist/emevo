@@ -14,7 +14,9 @@ from pymunk.vec2d import Vec2d
 from emevo import birth_and_death as bd
 from emevo import make
 
-INITIAL_ENERGY_LEVEL = 10
+
+def sigmoid(x: float) -> float:
+    return x / (1.0 + abs(x))
 
 
 @dataclasses.dataclass
@@ -41,10 +43,10 @@ def main(
         loguru.logger.enable("emevo")
 
     manager = bd.AsexualReprManager(
-        initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=INITIAL_ENERGY_LEVEL),  # type: ignore
-        death_prob_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),  # type: ignore
-        success_prob=lambda status: float(status.energy > INITIAL_ENERGY_LEVEL * 2),
-        produce=lambda status, body: bd.Oviparous(
+        initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
+        death_prob_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
+        success_prob=lambda status: sigmoid(status.energy),
+        produce=lambda _, body: bd.Oviparous(
             context=SimpleContext(body.generation + 1, body.location()),
             time_to_birth=5,
         ),
@@ -64,7 +66,7 @@ def main(
         actions = {body: body.act_space.sample(gen) for body in bodies}
         _ = env.step(actions)
         for body in bodies:
-            manager.update_status(body, energy_update=gen.normal(loc=0.0))
+            manager.update_status(body, energy_update=gen.normal(loc=0.0, scale=0.1))
         _ = manager.reproduce(bodies)
         deads, newborns = manager.step()
 
@@ -80,6 +82,10 @@ def main(
         if visualizer is not None:
             visualizer.render(env)
             visualizer.show()
+
+        if env.is_extinct():
+            print("Extinct")
+            break
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ def test_asexual(status_fn, death_prob_fn) -> None:
         initial_status_fn=status_fn,
         death_prob_fn=death_prob_fn,
         success_prob=lambda status: float(
-            status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH  # type: ignore
+            status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
         ),
         produce=lambda _status, body: bd.Oviparous(
             context=FakeContext(body.generation + 1, 0),

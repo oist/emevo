@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Callable, Iterable
+from typing import Callable, Generic, Iterable, TypeVar
 
 import numpy as np
 
@@ -20,7 +20,10 @@ class DeadBody:
     status: Status
 
 
-class _BaseManager:
+STATUS = TypeVar("STATUS", bound=Status)
+
+
+class _BaseManager(Generic[STATUS]):
     """
     Manager manages energy level, birth and death of agents.
     Note that Manager does not manage matings.
@@ -28,8 +31,8 @@ class _BaseManager:
 
     def __init__(
         self,
-        initial_status_fn: Callable[..., Status],
-        death_prob_fn: Callable[[Status], float],
+        initial_status_fn: Callable[..., STATUS],
+        death_prob_fn: Callable[[STATUS], float],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         self._initial_status_fn = initial_status_fn
@@ -76,10 +79,10 @@ class _BaseManager:
 class AsexualReprManager(_BaseManager):
     def __init__(
         self,
-        initial_status_fn: Callable[..., Status],
-        death_prob_fn: Callable[[Status], float],
-        success_prob: Callable[[Status], float],
-        produce: Callable[[Status, Body], Newborn],
+        initial_status_fn: Callable[..., STATUS],
+        death_prob_fn: Callable[[STATUS], float],
+        success_prob: Callable[[STATUS], float],
+        produce: Callable[[STATUS, Body], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         super().__init__(initial_status_fn, death_prob_fn, rng)
@@ -111,10 +114,10 @@ class AsexualReprManager(_BaseManager):
 class SexualReprManager(_BaseManager):
     def __init__(
         self,
-        initial_status_fn: Callable[..., Status],
-        death_prob_fn: Callable[[Status], float],
-        success_prob: Callable[[tuple[Status, Status], Encount], float],
-        produce: Callable[[tuple[Status, Status], Encount], Newborn],
+        initial_status_fn: Callable[..., STATUS],
+        death_prob_fn: Callable[[STATUS], float],
+        success_prob: Callable[[tuple[STATUS, STATUS], Encount], float],
+        produce: Callable[[tuple[STATUS, STATUS], Encount], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         super().__init__(initial_status_fn, death_prob_fn, rng)
