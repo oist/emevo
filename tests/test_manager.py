@@ -134,31 +134,38 @@ def test_sexual(
 
     if newborn_kind == "oviparous":
 
-        def produce(_sa, _sb, encount) -> bd.Oviparous:  # type: ignore
+        def produce_oviparous(_sa, _sb, encount: Encount) -> bd.Oviparous:
             return bd.Oviparous(
                 context=FakeContext(encount.a.generation + 1, 0),
                 time_to_birth=STEPS_TO_BIRTH,
             )
 
+        manager = bd.SexualReprManager(
+            initial_status_fn=status_fn,
+            death_prob_fn=death_prob_fn,
+            success_prob_fn=success_prob,
+            produce_fn=produce_oviparous,
+        )
+
     elif newborn_kind == "viviparous":
 
-        def produce(_sa, _sb, encount) -> bd.Viviparous:
+        def produce_viviparous(_sa, _sb, encount: Encount) -> bd.Viviparous:
             return bd.Viviparous(
                 context=FakeContext(encount.a.generation + 1, 0),
                 parent=encount.a,
                 time_to_birth=STEPS_TO_BIRTH,
             )
 
+        manager = bd.SexualReprManager(
+            initial_status_fn=status_fn,
+            death_prob_fn=death_prob_fn,
+            success_prob_fn=success_prob,
+            produce_fn=produce_viviparous,
+        )
     else:
 
         raise ValueError(f"Unknown newborn kind {newborn_kind}")
 
-    manager = bd.SexualReprManager(
-        initial_status_fn=status_fn,
-        death_prob_fn=death_prob_fn,
-        success_prob_fn=success_prob,
-        produce_fn=produce,
-    )
     _add_bodies(manager)
 
     bodies = list(manager.available_bodies())
