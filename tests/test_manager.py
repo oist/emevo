@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 from functools import partial
+from typing import Callable
 
 import numpy as np
 import pytest
@@ -52,7 +53,10 @@ def _add_bodies(manager, n_bodies: int = 5) -> None:
         manager.register(FakeBody(name="FakeBody"))
 
 
-def test_asexual(status_fn, death_prob_fn) -> None:
+def test_asexual(
+    status_fn: Callable[[], bd.statuses.AgeAndEnergy],
+    death_prob_fn: Callable[[bd.statuses.AgeAndEnergy], float],
+) -> None:
     """Test the most basic setting: Asexual reproduction + Oviparous birth"""
 
     # 10 steps to death, 11 steps to birth, 3 steps to newborn
@@ -62,10 +66,10 @@ def test_asexual(status_fn, death_prob_fn) -> None:
     manager = bd.AsexualReprManager(
         initial_status_fn=status_fn,
         death_prob_fn=death_prob_fn,
-        success_prob=lambda status: float(
+        success_prob_fn=lambda status: float(
             status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
         ),
-        produce=lambda _status, body: bd.Oviparous(
+        produce_fn=lambda _status, body: bd.Oviparous(
             context=FakeContext(body.generation + 1, 0),
             time_to_birth=STEPS_TO_BIRTH,
         ),
@@ -107,7 +111,11 @@ def test_asexual(status_fn, death_prob_fn) -> None:
 
 
 @pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
-def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
+def test_sexual(
+    status_fn: Callable[[], bd.statuses.AgeAndEnergy],
+    death_prob_fn: Callable[[bd.statuses.AgeAndEnergy], float],
+    newborn_kind: str,
+) -> None:
     """Test Sexual reproduction"""
 
     # 10 steps to death, 11 steps to birth, 3 steps to newborn
@@ -115,19 +123,18 @@ def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
     STEPS_TO_BIRTH: int = 3
 
     def success_prob(
-        statuses: tuple[bd.Status, bd.Status],
-        _encount: Encount,
+        status_a: bd.statuses.AgeAndEnergy,
+        status_b: bd.statuses.AgeAndEnergy,
     ) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
-        e1, e2 = map(operator.attrgetter("energy"), statuses)
-        if e1 > threshold and e2 > threshold:
+        if status_a.energy > threshold and status_b.energy > threshold:
             return 1.0
         else:
             return 0.0
 
     if newborn_kind == "oviparous":
 
-        def produce(_statuses, encount) -> bd.Oviparous:
+        def produce(_sa, _sb, encount) -> bd.Oviparous:  # type: ignore
             return bd.Oviparous(
                 context=FakeContext(encount.a.generation + 1, 0),
                 time_to_birth=STEPS_TO_BIRTH,
@@ -135,7 +142,7 @@ def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
 
     elif newborn_kind == "viviparous":
 
-        def produce(_statuses, encount) -> bd.Viviparous:
+        def produce(_sa, _sb, encount) -> bd.Viviparous:
             return bd.Viviparous(
                 context=FakeContext(encount.a.generation + 1, 0),
                 parent=encount.a,
@@ -149,8 +156,8 @@ def test_sexual(status_fn, death_prob_fn, newborn_kind: str) -> None:
     manager = bd.SexualReprManager(
         initial_status_fn=status_fn,
         death_prob_fn=death_prob_fn,
-        success_prob=success_prob,
-        produce=produce,
+        success_prob_fn=success_prob,
+        produce_fn=produce,
     )
     _add_bodies(manager)
 

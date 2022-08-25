@@ -1,4 +1,4 @@
-"""Example of using foraging environment"""
+"""Example of using foraging environment with AsexualReprManager """
 from __future__ import annotations
 
 import dataclasses
@@ -45,8 +45,8 @@ def main(
     manager = bd.AsexualReprManager(
         initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
         death_prob_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
-        success_prob=lambda status: sigmoid(status.energy),
-        produce=lambda _, body: bd.Oviparous(
+        success_prob_fn=lambda status: sigmoid(status.energy),
+        produce_fn=lambda _, body: bd.Oviparous(
             context=SimpleContext(body.generation + 1, body.location()),
             time_to_birth=5,
         ),

@@ -81,24 +81,25 @@ class AsexualReprManager(_BaseManager):
         self,
         initial_status_fn: Callable[..., STATUS],
         death_prob_fn: Callable[[STATUS], float],
-        success_prob: Callable[[STATUS], float],
-        produce: Callable[[STATUS, Body], Newborn],
+        success_prob_fn: Callable[[STATUS], float],
+        produce_fn: Callable[[STATUS, Body], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         super().__init__(initial_status_fn, death_prob_fn, rng)
-        self._success_prob = success_prob
-        self._produce = produce
+        self._success_prob_fn = success_prob_fn
+        self._produce_fn = produce_fn
 
     def _reproduce_impl(self, body: Body) -> Newborn | None:
-        success_prob = self._success_prob(self._statuses[body])
+        success_prob = self._success_prob_fn(self._statuses[body])
         if self._rng() < success_prob:
-            newborn = self._produce(self._statuses[body], body)
+            newborn = self._produce_fn(self._statuses[body], body)
             self._pending_newborns.append(newborn)
             return newborn
         else:
             return None
 
     def reproduce(self, body: Body | Iterable[Body]) -> list[Newborn]:
+        """Try asexual reproducation from a body or an iterator over bodies."""
         if isinstance(body, Body):
             bodies = [body]
         else:
@@ -116,25 +117,26 @@ class SexualReprManager(_BaseManager):
         self,
         initial_status_fn: Callable[..., STATUS],
         death_prob_fn: Callable[[STATUS], float],
-        success_prob: Callable[[tuple[STATUS, STATUS], Encount], float],
-        produce: Callable[[tuple[STATUS, STATUS], Encount], Newborn],
+        success_prob_fn: Callable[[STATUS, STATUS], float],
+        produce_fn: Callable[[STATUS, STATUS, Encount], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         super().__init__(initial_status_fn, death_prob_fn, rng)
-        self._success_prob = success_prob
-        self._produce = produce
+        self._success_prob_fn = success_prob_fn
+        self._produce_fn = produce_fn
 
     def _reproduce_impl(self, encount: Encount) -> Newborn | None:
-        statuses = tuple((self._statuses[body] for body in encount))
-        success_prob = self._success_prob(statuses, encount)
+        s_a, s_b = map(lambda body: self._statuses[body], encount)
+        success_prob = self._success_prob_fn(s_a, s_b)
         if self._rng() < success_prob:
-            newborn = self._produce(statuses, encount)
+            newborn = self._produce_fn(s_a, s_b, encount)
             self._pending_newborns.append(newborn)
             return newborn
         else:
             return None
 
     def reproduce(self, encount: Encount | Iterable[Encount]) -> list[Newborn]:
+        """Try asexual reproducation from an encount or an iterator over encounts."""
         if isinstance(encount, Encount):
             encounts = [encount]
         else:
