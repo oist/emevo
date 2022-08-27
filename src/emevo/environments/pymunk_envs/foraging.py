@@ -131,6 +131,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         encount_threshold: int = 2,
         n_physics_steps: int = 5,
         max_place_attempts: int = 10,
+        body_elasticity: float = 0.6,
         nofriction: bool = False,
         seed: int | None = None,
     ) -> None:

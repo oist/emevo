@@ -157,14 +157,10 @@ def test_eating(env: Foraging) -> None:
             food.position.y - body.info().position.y - AGENT_RADIUS - FOOD_RADIUS
         )
         if SENSOR_LENGTH < distance_to_food:
-            assert_almost_equal(observation.sensor[1], env._SENSOR_MASK_VALUE)
+            assert_almost_equal(observation.sensor[1], 0.0)
         else:
             alpha = max(0.0, distance_to_food / SENSOR_LENGTH)
-            assert_either_a_or_b(
-                observation.sensor[1],
-                alpha,
-                env._SENSOR_MASK_VALUE,
-            )
+            assert_either_a_or_b(observation.sensor[1], 1.0 - alpha, 0.0)
 
     assert handler.once("eaten")
     assert handler.once("created")
@@ -212,20 +208,12 @@ def test_encounts(env: Foraging) -> None:
             assert_almost_equal(obs_high.collision[0], 0.0)
 
         if SENSOR_LENGTH + AGENT_RADIUS * 2 < distance:
-            assert_almost_equal(obs_low.sensor[0], env._SENSOR_MASK_VALUE)
-            assert_almost_equal(obs_high.sensor[0], env._SENSOR_MASK_VALUE)
+            assert_almost_equal(obs_low.sensor[0], 0.0)
+            assert_almost_equal(obs_high.sensor[0], 0.0)
         else:
             alpha = max(0.0, (distance - AGENT_RADIUS * 2) / SENSOR_LENGTH)
-            assert_either_a_or_b(
-                obs_low.sensor[0],
-                alpha,
-                env._SENSOR_MASK_VALUE,
-            )
-            assert_either_a_or_b(
-                obs_high.sensor[0],
-                alpha,
-                env._SENSOR_MASK_VALUE,
-            )
+            assert_either_a_or_b(obs_low.sensor[0], 1.0 - alpha, 0.0)
+            assert_either_a_or_b(obs_high.sensor[0], 1.0 - alpha, 0.0)
 
 
 def test_static(env: Foraging) -> None:
@@ -246,14 +234,10 @@ def test_static(env: Foraging) -> None:
         distance_to_wall = body.info().position.y - AGENT_RADIUS - env._WALL_RADIUS
 
         if SENSOR_LENGTH < distance_to_wall:
-            assert_almost_equal(observation.sensor[2], env._SENSOR_MASK_VALUE)
+            assert_almost_equal(observation.sensor[2], 0.0)
         else:
             alpha = max(0.0, distance_to_wall / SENSOR_LENGTH)
-            assert_either_a_or_b(
-                observation.sensor[2],
-                alpha,
-                env._SENSOR_MASK_VALUE,
-            )
+            assert_either_a_or_b(observation.sensor[2], 1.0 - alpha, 0.0)
 
         # Collision
         if distance_to_wall < MAX_ABS_VELOCITY * DT:

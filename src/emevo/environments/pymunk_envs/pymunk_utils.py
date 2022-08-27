@@ -195,6 +195,7 @@ def circle_body(
     collision_type: CollisionType,
     mass: float = 1.0,
     friction: float = 0.6,
+    elasticity: float = 0.0,
 ) -> tuple[pymunk.Body, Circle]:
     body = pymunk.Body()
     circle = pymunk.Circle(body, radius)
@@ -202,6 +203,7 @@ def circle_body(
     circle.friction = friction
     circle.collision_type = collision_type
     circle.filter = collision_type.categ_filter()
+    circle.elasticity = elasticity
     return body, circle
 
 
@@ -211,6 +213,7 @@ def circle_body_with_sensors(
     sensor_length: float,
     mass: float = 1.0,
     friction: float = 0.6,
+    elasticity: float = 0.0,
     sensor_range: tuple[float, float] = (-180, 180),
 ) -> BodyWithSensors:
     body, circle = circle_body(
@@ -218,6 +221,7 @@ def circle_body_with_sensors(
         collision_type=CollisionType.AGENT,
         mass=mass,
         friction=friction,
+        elasticity=elasticity,
     )
     sensors = []
     sensor_rad = np.deg2rad(sensor_range)
