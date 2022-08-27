@@ -144,6 +144,10 @@ class BoxSpace(Space[NDArray]):
     def flatten(self) -> BoxSpace:
         return self
 
+    def normalize(self, normalized: NDArray) -> NDArray:
+        range_ = self.high - self.low  # type: ignore
+        return (normalized - self.low) / range_  # type: ignore
+
 
 def get_inf(dtype, sign: str) -> int | float:
     """Returns an infinite that doesn't break things.
