@@ -64,7 +64,7 @@ class FgBody(Body[Vec2d]):
             FgObs,
             sensor=BoxSpace(
                 low=0.0,
-                high=Foraging._SENSOR_MASK_VALUE,
+                high=1.0,
                 shape=(n_sensors, 3),
             ),
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
@@ -104,7 +104,6 @@ def _range(segment: tuple[float, float]) -> float:
 class Foraging(Env[NDArray, Vec2d, FgObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
-    _SENSOR_MASK_VALUE = 2.0
     _WALL_RADIUS = 0.5
 
     def __init__(
@@ -380,9 +379,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
             raise ValueError(f"Invalid mode: {mode}")
 
     def _accumulate_sensor_data(self, body: FgBody) -> NDArray:
-        sensor_data = (
-            np.ones((3, self._n_sensors), dtype=np.float32) * self._SENSOR_MASK_VALUE
-        )
+        sensor_data = np.zeros((3, self._n_sensors), dtype=np.float32)
         for i, sensor in enumerate(body._sensors):
             query_result = utils.sensor_query(self._space, body._body, sensor)
             if query_result is not None:
@@ -392,7 +389,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
                     utils.CollisionType.FOOD,
                     utils.CollisionType.STATIC,
                 ]
-                sensor_data[categ.value][i] = dist
+                sensor_data[categ.value][i] = 1.0 - dist
         return sensor_data
 
     def _all_encounts(self) -> list[Encount]:
