@@ -274,3 +274,31 @@ def add_static_square(
         line = add_static_line(space, start, end, **kwargs)
         lines.append(line)
     return lines
+
+
+def _point_on_circle(
+    center: tuple[float, float],
+    radius: float,
+    theta: float,
+) -> tuple[float, float]:
+    cx, cy = center
+    x, y = np.cos(theta), np.sin(theta)
+    return cx + x * radius, cy + y * radius
+
+
+def add_static_approximated_circle(
+    space: pymunk.Space,
+    center: tuple[float, float],
+    radius: float,
+    n_lines: int = 32,
+    **kwargs,
+) -> list[pymunk.Segment]:
+    unit = np.pi * 2 / n_lines
+    lines = []
+    for i in range(n_lines):
+        theta1, theta2 = unit * i, unit * (i + 1)
+        start = _point_on_circle(center, radius, theta1)
+        end = _point_on_circle(center, radius, theta2)
+        line = add_static_line(space, start, end, **kwargs)
+        lines.append(line)
+    return lines

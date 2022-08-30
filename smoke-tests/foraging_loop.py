@@ -24,6 +24,7 @@ def main(
     debug: bool = False,
     forward_sensor: bool = False,
     use_test_env: bool = False,
+    env_shape: str = "square",
 ) -> None:
     if debug:
         import loguru
@@ -38,7 +39,12 @@ def main(
     if use_test_env:
         env = test_utils.predefined_env(**env_kwargs)
     else:
-        env = make("Forgaging-v0", food_initial_force=food_initial_force, **env_kwargs)
+        env = make(
+            "Forgaging-v0",
+            env_shape=env_shape,
+            food_initial_force=food_initial_force,
+            **env_kwargs,
+        )
     bodies = env.bodies()
     gen = np.random.Generator(PCG64(seed=seed))
 

@@ -1,9 +1,72 @@
+import dataclasses
 import enum
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Protocol
 
 import numpy as np
 from numpy.random import Generator
 from numpy.typing import ArrayLike, NDArray
+
+
+class Coordinate(Protocol):
+    def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        ...
+
+    def contains_circle(self, center: ArrayLike, radius: float) -> bool:
+        ...
+
+    def uniform(self, generator: Generator) -> NDArray:
+        ...
+
+
+@dataclasses.dataclass
+class CircleCoordinate(Coordinate):
+    center: tuple[float, float]
+    radius: float
+
+    def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        cx, cy = self.center
+        r = self.radius
+        return (cx - r, cx + r), (cy - r, cy + r)
+
+    def contains_circle(self, center: ArrayLike, radius: float) -> bool:
+        a2b = np.array(center) - np.array(self.center)  # type: ignore
+        distance = np.linalg.norm(a2b, ord=2) - radius
+        return bool(distance <= self.radius)
+
+    def uniform(self, generator: Generator) -> NDArray:
+        low = [0.0, 0.0]
+        high = [1.0, 2.0 * np.pi]
+        squared_norm, angle = generator.uniform(low=low, high=high)
+        radius = self.radius * np.sqrt(squared_norm)
+        cx, cy = self.center
+        return np.array([radius * np.cos(angle) + cx, radius * np.sin(angle) + cy])
+
+
+@dataclasses.dataclass
+class SquareCoordinate(Coordinate):
+    xlim: tuple[float, float]
+    ylim: tuple[float, float]
+    offset: float
+
+    def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        return self.xlim, self.ylim
+
+    def contains_circle(self, center: ArrayLike, radius: float) -> bool:
+        xmin, xmax = self.xlim
+        ymin, ymax = self.ylim
+        x, y = np.array(center)
+        offset = self.offset + radius
+        x_in = xmin + offset <= x and x <= xmax - offset
+        y_in = ymin + offset <= y and y <= ymax - offset
+        return x_in and y_in
+
+    def uniform(self, generator: Generator) -> NDArray:
+        xmin, xmax = self.xlim
+        ymin, ymax = self.ylim
+        low = np.array([xmin - self.offset, xmax + self.offset])
+        high = np.array([ymin - self.offset, ymax + self.offset])
+        return generator.uniform(low=low, high=high)
+
 
 InitLocFn = Callable[[Generator], NDArray]
 
@@ -37,7 +100,5 @@ def init_loc_pre_defined(locations: Iterable[NDArray]) -> InitLocFn:
     return lambda _generator: next(location_iter)
 
 
-def init_loc_uniform(low: ArrayLike, high: ArrayLike) -> InitLocFn:
-    low = np.array(low)
-    high = np.array(high)
-    return lambda generator: generator.uniform(low=low, high=high)
+def init_loc_uniform(coordinate: Coordinate) -> InitLocFn:
+    return lambda generator: coordinate.uniform(generator)

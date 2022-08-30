@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 from uuid import UUID
 
 import numpy as np
@@ -16,7 +16,12 @@ from emevo.env import Env, Visualizer
 from emevo.environments.pymunk_envs import pymunk_utils as utils
 from emevo.environments.utils.color import Color
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
-from emevo.environments.utils.locating import InitLoc, InitLocFn
+from emevo.environments.utils.locating import (
+    CircleCoordinate,
+    InitLoc,
+    InitLocFn,
+    SquareCoordinate,
+)
 from emevo.spaces import BoxSpace, NamedTupleSpace
 
 
@@ -114,6 +119,8 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         body_loc_fn: InitLocFn | str | tuple[str, ...] = "uniform",
         xlim: tuple[float, float] = (0.0, 200.0),
         ylim: tuple[float, float] = (0.0, 200.0),
+        env_radius: float = 120.0,
+        env_shape: Literal["square", "circle"] = "square",
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
         sensor_range: tuple[float, float] = (-180.0, 180.0),
@@ -131,7 +138,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         encount_threshold: int = 2,
         n_physics_steps: int = 5,
         max_place_attempts: int = 10,
-        body_elasticity: float = 0.6,
+        body_elasticity: float = 0.4,
         nofriction: bool = False,
         seed: int | None = None,
     ) -> None:
@@ -147,9 +154,14 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         self._sensor_length = sensor_length
         self._max_abs_force = max_abs_force
         self._max_abs_velocity = max_abs_velocity
-        self._xlim = xlim
-        self._ylim = ylim
         self._food_initial_force = food_initial_force
+
+        if env_shape == "square":
+            self._coordinate = SquareCoordinate(xlim, ylim, self._WALL_RADIUS)
+        elif env_shape == "circle":
+            self._coordinate = CircleCoordinate((env_radius, env_radius), env_radius)
+        else:
+            raise ValueError(f"Unsupported env_shape {env_shape}")
 
         # nofriction overrides friction values
         if nofriction:
@@ -166,6 +178,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
             mass=agent_mass,
             friction=agent_friction,
             sensor_range=sensor_range,
+            elasticity=body_elasticity,
         )
         self._make_pymunk_food = partial(
             utils.circle_body,
@@ -194,6 +207,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
             ReprNum,
             {"constant": (10,), "logistic": (8, 1.2, 12)},
         )
+        xlim, ylim = self._coordinate.bbox()
         x_range, y_range = _range(xlim), _range(ylim)
         self._food_loc_fn = _get_num_or_loc_fn(
             food_loc_fn,
@@ -203,7 +217,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
                     (xlim[1] * 0.75, ylim[1] * 0.75),
                     (x_range * 0.1, y_range * 0.1),
                 ),
-                "uniform": ((xlim[0], ylim[0]), (xlim[1], ylim[1])),
+                "uniform": (self._coordinate,),
             },
         )
         self._body_loc_fn = _get_num_or_loc_fn(
@@ -214,7 +228,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
                     (xlim[1] * 0.25, ylim[1] * 0.25),
                     (x_range * 0.3, y_range * 0.3),
                 ),
-                "uniform": ((xlim[0], ylim[0]), (xlim[1] * 0.75, ylim[1] * 0.75)),
+                "uniform": (self._coordinate,),
             },
         )
         # Variables
@@ -223,13 +237,22 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         # Make pymunk world and add bodies
         self._space = pymunk.Space()
         # Setup physical objects
-        utils.add_static_square(
-            self._space,
-            *xlim,
-            *ylim,
-            friction=wall_friction,
-            radius=self._WALL_RADIUS,
-        )
+        if isinstance(self._coordinate, SquareCoordinate):
+            utils.add_static_square(
+                self._space,
+                *xlim,
+                *ylim,
+                friction=wall_friction,
+                radius=self._WALL_RADIUS,
+            )
+        elif isinstance(self._coordinate, CircleCoordinate):
+            utils.add_static_approximated_circle(
+                self._space,
+                self._coordinate.center,
+                self._coordinate.radius,
+                friction=wall_friction,
+            )
+
         self._bodies = []
         self._body_uuids = {}
         self._foods: dict[pymunk.Body, pymunk.Shape] = {}
@@ -358,20 +381,21 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         headless: bool = False,
     ) -> Visualizer:
         mode = mode.lower()
+        xlim, ylim = self._coordinate.bbox()
         if mode == "pygame":
             from emevo.environments.pymunk_envs import pygame_vis
 
             return pygame_vis.PygameVisualizer(
-                x_range=_range(self._xlim),
-                y_range=_range(self._ylim),
+                x_range=_range(xlim),
+                y_range=_range(ylim),
                 figsize=figsize,
             )
         elif mode == "moderngl":
             from emevo.environments.pymunk_envs import moderngl_vis
 
             return moderngl_vis.MglVisualizer(
-                x_range=_range(self._xlim),
-                y_range=_range(self._ylim),
+                x_range=_range(xlim),
+                y_range=_range(ylim),
                 env=self,
                 figsize=figsize,
                 backend="headless" if headless else "pyglet",
@@ -413,7 +437,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         self._encounted_bodies.clear()
 
     def _can_place(self, point: Vec2d, radius: float) -> bool:
-        if not self._in_range(point, radius):
+        if not self._coordinate.contains_circle(point, radius):
             return False
         nearest = self._space.point_query_nearest(
             point,
@@ -440,15 +464,6 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
                 self._bodies.append(body)
 
         self._place_n_foods(self._food_num_fn.initial)
-
-    def _in_range(self, point: Vec2d, radius: float) -> bool:
-        xmin, xmax = self._xlim
-        ymin, ymax = self._ylim
-        x, y = point
-        offset = radius + self._WALL_RADIUS
-        x_in = xmin + offset <= x and x <= xmax - offset
-        y_in = ymin + offset <= y and y <= ymax - offset
-        return x_in and y_in
 
     def _make_body(self, generation: int, loc: Vec2d) -> FgBody:
         body_with_sensors = self._make_pymunk_body()

@@ -214,6 +214,22 @@ def _collect_circles(
     )
 
 
+def _collect_static_lines(
+    shapes: list[pymunk.Shape],
+    pos_scaling: tuple[float, float],
+) -> NDArray:
+    points = []
+    for segment in filter(lambda shape: isinstance(shape, pymunk.Segment), shapes):
+        body = segment.body
+        if body.body_type != pymunk.Body.STATIC:
+            continue
+        ax, ay = segment.a
+        bx, by = segment.b
+        points.append([ax * pos_scaling[0], ay * pos_scaling[1]])
+        points.append([bx * pos_scaling[0], by * pos_scaling[1]])
+    return np.array(points, dtype=np.float32)
+
+
 def _collect_sensors(
     shapes: list[pymunk.Shape],
     pos_scaling: tuple[float, float],
@@ -322,6 +338,21 @@ class MglVisualizer:
             program=segment_program,
             segments=_collect_sensors(shapes, self._pos_scaling),
         )
+        static_segment_program = _make_gl_program(
+            self._window.ctx,
+            vertex_shader=_LINE_VERTEX_SHADER,
+            geometry_shader=_LINE_GEOMETRY_SHADER,
+            fragment_shader=_LINE_FRAGMENT_SHADER,
+        )
+        static_segment_program["color"].write(
+            np.array([0.0, 0.0, 0.0, 0.4], dtype=np.float32)
+        )
+        static_segment_program["width"].write(np.array([0.004], dtype=np.float32))
+        self._static_lines = SegmentVA(
+            ctx=self._window.ctx,
+            program=static_segment_program,
+            segments=_collect_static_lines(shapes, self._pos_scaling),
+        )
         head_program = _make_gl_program(
             self._window.ctx,
             vertex_shader=_LINE_VERTEX_SHADER,
@@ -364,6 +395,7 @@ class MglVisualizer:
             self._sensors.render()
         if self._heads.update(_collect_heads(shapes, self._pos_scaling)):
             self._heads.render()
+        self._static_lines.render()
 
     def overlay(self, name: str, value: Any) -> Any:
         """Render additional value as an overlay"""
