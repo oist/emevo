@@ -63,8 +63,8 @@ class SquareCoordinate(Coordinate):
     def uniform(self, generator: Generator) -> NDArray:
         xmin, xmax = self.xlim
         ymin, ymax = self.ylim
-        low = np.array([xmin - self.offset, xmax + self.offset])
-        high = np.array([ymin - self.offset, ymax + self.offset])
+        low = np.array([xmin + self.offset, ymin + self.offset])
+        high = np.array([xmax - self.offset, ymax - self.offset])
         return generator.uniform(low=low, high=high)
 
 
