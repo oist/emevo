@@ -485,6 +485,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
 
     def _make_food(self, loc: Vec2d) -> tuple[pymunk.Body, pymunk.Shape]:
         body, shape = self._make_pymunk_food()
+        body.velocify_func = utils.limit_velocity(0.0)
         shape.color = self._FOOD_COLOR
         if any(map(lambda value: value != 0.0, self._food_initial_force)):
             mean, stddev = self._food_initial_force
