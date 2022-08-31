@@ -330,9 +330,9 @@ class MglVisualizer:
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
+            color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
+            width=np.array([0.002], dtype=np.float32),
         )
-        segment_program["color"].write(np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32))
-        segment_program["width"].write(np.array([0.002], dtype=np.float32))
         self._sensors = SegmentVA(
             ctx=self._window.ctx,
             program=segment_program,
@@ -343,11 +343,9 @@ class MglVisualizer:
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
+            color=np.array([0.0, 0.0, 0.0, 0.4], dtype=np.float32),
+            width=np.array([0.004], dtype=np.float32),
         )
-        static_segment_program["color"].write(
-            np.array([0.0, 0.0, 0.0, 0.4], dtype=np.float32)
-        )
-        static_segment_program["width"].write(np.array([0.004], dtype=np.float32))
         self._static_lines = SegmentVA(
             ctx=self._window.ctx,
             program=static_segment_program,
@@ -358,9 +356,9 @@ class MglVisualizer:
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
+            color=np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32),
+            width=np.array([0.004], dtype=np.float32),
         )
-        head_program["color"].write(np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32))
-        head_program["width"].write(np.array([0.004], dtype=np.float32))
         self._heads = SegmentVA(
             ctx=self._window.ctx,
             program=head_program,
@@ -471,6 +469,7 @@ def _make_gl_program(
     geometry_shader: str | None = None,
     fragment_shader: str | None = None,
     proj_scale: tuple[float, float] = (1.0, 1.0),
+    **kwargs: NDArray,
 ) -> mgl.Program:
     ctx.enable(mgl.PROGRAM_POINT_SIZE | mgl.BLEND)
     ctx.blend_func = mgl.DEFAULT_BLENDING
@@ -481,6 +480,8 @@ def _make_gl_program(
     )
     proj = _make_projection_matrix(proj_scale)
     prog["proj"].write(proj)
+    for key, value in kwargs.items():
+        prog[key].write(value)
     return prog
 
 
