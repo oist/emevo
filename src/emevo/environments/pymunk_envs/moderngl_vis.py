@@ -411,9 +411,7 @@ class MglVisualizer:
                     vertex_shader=_LINE_VERTEX_SHADER,
                     geometry_shader=_ARROW_GEOMETRY_SHADER,
                     fragment_shader=_LINE_FRAGMENT_SHADER,
-                )
-                arrow_program["color"].write(
-                    np.array([0.98, 0.45, 0.45, 1.0], dtype=np.float32)
+                    color=np.array([0.98, 0.45, 0.45, 1.0], dtype=np.float32),
                 )
                 self._overlays["arrow"] = SegmentVA(
                     ctx=self._window.ctx,
