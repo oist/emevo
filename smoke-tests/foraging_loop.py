@@ -57,7 +57,7 @@ def main(
         actions = {body: body.act_space.sample(gen) for body in bodies}
         # Samples for adding constant force for debugging
         # actions = {body: np.array([0.0, -1.0]) for body in bodies}
-        _ = env.step(actions)
+        _ = env.step(actions)  # type: ignore
         if visualizer is not None:
             visualizer.render(env)
             visualizer.show()
