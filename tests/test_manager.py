@@ -7,7 +7,6 @@ from typing import Callable
 import numpy as np
 import pytest
 from numpy.typing import NDArray
-from pymunk.vec2d import operator
 
 from emevo import Body, Encount
 from emevo import birth_and_death as bd
