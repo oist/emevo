@@ -186,6 +186,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
             collision_type=utils.CollisionType.FOOD,
             mass=food_mass,
             friction=food_friction,
+            body_type=pymunk.Body.STATIC,
         )
 
         def _get_num_or_loc_fn(
@@ -485,7 +486,6 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
 
     def _make_food(self, loc: Vec2d) -> tuple[pymunk.Body, pymunk.Shape]:
         body, shape = self._make_pymunk_food()
-        body.velocify_func = utils.limit_velocity(0.0)
         shape.color = self._FOOD_COLOR
         if any(map(lambda value: value != 0.0, self._food_initial_force)):
             mean, stddev = self._food_initial_force

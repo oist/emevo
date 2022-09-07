@@ -196,8 +196,9 @@ def circle_body(
     mass: float = 1.0,
     friction: float = 0.6,
     elasticity: float = 0.0,
+    body_type: int = pymunk.Body.DYNAMIC,
 ) -> tuple[pymunk.Body, Circle]:
-    body = pymunk.Body()
+    body = pymunk.Body(body_type=body_type)
     circle = pymunk.Circle(body, radius)
     circle.mass = mass
     circle.friction = friction
