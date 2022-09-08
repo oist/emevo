@@ -11,7 +11,11 @@ def hunger_or_infirmity(
     energy_threshold: float,
     age_threshold: float,
 ) -> Callable[[HasAgeAndEnergy], float]:
-    """A completely discretized death function"""
+    """
+    A deterministic death function where an agent dies when
+    - its energy level is lower than the energy thershold or
+    - its age is older than the the age thershold
+    """
 
     def death_prob_fn(status: HasAgeAndEnergy) -> float:
         if status.energy < energy_threshold or age_threshold < status.age:
@@ -22,20 +26,40 @@ def hunger_or_infirmity(
     return death_prob_fn
 
 
-def gompertz_hazard(
-    energy_threshold: float,
+def gompertz(
+    n_0: float = 0.0001,
+    n_max: float = 0.01,
+    b_const: float = 0.0004,
+    b_age: float = 0.0004,
     energy_min: float = -5.0,
     energy_max: float = 15.0,
-    gompertz_alpha: float = 1e-4,
 ) -> Callable[[HasAgeAndEnergy], float]:
-    """Gompertz hazard function is defined by λ(x) = R exp(αx)"""
+    """https://en.wikipedia.org/wiki/Gompertz_function#Gompertz_curve"""
     energy_range = energy_max - energy_min
 
     def death_prob_fn(status: HasAgeAndEnergy) -> float:
-        if status.energy < energy_threshold:
-            return 1.0
-        r = max(0.0, status.energy - energy_min) / energy_range
-        hazard = np.exp(gompertz_alpha * status.age)
-        return min(r * hazard, 1.0)
+        energy_ratio = (status.energy - energy_min) / energy_range
+        b = b_const + b_age * (1.0 - energy_ratio)
+        return n_0 * np.exp(np.log(n_max / n_0) * (1.0 - np.exp(-b * status.age)))
+
+    return death_prob_fn
+
+
+def logistic(
+    n_0: float = 0.0001,
+    n_max: float = 0.01,
+    b: float = 0.01,
+    c_const: float = 0.0004,
+    c_age: float = 0.0004,
+    energy_min: float = -5.0,
+    energy_max: float = 15.0,
+) -> Callable[[HasAgeAndEnergy], float]:
+    """From https://journals.asm.org/doi/10.1128/aem.56.6.1875-1881.1990"""
+    energy_range = energy_max - energy_min
+
+    def death_prob_fn(status: HasAgeAndEnergy) -> float:
+        energy_ratio = (status.energy - energy_min) / energy_range
+        c = c_const + c_age * (1.0 - energy_ratio)
+        return (n_max - n_0) / (1 + np.exp(b - c * status.age))
 
     return death_prob_fn

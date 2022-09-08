@@ -8,14 +8,13 @@ from emevo import Encount
 from emevo.birth_and_death.statuses import HasAgeAndEnergy, HasEnergy
 
 
-def _scaled_log(value: float, scale: float) -> float:
-    return np.log(1 + max(value, 0.0) * scale)
-
-
 def log_prod(
     scale_energy: float,
     scale_prob: float,
 ) -> Callable[[tuple[HasAgeAndEnergy, HasAgeAndEnergy], Encount], float]:
+    def _scaled_log(value: float, scale: float) -> float:
+        return np.log(1 + max(value, 0.0) * scale)
+
     def success_prob(
         statuses: tuple[HasAgeAndEnergy, HasAgeAndEnergy],
         _encount: Encount,
@@ -28,22 +27,30 @@ def log_prod(
     return success_prob
 
 
-def log(scale_energy: float, scale_prob: float) -> Callable[[HasEnergy], float]:
+def linear_to_energy(
+    t_max: float = 10000,
+    energy_min: float = -5.0,
+    energy_max: float = 15.0,
+) -> Callable[[HasEnergy], float]:
+    energy_range = energy_max - energy_min
+
     def success_prob(status: HasEnergy) -> float:
-        return min(1.0, _scaled_log(status.energy, scale_energy) * scale_prob)
+        energy_ratio = (status.energy + energy_min) / energy_range
+        return energy_ratio * 2 / t_max + 1 / t_max
 
     return success_prob
 
 
-def normal(
-    mean: float,
-    stddev: float,
-    energy_max: float = 8.0,
-) -> Callable[[HasAgeAndEnergy], float]:
-    from scipy.stats import norm
+def linear_to_energy_sum(
+    t_max: float = 10000,
+    energy_min: float = -5.0,
+    energy_max: float = 15.0,
+) -> Callable[[HasEnergy, HasEnergy], float]:
+    energy_range = (energy_max - energy_min) * 2
 
-    def success_prob(status: HasAgeAndEnergy) -> float:
-        energy_coef = max(0.0, status.energy) / energy_max
-        return norm.pdf(status.age, loc=mean, scale=stddev) * energy_coef
+    def success_prob(status_a: HasEnergy, status_b: HasEnergy) -> float:
+        energy_sum = status_a.energy + status_b.energy
+        energy_ratio = (energy_sum - energy_min) / energy_range
+        return energy_ratio * 2 / t_max + 1 / t_max
 
     return success_prob
