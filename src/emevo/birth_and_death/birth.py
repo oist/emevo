@@ -2,29 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-import numpy as np
-
-from emevo import Encount
-from emevo.birth_and_death.statuses import HasAgeAndEnergy, HasEnergy
-
-
-def log_prod(
-    scale_energy: float,
-    scale_prob: float,
-) -> Callable[[tuple[HasAgeAndEnergy, HasAgeAndEnergy], Encount], float]:
-    def _scaled_log(value: float, scale: float) -> float:
-        return np.log(1 + max(value, 0.0) * scale)
-
-    def success_prob(
-        statuses: tuple[HasAgeAndEnergy, HasAgeAndEnergy],
-        _encount: Encount,
-    ) -> float:
-        log_e1, log_e2 = map(
-            lambda status: _scaled_log(status.energy, scale_energy), statuses
-        )
-        return min(1.0, log_e1 * log_e2 * scale_prob)
-
-    return success_prob
+from emevo.birth_and_death.statuses import HasEnergy
 
 
 def linear_to_energy(
