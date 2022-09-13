@@ -53,12 +53,3 @@ testpaths = ["tests"]
 
 [tool.isort]
 profile = "black"
-
-[tool.pyright]
-include = ["src", "smoke-tests", "tests"]
-extraPaths = [
-    ".nox/tests-3-8/lib/python3.8/site-packages/",
-    ".nox/tests-3-9/lib/python3.9/site-packages/",
-    ".nox/tests-3-10/lib/python3.10/site-packages/",
-    "src",
-]

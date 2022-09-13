@@ -379,7 +379,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         self,
         mode: str,
         figsize: tuple[float, float] | None = None,
-        headless: bool = False,
+        mgl_backend: str = "pyglet",
     ) -> Visualizer:
         mode = mode.lower()
         xlim, ylim = self._coordinate.bbox()
@@ -399,7 +399,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
                 y_range=_range(ylim),
                 env=self,
                 figsize=figsize,
-                backend="headless" if headless else "pyglet",
+                backend=mgl_backend,
             )
         else:
             raise ValueError(f"Invalid mode: {mode}")
