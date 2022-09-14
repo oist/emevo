@@ -291,7 +291,7 @@ class MglVisualizer:
         figsize: tuple[float, float] | None = None,
         vsync: bool = False,
         backend: str = "pyglet",
-        title: str = "Pymunk Env",
+        title: str = "EmEvo PymunkEnv",
     ) -> None:
         self.pix_fmt = "rgba"
 
