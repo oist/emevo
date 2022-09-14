@@ -256,7 +256,7 @@ def _collect_heads(
     for circle in filter(lambda shape: isinstance(shape, pymunk.Circle), shapes):
         pos = circle.body.position + circle.offset
         angle = circle.body.angle
-        p1 = pymunk.Vec2d(0.0, circle.radius * 0.9).rotated(angle) + pos
+        p1 = pymunk.Vec2d(0.0, circle.radius * 0.8).rotated(angle) + pos
         p2 = pymunk.Vec2d(0.0, circle.radius * 1.2).rotated(angle) + pos
         points.append([p1.x * pos_scaling[0], p1.y * pos_scaling[1]])
         points.append([p2.x * pos_scaling[0], p2.y * pos_scaling[1]])
