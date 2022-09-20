@@ -141,9 +141,9 @@ class CircleVA(Renderable):
     ) -> None:
         self._ctx = ctx
         self._length = points.shape[0]
-        self._points = ctx.buffer(points)
-        self._scales = ctx.buffer(scales)
-        self._colors = ctx.buffer(colors)
+        self._points = ctx.buffer(reserve=len(points) * 4 * 2 * 10)
+        self._scales = ctx.buffer(reserve=len(scales) * 4 * 10)
+        self._colors = ctx.buffer(reserve=len(colors) * 4 * 4 * 10)
 
         self.vertex_array = ctx.vertex_array(
             program,
@@ -178,7 +178,7 @@ class SegmentVA(Renderable):
     ) -> None:
         self._ctx = ctx
         self._length = segments.shape[0]
-        self._segments = ctx.buffer(segments)
+        self._segments = ctx.buffer(reserve=len(segments) * 4 * 2 * 10)
 
         self.vertex_array = ctx.vertex_array(
             program,
@@ -389,10 +389,11 @@ class MglVisualizer:
         )
         if self._circles.update(points, scales, colors):
             self._circles.render()
-        if self._sensors.update(_collect_sensors(shapes, self._pos_scaling)):
-            self._sensors.render()
         if self._heads.update(_collect_heads(shapes, self._pos_scaling)):
             self._heads.render()
+        sensors = _collect_sensors(shapes, self._pos_scaling)
+        if self._sensors.update(sensors):
+            self._sensors.render()
         self._static_lines.render()
 
     def overlay(self, name: str, value: Any) -> Any:
