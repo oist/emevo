@@ -27,7 +27,7 @@ class Rendering(str, enum.Enum):
     MODERNGL = "moderngl"
 
 
-def success_prob_fn(
+def birth_fn(
     status_a: bd.statuses.HasEnergy,
     status_b: bd.statuses.HasEnergy,
 ) -> float:
@@ -59,8 +59,8 @@ def main(
 
         manager = bd.SexualReprManager(
             initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
-            death_prob_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
-            success_prob_fn=success_prob_fn,
+            hazard_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
+            birth_fn=birth_fn,
             produce_fn=produce_oviparous,
         )
 
@@ -76,8 +76,8 @@ def main(
 
         manager = bd.SexualReprManager(
             initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
-            death_prob_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
-            success_prob_fn=success_prob_fn,
+            hazard_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
+            birth_fn=birth_fn,
             produce_fn=produce_viviparous,
         )
     else:

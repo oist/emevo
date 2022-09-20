@@ -43,7 +43,7 @@ def status_fn():
 
 
 @pytest.fixture
-def death_prob_fn():
+def hazard_fn():
     return bd.death.hunger_or_infirmity(0.5, 100.0)
 
 
@@ -54,7 +54,7 @@ def _add_bodies(manager, n_bodies: int = 5) -> None:
 
 def test_asexual(
     status_fn: Callable[[], bd.statuses.AgeAndEnergy],
-    death_prob_fn: Callable[[bd.statuses.AgeAndEnergy], float],
+    hazard_fn: Callable[[bd.statuses.AgeAndEnergy], float],
 ) -> None:
     """Test the most basic setting: Asexual reproduction + Oviparous birth"""
 
@@ -64,8 +64,8 @@ def test_asexual(
 
     manager = bd.AsexualReprManager(
         initial_status_fn=status_fn,
-        death_prob_fn=death_prob_fn,
-        success_prob_fn=lambda status: float(
+        hazard_fn=hazard_fn,
+        birth_fn=lambda status: float(
             status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
         ),
         produce_fn=lambda _status, body: bd.Oviparous(
@@ -112,7 +112,7 @@ def test_asexual(
 @pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
 def test_sexual(
     status_fn: Callable[[], bd.statuses.AgeAndEnergy],
-    death_prob_fn: Callable[[bd.statuses.AgeAndEnergy], float],
+    hazard_fn: Callable[[bd.statuses.AgeAndEnergy], float],
     newborn_kind: str,
 ) -> None:
     """Test Sexual reproduction"""
@@ -141,8 +141,8 @@ def test_sexual(
 
         manager = bd.SexualReprManager(
             initial_status_fn=status_fn,
-            death_prob_fn=death_prob_fn,
-            success_prob_fn=success_prob,
+            hazard_fn=hazard_fn,
+            birth_fn=success_prob,
             produce_fn=produce_oviparous,
         )
 
@@ -157,8 +157,8 @@ def test_sexual(
 
         manager = bd.SexualReprManager(
             initial_status_fn=status_fn,
-            death_prob_fn=death_prob_fn,
-            success_prob_fn=success_prob,
+            hazard_fn=hazard_fn,
+            birth_fn=success_prob,
             produce_fn=produce_viviparous,
         )
     else:

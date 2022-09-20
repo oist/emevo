@@ -32,11 +32,11 @@ class _BaseManager(Generic[STATUS]):
     def __init__(
         self,
         initial_status_fn: Callable[..., STATUS],
-        death_prob_fn: Callable[[STATUS], float],
+        hazard_fn: Callable[[STATUS], float],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         self._initial_status_fn = initial_status_fn
-        self._death_prob_fn = death_prob_fn
+        self._hazard_fn = hazard_fn
         self._rng = rng
         self._statuses = {}
         self._pending_newborns = []
@@ -56,7 +56,7 @@ class _BaseManager(Generic[STATUS]):
 
         for body, status in self._statuses.items():
             status.step()
-            if self._rng() < self._death_prob_fn(status):
+            if self._rng() < self._hazard_fn(status):
                 deads.append(DeadBody(body, status))
 
         for dead in deads:
@@ -80,17 +80,17 @@ class AsexualReprManager(_BaseManager):
     def __init__(
         self,
         initial_status_fn: Callable[..., STATUS],
-        death_prob_fn: Callable[[STATUS], float],
-        success_prob_fn: Callable[[STATUS], float],
+        hazard_fn: Callable[[STATUS], float],
+        birth_fn: Callable[[STATUS], float],
         produce_fn: Callable[[STATUS, Body], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
-        super().__init__(initial_status_fn, death_prob_fn, rng)
-        self._success_prob_fn = success_prob_fn
+        super().__init__(initial_status_fn, hazard_fn, rng)
+        self._birth_fn = birth_fn
         self._produce_fn = produce_fn
 
     def _reproduce_impl(self, body: Body) -> Newborn | None:
-        success_prob = self._success_prob_fn(self._statuses[body])
+        success_prob = self._birth_fn(self._statuses[body])
         if self._rng() < success_prob:
             newborn = self._produce_fn(self._statuses[body], body)
             self._pending_newborns.append(newborn)
@@ -116,18 +116,18 @@ class SexualReprManager(_BaseManager):
     def __init__(
         self,
         initial_status_fn: Callable[..., STATUS],
-        death_prob_fn: Callable[[STATUS], float],
-        success_prob_fn: Callable[[STATUS, STATUS], float],
+        hazard_fn: Callable[[STATUS], float],
+        birth_fn: Callable[[STATUS, STATUS], float],
         produce_fn: Callable[[STATUS, STATUS, Encount], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
-        super().__init__(initial_status_fn, death_prob_fn, rng)
-        self._success_prob_fn = success_prob_fn
+        super().__init__(initial_status_fn, hazard_fn, rng)
+        self._birth_fn = birth_fn
         self._produce_fn = produce_fn
 
     def _reproduce_impl(self, encount: Encount) -> Newborn | None:
         s_a, s_b = map(lambda body: self._statuses[body], encount)
-        success_prob = self._success_prob_fn(s_a, s_b)
+        success_prob = self._birth_fn(s_a, s_b)
         if self._rng() < success_prob:
             newborn = self._produce_fn(s_a, s_b, encount)
             self._pending_newborns.append(newborn)

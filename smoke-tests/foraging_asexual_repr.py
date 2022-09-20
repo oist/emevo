@@ -12,11 +12,7 @@ from numpy.random import PCG64
 from pymunk.vec2d import Vec2d
 
 from emevo import birth_and_death as bd
-from emevo import make
-
-
-def success_prob_fn(status: bd.statuses.HasEnergy) -> float:
-    return 1 / (1.0 + np.exp(-status.energy))
+from emevo import make, utils
 
 
 @dataclasses.dataclass
@@ -30,11 +26,20 @@ class Rendering(str, enum.Enum):
     MODERNGL = "moderngl"
 
 
+class HazardFn(str, enum.Enum):
+    CONST = "const"
+    GOMPERTZ = "gompertz"
+    WEIBULL = "weibull"
+
+
 def main(
     steps: int = 100,
     render: Rendering | None = None,
     food_initial_force: tuple[float, float] = (0.0, 0.0),
+    agent_radius: float = 12.0,
     seed: int = 1,
+    hazard: HazardFn = HazardFn.CONST,
+    birth_rate: float = 0.01,
     debug: bool = False,
 ) -> None:
     if debug:
@@ -42,10 +47,20 @@ def main(
 
         loguru.logger.enable("emevo")
 
+    if hazard == HazardFn.CONST:
+        hazard_fn = bd.death.hunger_or_infirmity(-10.0, steps / 10)
+    elif hazard == HazardFn.GOMPERTZ:
+        hazard_fn = bd.death.gompertz(beta=np.log(10) / steps)
+    elif hazard == HazardFn.WEIBULL:
+        alpha = np.log(100) / steps / 2
+        hazard_fn = bd.death.weibull(alpha1=alpha, alpha2=alpha, beta=1.0)
+    else:
+        assert False
+
     manager = bd.AsexualReprManager(
         initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
-        death_prob_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
-        success_prob_fn=success_prob_fn,
+        hazard_fn=hazard_fn,
+        birth_fn=lambda _: birth_rate,
         produce_fn=lambda _, body: bd.Oviparous(
             context=SimpleContext(body.generation + 1, body.location()),
             time_to_birth=5,
@@ -75,8 +90,15 @@ def main(
             env.dead(dead.body)
 
         for context in map(operator.attrgetter("context"), newborns):
-            body = env.born(context.location, context.generation + 1)
+            loc = utils.sample_location(
+                gen,
+                context.location,
+                radius_max=agent_radius * 3,
+                radius_min=agent_radius * 1.5,
+            )
+            body = env.born(Vec2d(*loc), context.generation + 1)
             if body is not None:
+                print(f"{body} was born")
                 manager.register(body)
 
         if visualizer is not None:

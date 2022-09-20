@@ -17,13 +17,13 @@ def hunger_or_infirmity(
     - its age is older than the the age thershold
     """
 
-    def death_prob_fn(status: HasAgeAndEnergy) -> float:
+    def hazard_fn(status: HasAgeAndEnergy) -> float:
         if status.energy < energy_threshold or age_threshold < status.age:
             return 1.0
         else:
             return 0.0
 
-    return death_prob_fn
+    return hazard_fn
 
 
 def gompertz(
@@ -39,12 +39,12 @@ def gompertz(
     """
     energy_range = energy_max - energy_min
 
-    def death_prob_fn(status: HasAgeAndEnergy) -> float:
+    def hazard_fn(status: HasAgeAndEnergy) -> float:
         energy_ratio = (status.energy - energy_min) / energy_range
         alpha = alpha1 + alpha2 * (1.0 - energy_ratio)
         return alpha * np.exp(status.age * beta)
 
-    return death_prob_fn
+    return hazard_fn
 
 
 def weibull(
@@ -60,9 +60,9 @@ def weibull(
     """
     energy_range = energy_max - energy_min
 
-    def death_prob_fn(status: HasAgeAndEnergy) -> float:
+    def hazard_fn(status: HasAgeAndEnergy) -> float:
         energy_ratio = (status.energy - energy_min) / energy_range
         alpha = alpha1 + alpha2 * (1.0 - energy_ratio)
         return beta * (alpha**beta) * (status.age ** (beta - 1.0))
 
-    return death_prob_fn
+    return hazard_fn
