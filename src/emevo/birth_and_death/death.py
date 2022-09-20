@@ -1,4 +1,4 @@
-""" Set of death functions for some statuses
+""" Collection of hazard functions
 """
 from typing import Callable
 
@@ -27,39 +27,42 @@ def hunger_or_infirmity(
 
 
 def gompertz(
-    n_0: float = 0.0001,
-    n_max: float = 0.01,
-    b_const: float = 0.0004,
-    b_age: float = 0.0004,
+    alpha1: float = 1e-5,
+    alpha2: float = 1e-5,
+    beta: float = 1e-4,
     energy_min: float = -5.0,
     energy_max: float = 15.0,
 ) -> Callable[[HasAgeAndEnergy], float]:
-    """https://en.wikipedia.org/wiki/Gompertz_function#Gompertz_curve"""
+    """
+    Gompertz hazard function h(t) = (α1 + α2 * (1 - energy)) * exp(age * β).
+    Reference: https://en.wikipedia.org/wiki/Gompertz%E2%80%93Makeham_law_of_mortality.
+    """
     energy_range = energy_max - energy_min
 
     def death_prob_fn(status: HasAgeAndEnergy) -> float:
         energy_ratio = (status.energy - energy_min) / energy_range
-        b = b_const + b_age * (1.0 - energy_ratio)
-        return n_0 * np.exp(np.log(n_max / n_0) * (1.0 - np.exp(-b * status.age)))
+        alpha = alpha1 + alpha2 * (1.0 - energy_ratio)
+        return alpha * np.exp(status.age * beta)
 
     return death_prob_fn
 
 
-def logistic(
-    n_0: float = 0.0001,
-    n_max: float = 0.01,
-    b: float = 0.01,
-    c_const: float = 0.0004,
-    c_age: float = 0.0004,
+def weibull(
+    alpha1: float = 4e-5,
+    alpha2: float = 4e-5,
+    beta: float = 1.1,
     energy_min: float = -5.0,
     energy_max: float = 15.0,
 ) -> Callable[[HasAgeAndEnergy], float]:
-    """From https://journals.asm.org/doi/10.1128/aem.56.6.1875-1881.1990"""
+    """
+    Weibull hazard function: h(t) = β (α1 + α2(1 - energy))^(β) age^(β - 1)
+    https://en.wikipedia.org/wiki/Gompertz%E2%80%93Makeham_law_of_mortality
+    """
     energy_range = energy_max - energy_min
 
     def death_prob_fn(status: HasAgeAndEnergy) -> float:
         energy_ratio = (status.energy - energy_min) / energy_range
-        c = c_const + c_age * (1.0 - energy_ratio)
-        return (n_max - n_0) / (1 + np.exp(b - c * status.age))
+        alpha = alpha1 + alpha2 * (1.0 - energy_ratio)
+        return beta * (alpha**beta) * (status.age ** (beta - 1.0))
 
     return death_prob_fn
