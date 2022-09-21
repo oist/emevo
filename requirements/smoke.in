@@ -1,4 +1,5 @@
 -r self.txt
+imageio-ffmpeg
 moderngl
 moderngl-window
 pygame

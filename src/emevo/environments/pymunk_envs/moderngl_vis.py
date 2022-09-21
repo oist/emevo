@@ -140,7 +140,6 @@ class CircleVA(Renderable):
         colors: NDArray,
     ) -> None:
         self._ctx = ctx
-        self._length = points.shape[0]
         self._points = ctx.buffer(reserve=len(points) * 4 * 2 * 10)
         self._scales = ctx.buffer(reserve=len(scales) * 4 * 10)
         self._colors = ctx.buffer(reserve=len(colors) * 4 * 4 * 10)
@@ -155,16 +154,10 @@ class CircleVA(Renderable):
         )
 
     def update(self, points: NDArray, scales: NDArray, colors: NDArray) -> bool:
-        length = points.shape[0]
-        if self._length != length:
-            self._length = length
-            self._points.orphan(length * 4 * 2)
-            self._scales.orphan(length * 4)
-            self._colors.orphan(length * 4 * 4)
         self._points.write(points)
         self._scales.write(scales)
         self._colors.write(colors)
-        return length > 0
+        return points.shape[0] > 0
 
 
 class SegmentVA(Renderable):
@@ -177,7 +170,6 @@ class SegmentVA(Renderable):
         segments: NDArray,
     ) -> None:
         self._ctx = ctx
-        self._length = segments.shape[0]
         self._segments = ctx.buffer(reserve=len(segments) * 4 * 2 * 10)
 
         self.vertex_array = ctx.vertex_array(
@@ -186,12 +178,8 @@ class SegmentVA(Renderable):
         )
 
     def update(self, segments: NDArray) -> bool:
-        length = segments.shape[0]
-        if self._length != length:
-            self._length = length
-            self._segments.orphan(length * 4 * 2)
         self._segments.write(segments)
-        return length > 0
+        return segments.shape[0] > 0
 
 
 def _collect_circles(

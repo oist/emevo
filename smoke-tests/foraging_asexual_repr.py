@@ -5,6 +5,7 @@ import dataclasses
 import enum
 import operator
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 import typer
@@ -13,6 +14,7 @@ from pymunk.vec2d import Vec2d
 
 from emevo import birth_and_death as bd
 from emevo import make, utils
+from emevo import visualizer as evis
 
 
 @dataclasses.dataclass
@@ -24,6 +26,7 @@ class SimpleContext:
 class Rendering(str, enum.Enum):
     PYGAME = "pygame"
     MODERNGL = "moderngl"
+    HEADLESS = "headless"
 
 
 class HazardFn(str, enum.Enum):
@@ -39,8 +42,9 @@ def main(
     agent_radius: float = 12.0,
     seed: int = 1,
     hazard: HazardFn = HazardFn.CONST,
-    birth_rate: float = 0.01,
+    birth_rate: float = 0.001,
     debug: bool = False,
+    video: Path | None = None,
 ) -> None:
     if debug:
         import loguru
@@ -72,7 +76,12 @@ def main(
     gen = np.random.Generator(PCG64(seed=seed))
 
     if render is not None:
-        visualizer = env.visualizer(mode=render.value)
+        if render == Rendering.HEADLESS:
+            visualizer = env.visualizer(mode="moderngl", mgl_backend="headless")
+        else:
+            visualizer = env.visualizer(mode=render.value)
+        if video is not None:
+            visualizer = evis.SaveVideoWrapper(visualizer, video, fps=60)
     else:
         visualizer = None
 

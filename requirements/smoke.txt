@@ -12,6 +12,8 @@ click==8.0.3
     # via typer
 glcontext==2.3.6
     # via moderngl
+imageio-ffmpeg==0.4.7
+    # via -r requirements/smoke.in
 loguru==0.6.0
     # via -r requirements/self.txt
 moderngl==5.6.4
