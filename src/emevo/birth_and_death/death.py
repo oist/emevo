@@ -56,7 +56,7 @@ def weibull(
 ) -> Callable[[HasAgeAndEnergy], float]:
     """
     Weibull hazard function: h(t) = β (α1 + α2(1 - energy))^(β) age^(β - 1)
-    https://en.wikipedia.org/wiki/Gompertz%E2%80%93Makeham_law_of_mortality
+    https://en.wikipedia.org/wiki/Weibull_distribution
     """
     energy_range = energy_max - energy_min
 
