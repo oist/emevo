@@ -43,8 +43,8 @@ def status_fn():
 
 
 @pytest.fixture
-def hazard_fn():
-    return bd.death.hunger_or_infirmity(0.5, 100.0)
+def hazard_fn() -> bd.death.HazardFunction:
+    return bd.death.Deterministic(0.5, 100.0)
 
 
 def _add_bodies(manager, n_bodies: int = 5) -> None:

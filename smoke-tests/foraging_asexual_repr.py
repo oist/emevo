@@ -53,12 +53,12 @@ def main(
 
     avg_lifetime = steps // 2
     if hazard == HazardFn.CONST:
-        hazard_fn = bd.death.hunger_or_infirmity(-10.0, avg_lifetime)
+        hazard_fn = bd.death.Deterministic(-10.0, avg_lifetime)
     elif hazard == HazardFn.GOMPERTZ:
-        hazard_fn = bd.death.gompertz(beta=np.log(10) / avg_lifetime)
+        hazard_fn = bd.death.Gompertz(beta=np.log(10) / avg_lifetime)
     elif hazard == HazardFn.WEIBULL:
         alpha = 0.5 * (1.0 / avg_lifetime)
-        hazard_fn = bd.death.weibull(alpha1=alpha, alpha2=alpha, beta=1.0)
+        hazard_fn = bd.death.Weibull(alpha1=alpha, alpha2=alpha, beta=1.0)
     else:
         assert False
 

@@ -22,6 +22,12 @@ class SimpleContext:
     location: Vec2d
 
 
+class HazardFn(str, enum.Enum):
+    CONST = "const"
+    GOMPERTZ = "gompertz"
+    WEIBULL = "weibull"
+
+
 class Rendering(str, enum.Enum):
     PYGAME = "pygame"
     MODERNGL = "moderngl"
@@ -41,12 +47,24 @@ def main(
     food_initial_force: tuple[float, float] = (0.0, 0.0),
     seed: int = 1,
     newborn_kind: str = "oviparous",
+    hazard: HazardFn = HazardFn.CONST,
     debug: bool = False,
 ) -> None:
     if debug:
         import loguru
 
         loguru.logger.enable("emevo")
+
+    avg_lifetime = steps // 2
+    if hazard == HazardFn.CONST:
+        hazard_fn = bd.death.Deterministic(-10.0, avg_lifetime)
+    elif hazard == HazardFn.GOMPERTZ:
+        hazard_fn = bd.death.Gompertz(beta=np.log(10) / avg_lifetime)
+    elif hazard == HazardFn.WEIBULL:
+        alpha = 0.5 * (1.0 / avg_lifetime)
+        hazard_fn = bd.death.Weibull(alpha1=alpha, alpha2=alpha, beta=1.0)
+    else:
+        assert False
 
     if newborn_kind == "oviparous":
 
@@ -59,7 +77,7 @@ def main(
 
         manager = bd.SexualReprManager(
             initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
-            hazard_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
+            hazard_fn=hazard_fn,
             birth_fn=birth_fn,
             produce_fn=produce_oviparous,
         )
@@ -76,7 +94,7 @@ def main(
 
         manager = bd.SexualReprManager(
             initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
-            hazard_fn=bd.death.hunger_or_infirmity(-10.0, 1000.0),
+            hazard_fn=hazard_fn,
             birth_fn=birth_fn,
             produce_fn=produce_viviparous,
         )
