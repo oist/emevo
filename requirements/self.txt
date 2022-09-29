@@ -9,8 +9,12 @@ cffi==1.15.0
 loguru==0.6.0
     # via emevo (pyproject.toml)
 numpy==1.23.0
-    # via emevo (pyproject.toml)
+    # via
+    #   emevo (pyproject.toml)
+    #   scipy
 pycparser==2.21
     # via cffi
 pymunk==6.2.1
+    # via emevo (pyproject.toml)
+scipy==1.9.1
     # via emevo (pyproject.toml)

@@ -23,7 +23,7 @@ class Status(Protocol):
 
 @dataclasses.dataclass
 class AgeAndEnergy(Status, HasAgeAndEnergy):
-    """Status cons"""
+    """Status with age and energy"""
 
     age: int
     energy: float

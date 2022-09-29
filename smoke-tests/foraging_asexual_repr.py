@@ -42,7 +42,6 @@ def main(
     agent_radius: float = 12.0,
     seed: int = 1,
     hazard: HazardFn = HazardFn.CONST,
-    birth_rate: float = 0.001,
     debug: bool = False,
     video: Path | None = None,
 ) -> None:
@@ -54,11 +53,14 @@ def main(
     avg_lifetime = steps // 2
     if hazard == HazardFn.CONST:
         hazard_fn = bd.death.Deterministic(-10.0, avg_lifetime)
+        birth_rate = 1.0 / avg_lifetime
     elif hazard == HazardFn.GOMPERTZ:
         hazard_fn = bd.death.Gompertz(beta=np.log(10) / avg_lifetime)
+        birth_rate = bd.population.stable_birth_rate(hazard_fn, energy=-16.0)
     elif hazard == HazardFn.WEIBULL:
         alpha = 0.5 * (1.0 / avg_lifetime)
         hazard_fn = bd.death.Weibull(alpha1=alpha, alpha2=alpha, beta=1.0)
+        birth_rate = bd.population.stable_birth_rate(hazard_fn, energy=-16.0)
     else:
         assert False
 
