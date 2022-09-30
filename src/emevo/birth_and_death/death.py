@@ -97,6 +97,43 @@ class Constant(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
 
 
 @dataclasses.dataclass
+class Fractional(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
+    """
+    Hazard that suddenly decreases by t/(αt + β).
+    α = α1 + α2 * (1.0 - energy_ratio)
+    h(t) = t/(αt + β)
+    H(t) = log(αt + β)
+    S(t) = 1/(αt + β)
+    """
+
+    alpha1: float = 4e-5
+    alpha2: float = 4e-5
+    beta: float = 1.1
+    energy_min: float = -5.0
+    energy_max: float = 15.0
+    energy_range: float = dataclasses.field(init=False)
+
+    def __post_init__(self) -> None:
+        self.energy_range = self.energy_max - self.energy_min
+
+    def _alpha(self, energy: float) -> float:
+        energy_ratio = self._energy_ratio(energy)
+        return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
+
+    def __call__(self, status: HasAgeAndEnergy) -> float:
+        alpha = self._alpha(status.energy)
+        return status.age / (status.age * alpha + self.beta)
+
+    def cumulative(self, status: HasAgeAndEnergy) -> float:
+        alpha = self._alpha(status.energy)
+        return status.age * alpha + self.beta
+
+    def survival(self, status: HasAgeAndEnergy) -> float:
+        alpha = self._alpha(status.energy)
+        return 1.0 / (status.age * alpha + self.beta)
+
+
+@dataclasses.dataclass
 class Gompertz(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
     """
     Hazard with increasing/decreasing death rate with a constant rate.
