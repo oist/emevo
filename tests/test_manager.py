@@ -39,7 +39,7 @@ class FakeBody(Body):
 
 @pytest.fixture
 def status_fn():
-    return partial(bd.statuses.AgeAndEnergy, age=1, energy=DEFAULT_ENERGY_LEVEL)
+    return partial(bd.statuses.Status, age=1, energy=DEFAULT_ENERGY_LEVEL)
 
 
 @pytest.fixture
@@ -53,8 +53,8 @@ def _add_bodies(manager, n_bodies: int = 5) -> None:
 
 
 def test_asexual(
-    status_fn: Callable[[], bd.statuses.AgeAndEnergy],
-    hazard_fn: Callable[[bd.statuses.AgeAndEnergy], float],
+    status_fn: Callable[[], bd.statuses.Status],
+    hazard_fn: Callable[[bd.statuses.Status], float],
 ) -> None:
     """Test the most basic setting: Asexual reproduction + Oviparous birth"""
 
@@ -80,7 +80,7 @@ def test_asexual(
         for body_idx, body in enumerate(bodies):
             manager.update_status(
                 body,
-                energy_update=-1.0 if body_idx % 2 == 1 else 1.0,
+                energy_delta=-1.0 if body_idx % 2 == 1 else 1.0,
             )
         for body in bodies:
             assert not manager.reproduce(body)
@@ -96,7 +96,7 @@ def test_asexual(
             assert len(newborns) == 0
 
     for body in bodies:
-        manager.update_status(body, energy_update=1.0)
+        manager.update_status(body, energy_delta=1.0)
 
     for body in bodies:
         assert manager.reproduce(body)
@@ -111,8 +111,8 @@ def test_asexual(
 
 @pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
 def test_sexual(
-    status_fn: Callable[[], bd.statuses.AgeAndEnergy],
-    hazard_fn: Callable[[bd.statuses.AgeAndEnergy], float],
+    status_fn: Callable[[], bd.statuses.Status],
+    hazard_fn: Callable[[bd.statuses.Status], float],
     newborn_kind: str,
 ) -> None:
     """Test Sexual reproduction"""
@@ -122,8 +122,8 @@ def test_sexual(
     STEPS_TO_BIRTH: int = 3
 
     def success_prob(
-        status_a: bd.statuses.AgeAndEnergy,
-        status_b: bd.statuses.AgeAndEnergy,
+        status_a: bd.statuses.Status,
+        status_b: bd.statuses.Status,
     ) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
         if status_a.energy > threshold and status_b.energy > threshold:
@@ -171,7 +171,7 @@ def test_sexual(
     for step_idx in range(STEPS_TO_DEATH):
         for body_idx, body in enumerate(bodies):
             diff = -1.0 if body_idx % 2 == 1 else 1.0
-            manager.update_status(body, energy_update=diff)
+            manager.update_status(body, energy_delta=diff)
         deads, newborns = manager.step()
         if step_idx == STEPS_TO_DEATH - 1:
             assert len(deads) == 2
@@ -184,7 +184,7 @@ def test_sexual(
             assert len(newborns) == 0
 
     for body in bodies:
-        manager.update_status(body, energy_update=1.0)
+        manager.update_status(body, energy_delta=1.0)
 
     assert manager.reproduce(Encount(bodies[0], bodies[1]))
 

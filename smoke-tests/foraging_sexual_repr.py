@@ -34,8 +34,8 @@ class Rendering(str, enum.Enum):
 
 
 def birth_fn(
-    status_a: bd.statuses.HasEnergy,
-    status_b: bd.statuses.HasEnergy,
+    status_a: bd.statuses.Status,
+    status_b: bd.statuses.Status,
 ) -> float:
     avg_energy = (status_a.energy + status_b.energy) / 2.0
     return 1 / (1.0 + np.exp(-avg_energy))
@@ -76,7 +76,7 @@ def main(
             )
 
         manager = bd.SexualReprManager(
-            initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
+            initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
             hazard_fn=hazard_fn,
             birth_fn=birth_fn,
             produce_fn=produce_oviparous,
@@ -93,7 +93,7 @@ def main(
             )
 
         manager = bd.SexualReprManager(
-            initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
+            initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
             hazard_fn=hazard_fn,
             birth_fn=birth_fn,
             produce_fn=produce_viviparous,
@@ -116,7 +116,7 @@ def main(
         actions = {body: body.act_space.sample(gen) for body in bodies}
         encounts = env.step(actions)
         for body in bodies:
-            manager.update_status(body, energy_update=gen.normal(loc=0.0, scale=0.1))
+            manager.update_status(body, energy_delta=gen.normal(loc=0.0, scale=0.1))
         _ = manager.reproduce(encounts)
         deads, newborns = manager.step()
 

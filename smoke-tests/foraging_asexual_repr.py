@@ -65,7 +65,7 @@ def main(
         assert False
 
     manager = bd.AsexualReprManager(
-        initial_status_fn=partial(bd.statuses.AgeAndEnergy, age=1, energy=0.0),
+        initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
         hazard_fn=hazard_fn,
         birth_fn=lambda _: birth_rate,
         produce_fn=lambda _, body: bd.Oviparous(
@@ -93,7 +93,7 @@ def main(
         actions = {body: body.act_space.sample(gen) for body in bodies}
         _ = env.step(actions)
         for body in bodies:
-            manager.update_status(body, energy_update=gen.normal(loc=0.0, scale=0.1))
+            manager.update_status(body, energy_delta=gen.normal(loc=0.0, scale=0.1))
         _ = manager.reproduce(bodies)
         deads, newborns = manager.step()
 

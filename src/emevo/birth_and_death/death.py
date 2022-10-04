@@ -1,26 +1,23 @@
 """ Collection of hazard functions
 """
 import dataclasses
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 import numpy as np
 
-from emevo.birth_and_death.statuses import HasAgeAndEnergy
-
-# typevar for status
-S = TypeVar("S", contravariant=True)
+from emevo.birth_and_death.statuses import Status
 
 
-class HazardFunction(Protocol[S]):
-    def __call__(self, status: S) -> float:
+class HazardFunction(Protocol):
+    def __call__(self, status: Status) -> float:
         """Hazard function h(t)"""
         ...
 
-    def cumulative(self, status: S) -> float:
+    def cumulative(self, status: Status) -> float:
         """Cumulative hazard function H(t) = ∫h(t)"""
         ...
 
-    def survival(self, status: S) -> float:
+    def survival(self, status: Status) -> float:
         """Survival Rate S(t) = exp(-H(t))"""
         ...
 
@@ -38,7 +35,7 @@ class _EnergyRatio:
 
 
 @dataclasses.dataclass
-class Deterministic(HazardFunction[HasAgeAndEnergy]):
+class Deterministic(HazardFunction):
     """
     A deterministic hazard function where an agent dies when
     - its energy level is lower than the energy thershold or
@@ -48,16 +45,16 @@ class Deterministic(HazardFunction[HasAgeAndEnergy]):
     energy_threshold: float
     age_threshold: float
 
-    def __call__(self, status: HasAgeAndEnergy) -> float:
+    def __call__(self, status: Status) -> float:
         if status.energy < self.energy_threshold or self.age_threshold < status.age:
             return 1.0
         else:
             return 0.0
 
-    def cumulative(self, status: HasAgeAndEnergy) -> float:
+    def cumulative(self, status: Status) -> float:
         return self(status)
 
-    def survival(self, status: HasAgeAndEnergy) -> float:
+    def survival(self, status: Status) -> float:
         if status.energy < self.energy_threshold or self.age_threshold < status.age:
             return 0.0
         else:
@@ -65,7 +62,7 @@ class Deterministic(HazardFunction[HasAgeAndEnergy]):
 
 
 @dataclasses.dataclass
-class Constant(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
+class Constant(HazardFunction, _EnergyRatio):
     """
     Hazard with constant death rate.
     Same as Weibull with β == 1.
@@ -84,20 +81,20 @@ class Constant(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
     def __post_init__(self) -> None:
         self.energy_range = self.energy_max - self.energy_min
 
-    def __call__(self, status: HasAgeAndEnergy) -> float:
+    def __call__(self, status: Status) -> float:
         energy_ratio = self._energy_ratio(status.energy)
         return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
 
-    def cumulative(self, status: HasAgeAndEnergy) -> float:
+    def cumulative(self, status: Status) -> float:
         alpha = self(status)
         return alpha * status.age
 
-    def survival(self, status: HasAgeAndEnergy) -> float:
+    def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
 
 
 @dataclasses.dataclass
-class Fractional(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
+class Fractional(HazardFunction, _EnergyRatio):
     """
     Hazard that suddenly decreases by t/(αt + β).
     α = α1 + α2 * (1.0 - energy_ratio)
@@ -120,21 +117,21 @@ class Fractional(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
         energy_ratio = self._energy_ratio(energy)
         return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
 
-    def __call__(self, status: HasAgeAndEnergy) -> float:
+    def __call__(self, status: Status) -> float:
         alpha = self._alpha(status.energy)
         return status.age / (status.age * alpha + self.beta)
 
-    def cumulative(self, status: HasAgeAndEnergy) -> float:
+    def cumulative(self, status: Status) -> float:
         alpha = self._alpha(status.energy)
         return status.age * alpha + self.beta
 
-    def survival(self, status: HasAgeAndEnergy) -> float:
+    def survival(self, status: Status) -> float:
         alpha = self._alpha(status.energy)
         return 1.0 / (status.age * alpha + self.beta)
 
 
 @dataclasses.dataclass
-class Gompertz(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
+class Gompertz(HazardFunction, _EnergyRatio):
     """
     Hazard with increasing/decreasing death rate with a constant rate.
     α = α1 + α2 * (1.0 - energy_ratio)
@@ -157,20 +154,20 @@ class Gompertz(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
         energy_ratio = self._energy_ratio(energy)
         return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
 
-    def __call__(self, status: HasAgeAndEnergy) -> float:
+    def __call__(self, status: Status) -> float:
         alpha = self._alpha(status.energy)
         return alpha * np.exp(self.beta * status.age)
 
-    def cumulative(self, status: HasAgeAndEnergy) -> float:
+    def cumulative(self, status: Status) -> float:
         alpha = self._alpha(status.energy)
         return (alpha / self.beta) * np.exp(self.beta * status.age)
 
-    def survival(self, status: HasAgeAndEnergy) -> float:
+    def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
 
 
 @dataclasses.dataclass
-class Weibull(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
+class Weibull(HazardFunction, _EnergyRatio):
     """
     Hazard with constantly increasing/decreasing death rate.
     If β == 1, this hazard is the same as Constant.
@@ -194,13 +191,13 @@ class Weibull(HazardFunction[HasAgeAndEnergy], _EnergyRatio):
         energy_ratio = self._energy_ratio(energy)
         return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
 
-    def __call__(self, status: HasAgeAndEnergy) -> float:
+    def __call__(self, status: Status) -> float:
         alpha = self._alpha(status.energy)
         return self.beta * (alpha**self.beta) * (status.age ** (self.beta - 1.0))
 
-    def cumulative(self, status: HasAgeAndEnergy) -> float:
+    def cumulative(self, status: Status) -> float:
         alpha = self._alpha(status.energy)
         return (alpha * status.age) ** self.beta
 
-    def survival(self, status: HasAgeAndEnergy) -> float:
+    def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
