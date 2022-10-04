@@ -22,18 +22,6 @@ class HazardFunction(Protocol):
         ...
 
 
-class _EnergyRatio:
-    energy_min: float
-    energy_range: float
-
-    def _energy_ratio(self, energy: float) -> float:
-        return (energy - self.energy_min) / self.energy_range
-
-    @property
-    def energy_mean(self) -> float:
-        return self.energy_min + self.energy_range * 0.5
-
-
 @dataclasses.dataclass
 class Deterministic(HazardFunction):
     """
@@ -62,28 +50,22 @@ class Deterministic(HazardFunction):
 
 
 @dataclasses.dataclass
-class Constant(HazardFunction, _EnergyRatio):
+class Constant(HazardFunction):
     """
     Hazard with constant death rate.
-    Same as Weibull with β == 1.
-    α = α1 + α2 * (1.0 - energy_ratio)
+    α = α_age + α_energy / (1 + exp(energy - energy_threshold))
     h(t) = α
     H(t) = αt
     S(t) = exp(-αt)
     """
 
-    alpha1: float = 4e-5
-    alpha2: float = 4e-5
-    energy_min: float = -5.0
-    energy_max: float = 15.0
-    energy_range: float = dataclasses.field(init=False)
-
-    def __post_init__(self) -> None:
-        self.energy_range = self.energy_max - self.energy_min
+    alpha_age: float = 4e-5
+    alpha_energy: float = 0.1
+    energy_threshold: float = 10.0
 
     def __call__(self, status: Status) -> float:
-        energy_ratio = self._energy_ratio(status.energy)
-        return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
+        exp_energy = np.exp(status.energy - self.energy_threshold)
+        return self.alpha_age + self.alpha_energy / (1 + exp_energy)
 
     def cumulative(self, status: Status) -> float:
         alpha = self(status)
@@ -94,110 +76,26 @@ class Constant(HazardFunction, _EnergyRatio):
 
 
 @dataclasses.dataclass
-class Fractional(HazardFunction, _EnergyRatio):
+class Gompertz(HazardFunction):
     """
-    Hazard that suddenly decreases by t/(αt + β).
-    α = α1 + α2 * (1.0 - energy_ratio)
-    h(t) = t/(αt + β)
-    H(t) = log(αt + β)
-    S(t) = 1/(αt + β)
+    Hazard with exponentially increasing death rate.
+    h(t) = α exp(β1t - β2energy)
+    H(t) = α/β exp(β1t - β2energy)
+    S(t) = exp(-α/β exp(β1t - β2energy))
     """
 
-    alpha1: float = 4e-5
-    alpha2: float = 4e-5
-    beta: float = 1.1
-    energy_min: float = -5.0
-    energy_max: float = 15.0
-    energy_range: float = dataclasses.field(init=False)
+    alpha: float = 2e-5
+    beta_age: float = 1e-5
+    beta_energy: float = 1e-5
 
-    def __post_init__(self) -> None:
-        self.energy_range = self.energy_max - self.energy_min
-
-    def _alpha(self, energy: float) -> float:
-        energy_ratio = self._energy_ratio(energy)
-        return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
+    def _beta_sum(self, status: Status) -> float:
+        return self.beta_age * status.age - self.beta_energy * status.energy
 
     def __call__(self, status: Status) -> float:
-        alpha = self._alpha(status.energy)
-        return status.age / (status.age * alpha + self.beta)
+        return self.alpha * np.exp(self._beta_sum(status))
 
     def cumulative(self, status: Status) -> float:
-        alpha = self._alpha(status.energy)
-        return status.age * alpha + self.beta
-
-    def survival(self, status: Status) -> float:
-        alpha = self._alpha(status.energy)
-        return 1.0 / (status.age * alpha + self.beta)
-
-
-@dataclasses.dataclass
-class Gompertz(HazardFunction, _EnergyRatio):
-    """
-    Hazard with increasing/decreasing death rate with a constant rate.
-    α = α1 + α2 * (1.0 - energy_ratio)
-    h(t) = α exp(βt)
-    H(t) = α/β exp(βt)
-    S(t) = exp(-α/β exp(βt))
-    """
-
-    alpha1: float = 2e-5
-    alpha2: float = 2e-5
-    beta: float = 1e-5
-    energy_min: float = -5.0
-    energy_max: float = 15.0
-    energy_range: float = dataclasses.field(init=False)
-
-    def __post_init__(self) -> None:
-        self.energy_range = self.energy_max - self.energy_min
-
-    def _alpha(self, energy: float) -> float:
-        energy_ratio = self._energy_ratio(energy)
-        return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
-
-    def __call__(self, status: Status) -> float:
-        alpha = self._alpha(status.energy)
-        return alpha * np.exp(self.beta * status.age)
-
-    def cumulative(self, status: Status) -> float:
-        alpha = self._alpha(status.energy)
-        return (alpha / self.beta) * np.exp(self.beta * status.age)
-
-    def survival(self, status: Status) -> float:
-        return np.exp(-self.cumulative(status))
-
-
-@dataclasses.dataclass
-class Weibull(HazardFunction, _EnergyRatio):
-    """
-    Hazard with constantly increasing/decreasing death rate.
-    If β == 1, this hazard is the same as Constant.
-    α = α1 + α2 * (1.0 - energy_ratio)
-    h(t) = βα^βt^(β - 1)
-    H(t) = (αt)^β
-    S(t) = exp(-(αt)^β)
-    """
-
-    alpha1: float = 4e-5
-    alpha2: float = 4e-5
-    beta: float = 1.1
-    energy_min: float = -5.0
-    energy_max: float = 15.0
-    energy_range: float = dataclasses.field(init=False)
-
-    def __post_init__(self) -> None:
-        self.energy_range = self.energy_max - self.energy_min
-
-    def _alpha(self, energy: float) -> float:
-        energy_ratio = self._energy_ratio(energy)
-        return self.alpha1 + self.alpha2 * (1.0 - energy_ratio)
-
-    def __call__(self, status: Status) -> float:
-        alpha = self._alpha(status.energy)
-        return self.beta * (alpha**self.beta) * (status.age ** (self.beta - 1.0))
-
-    def cumulative(self, status: Status) -> float:
-        alpha = self._alpha(status.energy)
-        return (alpha * status.age) ** self.beta
+        return self.alpha / self.beta_age * np.exp(self._beta_sum(status))
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
