@@ -32,7 +32,6 @@ class Rendering(str, enum.Enum):
 class HazardFn(str, enum.Enum):
     CONST = "const"
     GOMPERTZ = "gompertz"
-    WEIBULL = "weibull"
 
 
 def main(
@@ -53,21 +52,22 @@ def main(
     avg_lifetime = steps // 2
     if hazard == HazardFn.CONST:
         hazard_fn = bd.death.Deterministic(-10.0, avg_lifetime)
-        birth_rate = 1.0 / avg_lifetime
     elif hazard == HazardFn.GOMPERTZ:
-        hazard_fn = bd.death.Gompertz(beta=np.log(10) / avg_lifetime)
-        birth_rate = bd.population.stable_birth_rate(hazard_fn, energy=-16.0)
-    elif hazard == HazardFn.WEIBULL:
-        alpha = 0.5 * (1.0 / avg_lifetime)
-        hazard_fn = bd.death.Weibull(alpha1=alpha, alpha2=alpha, beta=1.0)
-        birth_rate = bd.population.stable_birth_rate(hazard_fn, energy=-16.0)
+        hazard_fn = bd.death.Gompertz(alpha=4e-5 / np.exp(1e-5 * avg_lifetime))
     else:
         assert False
+    birth_fn = bd.birth.Logistic(
+        scale=1.0 / avg_lifetime,
+        alpha=0.1,
+        beta_age=10.0 / avg_lifetime,
+        age_delay=avg_lifetime / 4,
+        energy_delay=0.0,
+    )
 
     manager = bd.AsexualReprManager(
-        initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
+        initial_status_fn=partial(bd.statuses.Status, age=1, energy=4.0),
         hazard_fn=hazard_fn,
-        birth_fn=lambda _: birth_rate,
+        birth_fn=birth_fn.asexual,
         produce_fn=lambda _, body: bd.Oviparous(
             context=SimpleContext(body.generation + 1, body.location()),
             time_to_birth=5,
@@ -93,7 +93,10 @@ def main(
         actions = {body: body.act_space.sample(gen) for body in bodies}
         _ = env.step(actions)
         for body in bodies:
-            manager.update_status(body, energy_delta=gen.normal(loc=0.0, scale=0.1))
+            action_cost = np.linalg.norm(actions[body]) * 0.01
+            observation = env.observe(body)
+            energy_delta = observation.n_collided_foods - action_cost
+            manager.update_status(body, energy_delta=energy_delta)
         _ = manager.reproduce(bodies)
         deads, newborns = manager.step()
 

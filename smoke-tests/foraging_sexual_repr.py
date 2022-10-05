@@ -25,7 +25,6 @@ class SimpleContext:
 class HazardFn(str, enum.Enum):
     CONST = "const"
     GOMPERTZ = "gompertz"
-    WEIBULL = "weibull"
 
 
 class Rendering(str, enum.Enum):
@@ -56,15 +55,20 @@ def main(
         loguru.logger.enable("emevo")
 
     avg_lifetime = steps // 2
+
     if hazard == HazardFn.CONST:
         hazard_fn = bd.death.Deterministic(-10.0, avg_lifetime)
     elif hazard == HazardFn.GOMPERTZ:
-        hazard_fn = bd.death.Gompertz(beta=np.log(10) / avg_lifetime)
-    elif hazard == HazardFn.WEIBULL:
-        alpha = 0.5 * (1.0 / avg_lifetime)
-        hazard_fn = bd.death.Weibull(alpha1=alpha, alpha2=alpha, beta=1.0)
+        hazard_fn = bd.death.Gompertz(alpha=4e-5 / np.exp(1e-5 * avg_lifetime))
     else:
         assert False
+    birth_fn = bd.birth.Logistic(
+        scale=avg_lifetime * 0.1,
+        alpha=0.1,
+        beta_age=10.0 / avg_lifetime,
+        age_delay=avg_lifetime / 4,
+        energy_delay=0.0,
+    )
 
     if newborn_kind == "oviparous":
 
@@ -78,7 +82,7 @@ def main(
         manager = bd.SexualReprManager(
             initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
             hazard_fn=hazard_fn,
-            birth_fn=birth_fn,
+            birth_fn=birth_fn.sexual,
             produce_fn=produce_oviparous,
         )
 
@@ -95,7 +99,7 @@ def main(
         manager = bd.SexualReprManager(
             initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
             hazard_fn=hazard_fn,
-            birth_fn=birth_fn,
+            birth_fn=birth_fn.sexual,
             produce_fn=produce_viviparous,
         )
     else:
@@ -116,7 +120,10 @@ def main(
         actions = {body: body.act_space.sample(gen) for body in bodies}
         encounts = env.step(actions)
         for body in bodies:
-            manager.update_status(body, energy_delta=gen.normal(loc=0.0, scale=0.1))
+            action_cost = np.linalg.norm(actions[body]) * 0.01
+            observation = env.observe(body)
+            energy_delta = observation.n_collided_foods - action_cost
+            manager.update_status(body, energy_delta=energy_delta)
         _ = manager.reproduce(encounts)
         deads, newborns = manager.step()
 

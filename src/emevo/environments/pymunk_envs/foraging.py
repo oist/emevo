@@ -40,6 +40,14 @@ class FgObs(NamedTuple):
         v_a_av = np.array((*self.velocity, self.angle, self.angular_velocity))
         return np.concatenate((sensor, self.collision, v_a_av))
 
+    @property
+    def n_collided_foods(self) -> float:
+        return self.collision[utils.CollisionType.FOOD.value]
+
+    @property
+    def n_collided_agents(self) -> float:
+        return self.collision[utils.CollisionType.AGENT.value]
+
 
 class _FgBodyInfo(NamedTuple):
     position: Vec2d
@@ -334,7 +342,7 @@ class Foraging(Env[NDArray, Vec2d, FgObs]):
         sensor_data = self._accumulate_sensor_data(body)
         collision_data = np.zeros(3, dtype=np.float32)
         collision_data[0] = body.uuid in self._encounted_bodies
-        collision_data[1] = min(self._food_handler.n_eaten_foods[body.uuid], 1)
+        collision_data[1] = self._food_handler.n_eaten_foods[body.uuid]
         collision_data[2] = body.uuid in self._static_handler.collided_bodies
 
         return FgObs(
