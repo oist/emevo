@@ -97,7 +97,7 @@ def main(
             observation = env.observe(body)
             energy_delta = observation.n_collided_foods - action_cost
             manager.update_status(body, energy_delta=energy_delta)
-        _ = manager.reproduce(bodies)
+        manager.reproduce(bodies)
         deads, newborns = manager.step()
 
         for dead in deads:

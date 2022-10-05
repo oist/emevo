@@ -13,7 +13,7 @@ from pymunk.vec2d import Vec2d
 
 from emevo import Encount
 from emevo import birth_and_death as bd
-from emevo import make
+from emevo import make, utils
 
 
 @dataclasses.dataclass
@@ -44,6 +44,7 @@ def main(
     steps: int = 100,
     render: Rendering | None = None,
     food_initial_force: tuple[float, float] = (0.0, 0.0),
+    agent_radius: float = 12.0,
     seed: int = 1,
     newborn_kind: str = "oviparous",
     hazard: HazardFn = HazardFn.CONST,
@@ -63,7 +64,7 @@ def main(
     else:
         assert False
     birth_fn = bd.birth.Logistic(
-        scale=avg_lifetime * 0.1,
+        scale=min(1.0, 100.0 / avg_lifetime),
         alpha=0.1,
         beta_age=10.0 / avg_lifetime,
         age_delay=avg_lifetime / 4,
@@ -106,7 +107,11 @@ def main(
 
         raise ValueError(f"Unknown newborn kind {newborn_kind}")
 
-    env = make("Forgaging-v0", food_initial_force=food_initial_force)
+    env = make(
+        "Forgaging-v0",
+        food_initial_force=food_initial_force,
+        agent_radius=agent_radius,
+    )
     manager.register(env.bodies())
     gen = np.random.Generator(PCG64(seed=seed))
 
@@ -132,7 +137,16 @@ def main(
             env.dead(dead.body)
 
         for context in map(operator.attrgetter("context"), newborns):
-            body = env.born(context.location, context.generation + 1)
+            loc = utils.sample_location(
+                gen,
+                context.location,
+                radius_max=agent_radius * 3,
+                radius_min=agent_radius * 1.5,
+            )
+            body = env.born(Vec2d(*loc), context.generation + 1)
+            if body is not None:
+                print(f"{body} was born")
+                manager.register(body)
             if body is not None:
                 manager.register(body)
 
