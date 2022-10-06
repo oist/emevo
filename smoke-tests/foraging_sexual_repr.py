@@ -64,7 +64,7 @@ def main(
     else:
         assert False
     birth_fn = bd.birth.Logistic(
-        scale=min(1.0, 100.0 / avg_lifetime),
+        scale=0.1,
         alpha=0.1,
         beta_age=10.0 / avg_lifetime,
         age_delay=avg_lifetime / 4,
@@ -74,7 +74,7 @@ def main(
     if newborn_kind == "oviparous":
 
         def produce_oviparous(_sa, _sb, encount: Encount) -> bd.Oviparous:
-            loc = encount.a.location()
+            loc = (encount.a.location() + encount.b.location()) * 0.5
             return bd.Oviparous(
                 context=SimpleContext(encount.a.generation + 1, loc),
                 time_to_birth=5,
