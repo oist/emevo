@@ -25,7 +25,7 @@ from emevo.environments.utils.locating import (
 from emevo.spaces import BoxSpace, NamedTupleSpace
 
 
-class FgObs(NamedTuple):
+class CFObs(NamedTuple):
     """Observation of an agent."""
 
     sensor: NDArray
@@ -48,12 +48,12 @@ class FgObs(NamedTuple):
         return self.collision[utils.CollisionType.AGENT.value]
 
 
-class _FgBodyInfo(NamedTuple):
+class _CFBodyInfo(NamedTuple):
     position: Vec2d
     velocity: Vec2d
 
 
-class FgBody(Body[Vec2d]):
+class CFBody(Body[Vec2d]):
     """Body of an agent."""
 
     def __init__(
@@ -74,7 +74,7 @@ class FgBody(Body[Vec2d]):
         act_low = np.ones(2, dtype=np.float32) * -max_abs_act
         act_high = np.ones(2, dtype=np.float32) * max_abs_act
         obs_space = NamedTupleSpace(
-            FgObs,
+            CFObs,
             sensor=BoxSpace(
                 low=0.0,
                 high=1.0,
@@ -98,7 +98,7 @@ class FgBody(Body[Vec2d]):
         )
 
     def info(self) -> Any:
-        return _FgBodyInfo(position=self._body.position, velocity=self._body.velocity)
+        return _CFBodyInfo(position=self._body.position, velocity=self._body.velocity)
 
     def _apply_force(self, force: NDArray) -> None:
         self._body.apply_force_at_local_point(Vec2d(*force))
@@ -114,7 +114,7 @@ def _range(segment: tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
-class CircleForaging(Env[NDArray, Vec2d, FgObs]):
+class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
     _WALL_RADIUS = 0.5
@@ -300,11 +300,11 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
     def get_space(self) -> pymunk.Space:
         return self._space
 
-    def bodies(self) -> list[FgBody]:
+    def bodies(self) -> list[CFBody]:
         """Return the list of all bodies"""
         return self._bodies
 
-    def step(self, actions: dict[FgBody, NDArray]) -> list[Encount]:
+    def step(self, actions: dict[CFBody, NDArray]) -> list[Encount]:
         self._before_step()
         # Add force
         for body, action in actions.items():
@@ -330,7 +330,7 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
         self._sim_steps += 1
         return self._all_encounts()
 
-    def observe(self, body: FgBody) -> FgObs:
+    def observe(self, body: CFBody) -> CFObs:
         """
         Observe the environment.
         More specifically, an observation of each agent consists of:
@@ -344,7 +344,7 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
         collision_data[1] = self._food_handler.n_eaten_foods[body.uuid]
         collision_data[2] = body.uuid in self._static_handler.collided_bodies
 
-        return FgObs(
+        return CFObs(
             sensor=sensor_data,
             collision=collision_data,
             velocity=body._body.velocity,
@@ -366,7 +366,7 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
         self._generator = Generator(PCG64(seed=seed))
         self._initialize_bodies_and_foods()
 
-    def born(self, location: Vec2d, generation: int) -> FgBody | None:
+    def born(self, location: Vec2d, generation: int) -> CFBody | None:
         if self._can_place(location, self._agent_radius):
             body = self._make_body(generation=generation, loc=location)
             self._bodies.append(body)
@@ -375,7 +375,7 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
             logger.warning(f"Failed to place the body at {location}")
             return None
 
-    def dead(self, body: FgBody) -> None:
+    def dead(self, body: CFBody) -> None:
         body._remove(self._space)
         self._bodies.remove(body)
         del self._body_uuids[body._body]
@@ -412,7 +412,7 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
-    def _accumulate_sensor_data(self, body: FgBody) -> NDArray:
+    def _accumulate_sensor_data(self, body: CFBody) -> NDArray:
         sensor_data = np.zeros((3, self._n_sensors), dtype=np.float32)
         for i, sensor in enumerate(body._sensors):
             query_result = utils.sensor_query(self._space, body._body, sensor)
@@ -455,7 +455,7 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
         )
         return nearest is None
 
-    def _find_body_by_uuid(self, uuid: UUID) -> FgBody:
+    def _find_body_by_uuid(self, uuid: UUID) -> CFBody:
         for body in self._bodies:
             if body.uuid == uuid:
                 return body
@@ -474,13 +474,13 @@ class CircleForaging(Env[NDArray, Vec2d, FgObs]):
 
         self._place_n_foods(self._food_num_fn.initial)
 
-    def _make_body(self, generation: int, loc: Vec2d) -> FgBody:
+    def _make_body(self, generation: int, loc: Vec2d) -> CFBody:
         body_with_sensors = self._make_pymunk_body()
         body_with_sensors.shape.color = self._AGENT_COLOR
         body_with_sensors.body.velocify_func = utils.limit_velocity(
             self._max_abs_velocity
         )
-        fgbody = FgBody(
+        fgbody = CFBody(
             body_with_sensors=body_with_sensors,
             space=self._space,
             generation=generation,
