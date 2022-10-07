@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from functools import partial
 from typing import Any, Literal, NamedTuple
 from uuid import UUID
@@ -115,7 +114,7 @@ def _range(segment: tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
 
-class Foraging(Env[NDArray, Vec2d, FgObs]):
+class CircleForaging(Env[NDArray, Vec2d, FgObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
     _WALL_RADIUS = 0.5

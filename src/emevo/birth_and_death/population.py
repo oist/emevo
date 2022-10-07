@@ -14,8 +14,8 @@ def cumulative_survival(
     energy: float = 0.0,
     max_age: float = 1e6,
 ) -> float:
-    survival = lambda t: hazard.survival(Status(age=t, energy=energy))
-    return integrate.quad(survival, 0, max_age)[0]
+    result = integrate.quad(hazard.survival(Status(age=t, energy=energy)), 0, max_age)
+    return result[0]
 
 
 def stable_birth_rate(

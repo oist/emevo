@@ -1,4 +1,4 @@
-"""Example of using foraging environment"""
+"""Example of using circle foraging environment"""
 from __future__ import annotations
 
 import enum

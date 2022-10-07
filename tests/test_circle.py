@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from pymunk.vec2d import Vec2d
 
 from emevo import _test_utils as utils
-from emevo.environments import Foraging
+from emevo.environments import CircleForaging
 
 
 def almost_equal(actual: NDArray, desired: float) -> NDArray:
@@ -56,7 +56,7 @@ YLIM: tuple[float, float] = 0.0, 200
 
 
 @pytest.fixture
-def env() -> Foraging:
+def env() -> CircleForaging:
     return utils.predefined_env(
         agent_radius=AGENT_RADIUS,
         sensor_length=SENSOR_LENGTH,
@@ -92,7 +92,7 @@ class DebugLogHandler:
         return n_occurance == 1
 
 
-def test_birth(env: Foraging) -> None:
+def test_birth(env: CircleForaging) -> None:
     """
     Test that
     1. we can't place body if it overlaps another object
@@ -108,7 +108,7 @@ def test_birth(env: Foraging) -> None:
     assert env.born(place, 1) is not None
 
 
-def test_death(env: Foraging) -> None:
+def test_death(env: CircleForaging) -> None:
     """
     A  F
 
@@ -121,7 +121,7 @@ def test_death(env: Foraging) -> None:
     assert len(env.bodies()) == 2
 
 
-def test_eating(env: Foraging) -> None:
+def test_eating(env: CircleForaging) -> None:
     """
     Confirm that eating detection (collision of an agent to a food) correctly works.
     Initially, food (F) and agent (A) are placed like
@@ -166,7 +166,7 @@ def test_eating(env: Foraging) -> None:
     assert handler.once("created")
 
 
-def test_encounts(env: Foraging) -> None:
+def test_encounts(env: CircleForaging) -> None:
     """
     Confirm that encount detection (collision between agents) correctly works.
     Again, food (F) and agent (A) are placed like
@@ -216,7 +216,7 @@ def test_encounts(env: Foraging) -> None:
             assert_either_a_or_b(obs_high.sensor[0], 1.0 - alpha, 0.0)
 
 
-def test_static(env: Foraging) -> None:
+def test_static(env: CircleForaging) -> None:
     """
     Confirm that collision detection to walls correctly works.
     Again, food (F) and agent (A) are placed like
@@ -247,7 +247,7 @@ def test_static(env: Foraging) -> None:
             assert_almost_equal(observation.collision[2], 0.0)
 
 
-def test_observe(env: Foraging) -> None:
+def test_observe(env: CircleForaging) -> None:
     """
     Test the observation shape
     """
@@ -258,7 +258,7 @@ def test_observe(env: Foraging) -> None:
     assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 1 + 1,)
 
 
-def test_can_place(env: Foraging) -> None:
+def test_can_place(env: CircleForaging) -> None:
     """Test that invalid position is correctly rejected"""
     assert not env._can_place(Vec2d(-10.0, -10.0), 1.0)
     assert not env._can_place(Vec2d(0.0, 0.0), 1.0)
