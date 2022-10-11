@@ -226,8 +226,6 @@ class TextureVA(Renderable):
         ctx: mgl.Context,
         program: mgl.Program,
         texture: mgl.Texture,
-        x_min: float = 0.0,
-        y_min: float = 0.0,
     ) -> None:
         self._ctx = ctx
         self._texture = texture
@@ -573,8 +571,6 @@ def _make_projection_matrix(
 ) -> NDArray:
     x_scale = x_range[1] - x_range[0]
     y_scale = y_range[1] - y_range[0]
-    x_center = (x_range[1] + x_range[0]) * 0.5
-    y_center = (y_range[1] + y_range[0]) * 0.5
     scale_mat = np.array(
         [
             [2 * x_scale, 0, 0, 0],
