@@ -119,6 +119,28 @@ void main() {
 }
 """
 
+_TEXTURE_VERTEX_SHADER = """
+#version 330
+uniform mat4 proj;
+in vec2 in_position;
+in vec2 in_uv;
+out vec2 uv;
+void main() {
+    gl_Position = vec4(in_position, 0.0, 1.0) * proj;
+    uv = in_uv;
+}
+"""
+
+_TEXTURE_FRAGMENT_SHADER = """
+#version 330
+uniform sampler2D image;
+in vec2 uv;
+out vec4 f_color;
+void main() {
+    f_color = vec4(texture(image, uv).rgb, 1.0);
+}
+"""
+
 
 class Renderable:
     MODE: ClassVar[int]
@@ -194,6 +216,40 @@ class SegmentVA(Renderable):
             self._segments.orphan(length * 4 * 2)
         self._segments.write(segments)
         return length > 0
+
+
+class TextureVA(Renderable):
+    MODE = mgl.TRIANGLE_STRIP
+
+    def __init__(
+        self,
+        ctx: mgl.Context,
+        program: mgl.Program,
+        texture: mgl.Texture,
+        x_min: float = 0.0,
+        y_min: float = 0.0,
+    ) -> None:
+        self._ctx = ctx
+        self._texture = texture
+        quad_mat = np.array(
+            # x, y, u, v
+            [
+                [0, 1, 0, 1],  # upper left
+                [0, 0, 0, 0],  # lower left
+                [1, 1, 1, 1],  # upper right
+                [1, 0, 1, 0],  # lower right
+            ],
+            dtype=np.float32,
+        )
+        quad_mat_buffer = ctx.buffer(data=quad_mat)
+        self.vertex_array = ctx.vertex_array(
+            program,
+            [(quad_mat_buffer, "2f 2f", "in_position", "in_uv")],
+        )
+
+    def update(self, image: bytes) -> None:
+        self._texture.write(image)
+        self._texture.use()
 
 
 def _collect_circles(
@@ -291,6 +347,8 @@ class MglVisualizer:
         y_range: float,
         env: PymunkEnv,
         figsize: tuple[float, float] | None = None,
+        voffset: int = 0,
+        hoffset: int = 0,
         vsync: bool = False,
         backend: str = "pyglet",
         title: str = "EmEvo PymunkEnv",
@@ -299,18 +357,20 @@ class MglVisualizer:
 
         if figsize is None:
             figsize = x_range * 3.0, y_range * 3.0
+        w, h = int(figsize[0]), int(figsize[1])
+        self._figsize = w + hoffset, h + voffset
+        self._offset = hoffset, voffset
+        self._main_ratio = w / (w + hoffset), h / (h + voffset)
         self._window = _make_window(
             title=title,
-            size=figsize,
+            size=self._figsize,
             backend=backend,
             vsync=vsync,
         )
-        self._figsize = int(figsize[0]), int(figsize[1])
         self._pos_scaling = 1.0 / x_range, 1.0 / y_range
         self._range_min = min(x_range, y_range)
         self._size_scaling = figsize[0] / x_range * 2
-        circle_program = _make_gl_program(
-            self._window.ctx,
+        circle_program = self._make_gl_program(
             vertex_shader=_CIRCLE_VERTEX_SHADER,
             fragment_shader=_CIRCLE_FRAGMENT_SHADER,
         )
@@ -327,8 +387,7 @@ class MglVisualizer:
             scales=scales,
             colors=colors,
         )
-        segment_program = _make_gl_program(
-            self._window.ctx,
+        segment_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
@@ -340,8 +399,7 @@ class MglVisualizer:
             program=segment_program,
             segments=_collect_sensors(shapes, self._pos_scaling),
         )
-        static_segment_program = _make_gl_program(
-            self._window.ctx,
+        static_segment_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
@@ -353,8 +411,7 @@ class MglVisualizer:
             program=static_segment_program,
             segments=_collect_static_lines(shapes, self._pos_scaling),
         )
-        head_program = _make_gl_program(
-            self._window.ctx,
+        head_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
             fragment_shader=_LINE_FRAGMENT_SHADER,
@@ -400,7 +457,8 @@ class MglVisualizer:
 
     def overlay(self, name: str, value: Any) -> Any:
         """Render additional value as an overlay"""
-        if name.lower() == "arrow":
+        key = name.lower()
+        if key == "arrow":
             segments = _collect_policies(
                 value,
                 self._pos_scaling,
@@ -409,8 +467,7 @@ class MglVisualizer:
             if "arrow" in self._overlays:
                 do_render = self._overlays["arrow"].update(segments)
             else:
-                arrow_program = _make_gl_program(
-                    self._window.ctx,
+                arrow_program = self._make_gl_program(
                     vertex_shader=_LINE_VERTEX_SHADER,
                     geometry_shader=_ARROW_GEOMETRY_SHADER,
                     fragment_shader=_LINE_FRAGMENT_SHADER,
@@ -424,8 +481,55 @@ class MglVisualizer:
                 do_render = True
             if do_render:
                 self._overlays["arrow"].render()
+        elif key == "hstack" or key == "vstack":
+            assert self._offset[0 if key == "hstack" else 1] > 0
+            image = value
+            if key not in self._overlays:
+                texture = self._window.ctx.texture(image.size, 3, image.tobytes())
+                texture.build_mipmaps()
+                program = self._make_gl_program(
+                    vertex_shader=_TEXTURE_VERTEX_SHADER,
+                    fragment_shader=_TEXTURE_FRAGMENT_SHADER,
+                    hstacked=key == "hstack",
+                    vstacked=key == "vstack",
+                )
+                self._overlays[key] = TextureVA(
+                    self._window.ctx,
+                    program,
+                    texture,
+                    x_min=self._main_ratio[0],
+                    y_min=self._main_ratio[1],
+                )
+            self._overlays[key].update(image.tobytes())
+            self._overlays[key].render()
         else:
             raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
+
+    def _make_gl_program(
+        self,
+        vertex_shader: str,
+        geometry_shader: str | None = None,
+        fragment_shader: str | None = None,
+        hstacked: bool = False,
+        vstacked: bool = False,
+        **kwargs: NDArray,
+    ) -> mgl.Program:
+        ctx = self._window.ctx
+        ctx.enable(mgl.PROGRAM_POINT_SIZE | mgl.BLEND)
+        ctx.blend_func = mgl.DEFAULT_BLENDING
+        prog = ctx.program(
+            vertex_shader=vertex_shader,
+            geometry_shader=geometry_shader,
+            fragment_shader=fragment_shader,
+        )
+        x_mr, y_mr = self._main_ratio
+        x_range = (x_mr, 1.0) if hstacked else (0.0, x_mr)
+        y_range = (y_mr, 1.0) if vstacked else (0.0, y_mr)
+        proj = _make_projection_matrix(x_range, y_range)
+        prog["proj"].write(proj)
+        for key, value in kwargs.items():
+            prog[key].write(value)
+        return prog
 
     def show(self) -> None:
         self._window.swap_buffers()
@@ -450,7 +554,7 @@ class _EglHeadlessWindow(headless.Window):
 def _make_window(
     *,
     title: str,
-    size: tuple[float, float],
+    size: tuple[int, int],
     backend: str,
     **kwargs,
 ) -> mglw.BaseWindow:
@@ -463,37 +567,30 @@ def _make_window(
     return window
 
 
-def _make_gl_program(
-    ctx: mgl.Context,
-    *,
-    vertex_shader: str,
-    geometry_shader: str | None = None,
-    fragment_shader: str | None = None,
-    proj_scale: tuple[float, float] = (1.0, 1.0),
-    **kwargs: NDArray,
-) -> mgl.Program:
-    ctx.enable(mgl.PROGRAM_POINT_SIZE | mgl.BLEND)
-    ctx.blend_func = mgl.DEFAULT_BLENDING
-    prog = ctx.program(
-        vertex_shader=vertex_shader,
-        geometry_shader=geometry_shader,
-        fragment_shader=fragment_shader,
-    )
-    proj = _make_projection_matrix(proj_scale)
-    prog["proj"].write(proj)
-    for key, value in kwargs.items():
-        prog[key].write(value)
-    return prog
-
-
-def _make_projection_matrix(window_size: tuple[float, float]) -> NDArray:
-    w, h = window_size
+def _make_projection_matrix(
+    x_range: tuple[float, float] = (0.0, 1.0),
+    y_range: tuple[float, float] = (0.0, 1.0),
+) -> NDArray:
+    x_scale = x_range[1] - x_range[0]
+    y_scale = y_range[1] - y_range[0]
+    x_center = (x_range[1] + x_range[0]) * 0.5
+    y_center = (y_range[1] + y_range[0]) * 0.5
     scale_mat = np.array(
-        [[2 / w, 0, 0, 0], [0, 2 / h, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+        [
+            [2 * x_scale, 0, 0, 0],
+            [0, 2 * y_scale, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+        ],
         dtype=np.float32,
     )
     trans_mat = np.array(
-        [[1, 0, 0, -w / 2], [0, 1, 0, -h / 2], [0, 0, 1, 0], [0, 0, 0, 1]],
+        [
+            [1, 0, 0, 2 * x_range[0] - 0.5 / x_scale],
+            [0, 1, 0, 2 * y_range[0] - 0.5 / y_scale],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1],
+        ],
         dtype=np.float32,
     )
     scale = np.dot(np.eye(4, dtype=np.float32), scale_mat)

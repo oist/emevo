@@ -388,6 +388,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         mode: str,
         figsize: tuple[float, float] | None = None,
         mgl_backend: str = "pyglet",
+        **kwargs,
     ) -> Visualizer:
         mode = mode.lower()
         xlim, ylim = self._coordinate.bbox()
@@ -398,6 +399,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
                 x_range=_range(xlim),
                 y_range=_range(ylim),
                 figsize=figsize,
+                **kwargs,
             )
         elif mode == "moderngl":
             from emevo.environments.pymunk_envs import moderngl_vis
@@ -408,6 +410,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
                 env=self,
                 figsize=figsize,
                 backend=mgl_backend,
+                **kwargs,
             )
         else:
             raise ValueError(f"Invalid mode: {mode}")

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from os import PathLike
-from typing import Any, Callable, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
-import numpy as np
 from numpy.typing import NDArray
 
 ENV = TypeVar("ENV", contravariant=True)
@@ -47,28 +46,6 @@ class VisWrapper(Visualizer[ENV], Protocol):
 
     def overlay(self, name: str, value: Any) -> Any:
         return self.unwrapped.overlay(name, value)
-
-
-class ImageStackWrapper(VisWrapper[ENV]):
-    def __init__(
-        self,
-        visualizer: Visualizer[ENV],
-        image_source: Callable[[], NDArray],
-        vstack: bool = False,
-        **kwargs,
-    ) -> None:
-        self.unwrapped = visualizer
-        self._image_source = image_source
-        self._vstack = vstack
-
-    def get_image(self) -> NDArray:
-        orig_image = self.unwrapped.get_image()
-        additional_image = self._image_source()
-        if self._vstack:
-            new_image = np.append(orig_image, additional_image, axis=0)
-        else:
-            new_image = np.append(orig_image, additional_image, axis=1)
-        return new_image
 
 
 class SaveVideoWrapper(VisWrapper[ENV]):
