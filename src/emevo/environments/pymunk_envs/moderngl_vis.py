@@ -432,7 +432,7 @@ class MglVisualizer:
             dtype=np.float32,
         )
         output = output.reshape(*self._figsize, 4)
-        output = np.flip(output, axis=0)  # Reverse image
+        output = np.flipud(output)  # Reverse image from top to bottom
         return np.multiply(output, 255).astype(np.uint8)
 
     def render(self, env: PymunkEnv) -> None:
