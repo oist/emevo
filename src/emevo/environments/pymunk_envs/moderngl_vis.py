@@ -247,7 +247,7 @@ class TextureVA(Renderable):
 
     def update(self, image: bytes) -> None:
         self._texture.write(image)
-        self._texture.use()
+        self._texture.use(0)
 
 
 def _collect_circles(
@@ -431,9 +431,8 @@ class MglVisualizer:
             self._window.fbo.read(components=4, dtype="f4"),
             dtype=np.float32,
         )
-        output = output.reshape(*self._figsize, 4)
-        output = np.flipud(output)  # Reverse image from top to bottom
-        return np.multiply(output, 255).astype(np.uint8)
+        scaled = np.multiply(output.reshape(*self._figsize, 4), 255)
+        return scaled[::-1].astype(np.uint8)
 
     def render(self, env: PymunkEnv) -> None:
         self._window.clear(1.0, 1.0, 1.0)
@@ -483,7 +482,7 @@ class MglVisualizer:
             assert self._offset[0 if key == "hstack" else 1] > 0
             image = value
             if key not in self._overlays:
-                texture = self._window.ctx.texture(image.size, 3, image.tobytes())
+                texture = self._window.ctx.texture(image.shape[:2], 3, image.tobytes())
                 texture.build_mipmaps()
                 program = self._make_gl_program(
                     vertex_shader=_TEXTURE_VERTEX_SHADER,
@@ -492,7 +491,8 @@ class MglVisualizer:
                     vstacked=key == "vstack",
                 )
                 self._overlays[key] = TextureVA(self._window.ctx, program, texture)
-            self._overlays[key].update(image.tobytes())
+            else:
+                self._overlays[key].update(image.tobytes())
             self._overlays[key].render()
         else:
             raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
