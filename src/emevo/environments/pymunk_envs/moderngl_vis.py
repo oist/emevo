@@ -491,13 +491,7 @@ class MglVisualizer:
                     hstacked=key == "hstack",
                     vstacked=key == "vstack",
                 )
-                self._overlays[key] = TextureVA(
-                    self._window.ctx,
-                    program,
-                    texture,
-                    x_min=self._main_ratio[0],
-                    y_min=self._main_ratio[1],
-                )
+                self._overlays[key] = TextureVA(self._window.ctx, program, texture)
             self._overlays[key].update(image.tobytes())
             self._overlays[key].render()
         else:
