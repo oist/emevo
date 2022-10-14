@@ -23,7 +23,7 @@ in float in_scale;
 in vec4 in_color;
 out vec4 v_color;
 void main() {
-    gl_Position = vec4(in_position, 0.0, 1.0) * proj;
+    gl_Position = proj * vec4(in_position, 0.0, 1.0);
     gl_PointSize = in_scale;
     v_color = in_color;
 }
@@ -47,7 +47,7 @@ _LINE_VERTEX_SHADER = """
 in vec2 in_position;
 uniform mat4 proj;
 void main() {
-    gl_Position = vec4(in_position, 0.0, 1.0);
+    gl_Position = proj * vec4(in_position, 0.0, 1.0);
 }
 """
 
@@ -55,7 +55,6 @@ _LINE_GEOMETRY_SHADER = """
 #version 330
 layout (lines) in;
 layout (triangle_strip, max_vertices = 4) out;
-uniform mat4 proj;
 uniform float width;
 void main() {
     vec2 a = gl_in[0].gl_Position.xy;
@@ -70,7 +69,7 @@ void main() {
         vec4(b + a2left, 0.0, 1.0)
     );
     for (int i = 0; i < 4; ++i) {
-        gl_Position = positions[i] * proj;
+        gl_Position = positions[i];
         EmitVertex();
     }
     EndPrimitive();
@@ -112,7 +111,7 @@ void main() {
         vec4(c + c2head, 0.0, 1.0)
     );
     for (int i = 0; i < 7; ++i) {
-        gl_Position = positions[i] * proj;
+        gl_Position = positions[i];
         EmitVertex();
     }
     EndPrimitive();
@@ -126,7 +125,7 @@ in vec2 in_position;
 in vec2 in_uv;
 out vec2 uv;
 void main() {
-    gl_Position = vec4(in_position, 0.0, 1.0) * proj;
+    gl_Position = proj * vec4(in_position, 0.0, 1.0);
     uv = in_uv;
 }
 """
@@ -247,20 +246,18 @@ class TextureVA(Renderable):
 
     def update(self, image: bytes) -> None:
         self._texture.write(image)
-        self._texture.use(0)
+        self._texture.use()
 
 
 def _collect_circles(
     shapes: list[pymunk.Shape],
-    pos_scaling: tuple[float, float],
     size_scaling: float,
 ) -> tuple[NDArray, NDArray, NDArray]:
     points = []
     scales = []
     colors = []
     for circle in filter(lambda shape: isinstance(shape, pymunk.Circle), shapes):
-        x, y = circle.body.position + circle.offset
-        points.append([x * pos_scaling[0], y * pos_scaling[1]])
+        points.append(circle.body.position + circle.offset)
         scales.append(circle.radius * size_scaling)
         colors.append(circle.color)
     return (
@@ -270,26 +267,18 @@ def _collect_circles(
     )
 
 
-def _collect_static_lines(
-    shapes: list[pymunk.Shape],
-    pos_scaling: tuple[float, float],
-) -> NDArray:
+def _collect_static_lines(shapes: list[pymunk.Shape]) -> NDArray:
     points = []
     for segment in filter(lambda shape: isinstance(shape, pymunk.Segment), shapes):
         body = segment.body
         if body.body_type != pymunk.Body.STATIC:
             continue
-        ax, ay = segment.a
-        bx, by = segment.b
-        points.append([ax * pos_scaling[0], ay * pos_scaling[1]])
-        points.append([bx * pos_scaling[0], by * pos_scaling[1]])
+        points.append(segment.a)
+        points.append(segment.b)
     return np.array(points, dtype=np.float32)
 
 
-def _collect_sensors(
-    shapes: list[pymunk.Shape],
-    pos_scaling: tuple[float, float],
-) -> NDArray:
+def _collect_sensors(shapes: list[pymunk.Shape]) -> NDArray:
     points = []
     for segment in filter(lambda shape: isinstance(shape, pymunk.Segment), shapes):
         body = segment.body
@@ -297,31 +286,23 @@ def _collect_sensors(
             continue
         pos = segment.body.position
         angle = segment.body.angle
-        ax, ay = segment.a.rotated(angle) + pos
-        bx, by = segment.b.rotated(angle) + pos
-        points.append([ax * pos_scaling[0], ay * pos_scaling[1]])
-        points.append([bx * pos_scaling[0], by * pos_scaling[1]])
+        points.append(segment.a.rotated(angle) + pos)
+        points.append(segment.b.rotated(angle) + pos)
     return np.array(points, dtype=np.float32)
 
 
-def _collect_heads(
-    shapes: list[pymunk.Shape],
-    pos_scaling: tuple[float, float],
-) -> NDArray:
+def _collect_heads(shapes: list[pymunk.Shape]) -> NDArray:
     points = []
     for circle in filter(lambda shape: isinstance(shape, pymunk.Circle), shapes):
         pos = circle.body.position + circle.offset
         angle = circle.body.angle
-        p1 = pymunk.Vec2d(0.0, circle.radius * 0.8).rotated(angle) + pos
-        p2 = pymunk.Vec2d(0.0, circle.radius * 1.2).rotated(angle) + pos
-        points.append([p1.x * pos_scaling[0], p1.y * pos_scaling[1]])
-        points.append([p2.x * pos_scaling[0], p2.y * pos_scaling[1]])
+        points.append(pymunk.Vec2d(0.0, circle.radius * 0.8).rotated(angle) + pos)
+        points.append(pymunk.Vec2d(0.0, circle.radius * 1.2).rotated(angle) + pos)
     return np.array(points, dtype=np.float32)
 
 
 def _collect_policies(
     bodies_and_policies: Iterable[tuple[pymunk.Body, float, float]],
-    pos_scaling: tuple[float, float],
     max_arrow_length: float,
 ) -> NDArray:
     max_policy = max(
@@ -332,10 +313,21 @@ def _collect_policies(
     for body, px, py in bodies_and_policies:
         a = body.position
         policy = pymunk.Vec2d(px * policy_scaling, py * policy_scaling)
-        b = a + policy.rotated(body.angle)
-        points.append([a.x * pos_scaling[0], a.y * pos_scaling[1]])
-        points.append([b.x * pos_scaling[0], b.y * pos_scaling[1]])
+        points.append(a)
+        points.append(a + policy.rotated(body.angle))
     return np.array(points, dtype=np.float32)
+
+
+def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
+    """Clip ranges to [-1, 1]"""
+    total = sum(lengthes)
+    left = -1.0
+    res = []
+    for length in lengthes:
+        right = left + 2.0 * length / total
+        res.append((left, right))
+        left = right
+    return res
 
 
 class MglVisualizer:
@@ -345,8 +337,8 @@ class MglVisualizer:
         y_range: float,
         env: PymunkEnv,
         figsize: tuple[float, float] | None = None,
-        voffset: int = 0,
-        hoffset: int = 0,
+        voffsets: tuple[int, ...] = (),
+        hoffsets: tuple[int, ...] = (),
         vsync: bool = False,
         backend: str = "pyglet",
         title: str = "EmEvo PymunkEnv",
@@ -356,28 +348,30 @@ class MglVisualizer:
         if figsize is None:
             figsize = x_range * 3.0, y_range * 3.0
         w, h = int(figsize[0]), int(figsize[1])
-        self._figsize = w + hoffset, h + voffset
-        self._offset = hoffset, voffset
-        self._main_ratio = w / (w + hoffset), h / (h + voffset)
+        self._figsize = w + sum(hoffsets), h + sum(voffsets)
+        self._screen_x = _get_clip_ranges([w, *hoffsets])
+        self._screen_y = _get_clip_ranges([h, *voffsets])
+        self._xrange, self._yrange = x_range, y_range
+        self._range_min = min(x_range, y_range)
+        if x_range < y_range:
+            self._range_min = x_range
+            self._size_scaling = figsize[0] / x_range * 2
+        else:
+            self._range_min = y_range
+            self._size_scaling = figsize[1] / y_range * 2
+
         self._window = _make_window(
             title=title,
             size=self._figsize,
             backend=backend,
             vsync=vsync,
         )
-        self._pos_scaling = 1.0 / x_range, 1.0 / y_range
-        self._range_min = min(x_range, y_range)
-        self._size_scaling = figsize[0] / x_range * 2
         circle_program = self._make_gl_program(
             vertex_shader=_CIRCLE_VERTEX_SHADER,
             fragment_shader=_CIRCLE_FRAGMENT_SHADER,
         )
         shapes = env.get_space().shapes
-        points, scales, colors = _collect_circles(
-            shapes,
-            self._pos_scaling,
-            self._size_scaling,
-        )
+        points, scales, colors = _collect_circles(shapes, self._size_scaling)
         self._circles = CircleVA(
             ctx=self._window.ctx,
             program=circle_program,
@@ -395,7 +389,7 @@ class MglVisualizer:
         self._sensors = SegmentVA(
             ctx=self._window.ctx,
             program=segment_program,
-            segments=_collect_sensors(shapes, self._pos_scaling),
+            segments=_collect_sensors(shapes),
         )
         static_segment_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
@@ -407,7 +401,7 @@ class MglVisualizer:
         self._static_lines = SegmentVA(
             ctx=self._window.ctx,
             program=static_segment_program,
-            segments=_collect_static_lines(shapes, self._pos_scaling),
+            segments=_collect_static_lines(shapes),
         )
         head_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
@@ -419,7 +413,7 @@ class MglVisualizer:
         self._heads = SegmentVA(
             ctx=self._window.ctx,
             program=head_program,
-            segments=_collect_heads(shapes, self._pos_scaling),
+            segments=_collect_heads(shapes),
         )
         self._overlays = {}
 
@@ -428,26 +422,21 @@ class MglVisualizer:
 
     def get_image(self) -> NDArray:
         output = np.frombuffer(
-            self._window.fbo.read(components=4, dtype="f4"),
-            dtype=np.float32,
+            self._window.fbo.read(components=4, dtype="f1"),
+            dtype=np.uint8,
         )
-        scaled = np.multiply(output.reshape(*self._figsize, 4), 255)
-        return scaled[::-1].astype(np.uint8)
+        w, h = self._figsize
+        return np.ascontiguousarray(output.reshape(w, h, -1)[::-1])
 
     def render(self, env: PymunkEnv) -> None:
         self._window.clear(1.0, 1.0, 1.0)
         self._window.use()
         shapes = env.get_space().shapes
-        points, scales, colors = _collect_circles(
-            shapes,
-            self._pos_scaling,
-            self._size_scaling,
-        )
-        if self._circles.update(points, scales, colors):
+        if self._circles.update(*_collect_circles(shapes, self._size_scaling)):
             self._circles.render()
-        if self._heads.update(_collect_heads(shapes, self._pos_scaling)):
+        if self._heads.update(_collect_heads(shapes)):
             self._heads.render()
-        sensors = _collect_sensors(shapes, self._pos_scaling)
+        sensors = _collect_sensors(shapes)
         if self._sensors.update(sensors):
             self._sensors.render()
         self._static_lines.render()
@@ -456,11 +445,7 @@ class MglVisualizer:
         """Render additional value as an overlay"""
         key = name.lower()
         if key == "arrow":
-            segments = _collect_policies(
-                value,
-                self._pos_scaling,
-                self._range_min * 0.1,
-            )
+            segments = _collect_policies(value, self._range_min * 0.1)
             if "arrow" in self._overlays:
                 do_render = self._overlays["arrow"].update(segments)
             else:
@@ -478,8 +463,8 @@ class MglVisualizer:
                 do_render = True
             if do_render:
                 self._overlays["arrow"].render()
-        elif key == "hstack" or key == "vstack":
-            assert self._offset[0 if key == "hstack" else 1] > 0
+        elif key.startswith("stack"):
+            xi, yi = map(int, key.split("-")[1:])
             image = value
             if key not in self._overlays:
                 texture = self._window.ctx.texture(image.shape[:2], 3, image.tobytes())
@@ -487,12 +472,12 @@ class MglVisualizer:
                 program = self._make_gl_program(
                     vertex_shader=_TEXTURE_VERTEX_SHADER,
                     fragment_shader=_TEXTURE_FRAGMENT_SHADER,
-                    hstacked=key == "hstack",
-                    vstacked=key == "vstack",
+                    screen_idx=(xi, yi),
+                    game_x=(0.0, 1.0),
+                    game_y=(0.0, 1.0),
                 )
                 self._overlays[key] = TextureVA(self._window.ctx, program, texture)
-            else:
-                self._overlays[key].update(image.tobytes())
+            self._overlays[key].update(image.tobytes())
             self._overlays[key].render()
         else:
             raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
@@ -502,8 +487,9 @@ class MglVisualizer:
         vertex_shader: str,
         geometry_shader: str | None = None,
         fragment_shader: str | None = None,
-        hstacked: bool = False,
-        vstacked: bool = False,
+        screen_idx: tuple[int, int] = (0, 0),
+        game_x: tuple[float, float] | None = None,
+        game_y: tuple[float, float] | None = None,
         **kwargs: NDArray,
     ) -> mgl.Program:
         ctx = self._window.ctx
@@ -514,10 +500,12 @@ class MglVisualizer:
             geometry_shader=geometry_shader,
             fragment_shader=fragment_shader,
         )
-        x_mr, y_mr = self._main_ratio
-        x_range = (x_mr, 1.0) if hstacked else (0.0, x_mr)
-        y_range = (y_mr, 1.0) if vstacked else (0.0, y_mr)
-        proj = _make_projection_matrix(x_range, y_range)
+        proj = _make_projection_matrix(
+            game_x=game_x or (0.0, self._xrange),
+            game_y=game_y or (0.0, self._yrange),
+            screen_x=self._screen_x[screen_idx[0]],
+            screen_y=self._screen_y[screen_idx[1]],
+        )
         prog["proj"].write(proj)
         for key, value in kwargs.items():
             prog[key].write(value)
@@ -560,28 +548,31 @@ def _make_window(
 
 
 def _make_projection_matrix(
-    x_range: tuple[float, float] = (0.0, 1.0),
-    y_range: tuple[float, float] = (0.0, 1.0),
+    game_x: tuple[float, float] = (0.0, 1.0),
+    game_y: tuple[float, float] = (0.0, 1.0),
+    screen_x: tuple[float, float] = (-1.0, 1.0),
+    screen_y: tuple[float, float] = (-1.0, 1.0),
 ) -> NDArray:
-    x_scale = x_range[1] - x_range[0]
-    y_scale = y_range[1] - y_range[0]
+    screen_width = screen_x[1] - screen_x[0]
+    screen_height = screen_y[1] - screen_y[0]
+    x_scale = screen_width / (game_x[1] - game_x[0])
+    y_scale = screen_height / (game_y[1] - game_y[0])
     scale_mat = np.array(
         [
-            [2 * x_scale, 0, 0, 0],
-            [0, 2 * y_scale, 0, 0],
-            [0, 0, 1, 0],
+            [x_scale, 0, 0, 0],
+            [0, y_scale, 0, 0],
+            [0, 0, 0, 0],
             [0, 0, 0, 1],
         ],
         dtype=np.float32,
     )
     trans_mat = np.array(
         [
-            [1, 0, 0, 2 * x_range[0] - 0.5 / x_scale],
-            [0, 1, 0, 2 * y_range[0] - 0.5 / y_scale],
+            [1, 0, 0, (sum(screen_x) - sum(game_x)) / screen_width],
+            [0, 1, 0, (sum(screen_y) - sum(game_y)) / screen_height],
             [0, 0, 1, 0],
             [0, 0, 0, 1],
         ],
         dtype=np.float32,
     )
-    scale = np.dot(np.eye(4, dtype=np.float32), scale_mat)
-    return np.dot(scale, trans_mat)
+    return np.ascontiguousarray(np.dot(scale_mat, trans_mat).T)
