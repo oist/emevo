@@ -40,7 +40,7 @@ def main(
         env = test_utils.predefined_env(**env_kwargs)
     else:
         env = make(
-            "Forgaging-v0",
+            "CircleForaging-v0",
             env_shape=env_shape,
             food_initial_force=food_initial_force,
             **env_kwargs,

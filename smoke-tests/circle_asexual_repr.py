@@ -57,12 +57,18 @@ def main(
     else:
         raise ValueError(f"Invalid hazard {hazard}")
     birth_fn = bd.birth.Logistic(
-        scale=1.0 / avg_lifetime,
+        scale=10.0 / avg_lifetime,
         alpha=0.1,
         beta_age=10.0 / avg_lifetime,
         age_delay=avg_lifetime / 4,
         energy_delay=0.0,
     )
+    exp_n_children = bd.population.expected_n_children(
+        birth=birth_fn,
+        hazard=hazard_fn,
+        energy=1.0,
+    )
+    print(f"Expected num. of children: {exp_n_children}")
 
     manager = bd.AsexualReprManager(
         initial_status_fn=partial(bd.statuses.Status, age=1, energy=4.0),
@@ -74,7 +80,7 @@ def main(
         ),
     )
 
-    env = make("Forgaging-v0", food_initial_force=food_initial_force)
+    env = make("CircleForaging-v0", food_initial_force=food_initial_force)
     manager.register(env.bodies())
     gen = np.random.Generator(PCG64(seed=seed))
 

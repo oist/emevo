@@ -7,7 +7,7 @@ import dataclasses
 class Status:
     """Default status implementation with age and energy."""
 
-    age: int
+    age: float
     energy: float
 
     def step(self) -> None:

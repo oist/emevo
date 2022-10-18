@@ -108,7 +108,7 @@ def main(
         raise ValueError(f"Unknown newborn kind {newborn_kind}")
 
     env = make(
-        "Forgaging-v0",
+        "CircleForaging-v0",
         food_initial_force=food_initial_force,
         agent_radius=agent_radius,
     )
