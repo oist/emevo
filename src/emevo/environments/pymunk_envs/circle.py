@@ -415,10 +415,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
-    @property
-    def n_sensor_obs(self) -> int:
-        return 3 * self._n_sensors
-
     def _accumulate_sensor_data(self, body: CFBody) -> NDArray:
         sensor_data = np.zeros((3, self._n_sensors), dtype=np.float32)
         for i, sensor in enumerate(body._sensors):
