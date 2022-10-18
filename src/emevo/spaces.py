@@ -142,7 +142,7 @@ class BoxSpace(Space[NDArray]):
         )
 
     def flatten(self) -> BoxSpace:
-        return self
+        return BoxSpace(low=self.low.flatten(), high=self.high.flatten())
 
     def normalize(self, normalized: NDArray) -> NDArray:
         range_ = self.high - self.low  # type: ignore
@@ -298,6 +298,6 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
 
     def flatten(self) -> BoxSpace:
         spaces = [space.flatten() for space in self.spaces]
-        low = np.concatenate([space.low.flatten() for space in spaces])
-        high = np.concatenate([space.high.flatten() for space in spaces])
+        low = np.concatenate([space.low for space in spaces])
+        high = np.concatenate([space.high for space in spaces])
         return BoxSpace(low=low, high=high)
