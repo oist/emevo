@@ -82,8 +82,8 @@ def test_asexual(
                 body,
                 energy_delta=-1.0 if body_idx % 2 == 1 else 1.0,
             )
-        for body in bodies:
-            assert not manager.reproduce(body)
+        parents = manager.reproduce(bodies)
+        assert len(parents) == 0
         deads, newborns = manager.step()
         if step_idx == STEPS_TO_DEATH - 1:
             assert len(deads) == 2
@@ -98,8 +98,9 @@ def test_asexual(
     for body in bodies:
         manager.update_status(body, energy_delta=1.0)
 
+    parents = manager.reproduce(bodies)
     for body in bodies:
-        assert manager.reproduce(body)
+        assert body in parents
 
     for step_idx in range(STEPS_TO_BIRTH):
         _, newborns = manager.step()
@@ -186,7 +187,7 @@ def test_sexual(
     for body in bodies:
         manager.update_status(body, energy_delta=1.0)
 
-    assert manager.reproduce(Encount(bodies[0], bodies[1]))
+    assert len(manager.reproduce(Encount(bodies[0], bodies[1]))) == 1
 
     for step_idx in range(STEPS_TO_BIRTH):
         _, newborns = manager.step()

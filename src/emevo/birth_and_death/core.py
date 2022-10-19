@@ -3,13 +3,35 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Callable, Generic, Iterable, TypeVar
+from typing import Callable, Iterable
 
 import numpy as np
 
 from emevo.birth_and_death.newborn import Newborn
-from emevo.birth_and_death.statuses import Status
 from emevo.body import Body, Encount
+
+
+@dataclasses.dataclass
+class Status:
+    """Default status implementation with age and energy."""
+
+    age: float
+    energy: float
+
+    def step(self) -> None:
+        """Get older."""
+        self.age += 1
+
+    def share(self, ratio: float) -> float:
+        """Share some portion of energy."""
+        shared = self.energy * ratio
+        self.update(energy_delta=-shared)
+        return shared
+
+    def update(self, *, energy_delta: float) -> None:
+        """Update energy."""
+        energy = self.energy + energy_delta
+        self.energy = max(0.0, energy)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -20,10 +42,7 @@ class DeadBody:
     status: Status
 
 
-STATUS = TypeVar("STATUS", bound=Status)
-
-
-class _BaseManager(Generic[STATUS]):
+class _BaseManager:
     """
     Manager manages energy level, birth and death of agents.
     Note that Manager does not manage matings.
@@ -31,8 +50,8 @@ class _BaseManager(Generic[STATUS]):
 
     def __init__(
         self,
-        initial_status_fn: Callable[..., STATUS],
-        hazard_fn: Callable[[STATUS], float],
+        initial_status_fn: Callable[..., Status],
+        hazard_fn: Callable[[Status], float],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         self._initial_status_fn = initial_status_fn
@@ -79,71 +98,64 @@ class _BaseManager(Generic[STATUS]):
 class AsexualReprManager(_BaseManager):
     def __init__(
         self,
-        initial_status_fn: Callable[..., STATUS],
-        hazard_fn: Callable[[STATUS], float],
-        birth_fn: Callable[[STATUS], float],
-        produce_fn: Callable[[STATUS, Body], Newborn],
+        initial_status_fn: Callable[..., Status],
+        hazard_fn: Callable[[Status], float],
+        birth_fn: Callable[[Status], float],
+        produce_fn: Callable[[Status, Body], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         super().__init__(initial_status_fn, hazard_fn, rng)
         self._birth_fn = birth_fn
         self._produce_fn = produce_fn
 
-    def _reproduce_impl(self, body: Body) -> Newborn | None:
+    def _try_reproduce(self, body: Body) -> bool:
         success_prob = self._birth_fn(self._statuses[body])
         if self._rng() < success_prob:
             newborn = self._produce_fn(self._statuses[body], body)
             self._pending_newborns.append(newborn)
-            return newborn
+            return True
         else:
-            return None
+            return False
 
-    def reproduce(self, body: Body | Iterable[Body]) -> list[Newborn]:
-        """Try asexual reproducation from a body or an iterator over bodies."""
+    def reproduce(self, body: Body | Iterable[Body]) -> list[Body]:
+        """
+        Try asexual reproducation from a body or an iterator over bodies.
+        Return a list of bodies that reproduced themselves.
+        """
         if isinstance(body, Body):
             bodies = [body]
         else:
             bodies = body
-        res = []
-        for body in bodies:
-            newborn = self._reproduce_impl(body)
-            if newborn is not None:
-                res.append(newborn)
-        return res
+        return [body for body in bodies if self._try_reproduce(body)]
 
 
 class SexualReprManager(_BaseManager):
     def __init__(
         self,
-        initial_status_fn: Callable[..., STATUS],
-        hazard_fn: Callable[[STATUS], float],
-        birth_fn: Callable[[STATUS, STATUS], float],
-        produce_fn: Callable[[STATUS, STATUS, Encount], Newborn],
+        initial_status_fn: Callable[..., Status],
+        hazard_fn: Callable[[Status], float],
+        birth_fn: Callable[[Status, Status], float],
+        produce_fn: Callable[[Status, Status, Encount], Newborn],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
         super().__init__(initial_status_fn, hazard_fn, rng)
         self._birth_fn = birth_fn
         self._produce_fn = produce_fn
 
-    def _reproduce_impl(self, encount: Encount) -> Newborn | None:
+    def _try_reproduce(self, encount: Encount) -> bool:
         s_a, s_b = map(lambda body: self._statuses[body], encount)
         success_prob = self._birth_fn(s_a, s_b)
         if self._rng() < success_prob:
             newborn = self._produce_fn(s_a, s_b, encount)
             self._pending_newborns.append(newborn)
-            return newborn
+            return True
         else:
-            return None
+            return False
 
-    def reproduce(self, encount: Encount | Iterable[Encount]) -> list[Newborn]:
+    def reproduce(self, encount: Encount | Iterable[Encount]) -> list[Encount]:
         """Try asexual reproducation from an encount or an iterator over encounts."""
         if isinstance(encount, Encount):
             encounts = [encount]
         else:
             encounts = encount
-        res = []
-        for encount in encounts:
-            newborn = self._reproduce_impl(encount)
-            if newborn is not None:
-                res.append(newborn)
-        return res
+        return [encount for encount in encounts if self._try_reproduce(encount)]
