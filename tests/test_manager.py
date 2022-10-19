@@ -39,7 +39,7 @@ class FakeBody(Body):
 
 @pytest.fixture
 def status_fn():
-    return partial(bd.statuses.Status, age=1, energy=DEFAULT_ENERGY_LEVEL)
+    return partial(bd.Status, age=1, energy=DEFAULT_ENERGY_LEVEL)
 
 
 @pytest.fixture
@@ -53,8 +53,8 @@ def _add_bodies(manager, n_bodies: int = 5) -> None:
 
 
 def test_asexual(
-    status_fn: Callable[[], bd.statuses.Status],
-    hazard_fn: Callable[[bd.statuses.Status], float],
+    status_fn: Callable[[], bd.Status],
+    hazard_fn: Callable[[bd.Status], float],
 ) -> None:
     """Test the most basic setting: Asexual reproduction + Oviparous birth"""
 
@@ -112,8 +112,8 @@ def test_asexual(
 
 @pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
 def test_sexual(
-    status_fn: Callable[[], bd.statuses.Status],
-    hazard_fn: Callable[[bd.statuses.Status], float],
+    status_fn: Callable[[], bd.Status],
+    hazard_fn: Callable[[bd.Status], float],
     newborn_kind: str,
 ) -> None:
     """Test Sexual reproduction"""
@@ -123,8 +123,8 @@ def test_sexual(
     STEPS_TO_BIRTH: int = 3
 
     def success_prob(
-        status_a: bd.statuses.Status,
-        status_b: bd.statuses.Status,
+        status_a: bd.Status,
+        status_b: bd.Status,
     ) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
         if status_a.energy > threshold and status_b.energy > threshold:

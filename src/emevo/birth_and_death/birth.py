@@ -5,7 +5,7 @@ from typing import Protocol
 
 import numpy as np
 
-from emevo.birth_and_death.statuses import Status
+from emevo.birth_and_death.core import Status
 
 
 class BirthFunction(Protocol):

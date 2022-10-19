@@ -70,7 +70,7 @@ def main(
     logger.info(f"Expected num. of children: {exp_n_children}")
 
     manager = bd.AsexualReprManager(
-        initial_status_fn=partial(bd.statuses.Status, age=1, energy=4.0),
+        initial_status_fn=partial(bd.Status, age=1, energy=4.0),
         hazard_fn=hazard_fn,
         birth_fn=birth_fn.asexual,
         produce_fn=lambda _, body: bd.Oviparous(

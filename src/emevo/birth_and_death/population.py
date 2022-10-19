@@ -5,8 +5,8 @@
 from scipy import integrate
 
 from emevo.birth_and_death.birth import BirthFunction
+from emevo.birth_and_death.core import Status
 from emevo.birth_and_death.death import HazardFunction
-from emevo.birth_and_death.statuses import Status
 
 
 def cumulative_survival(
