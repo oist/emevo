@@ -8,6 +8,7 @@ from functools import partial
 
 import numpy as np
 import typer
+from loguru import logger
 from numpy.random import PCG64
 from pymunk.vec2d import Vec2d
 
@@ -51,9 +52,7 @@ def main(
     debug: bool = False,
 ) -> None:
     if debug:
-        import loguru
-
-        loguru.logger.enable("emevo")
+        logger.enable("emevo")
 
     avg_lifetime = steps // 2
 
@@ -133,7 +132,7 @@ def main(
         deads, newborns = manager.step()
 
         for dead in deads:
-            print(f"{dead.body} is dead with {dead.status}")
+            logger.info(f"{dead.body} is dead with {dead.status}")
             env.dead(dead.body)
 
         for context in map(operator.attrgetter("context"), newborns):
@@ -145,7 +144,7 @@ def main(
             )
             body = env.born(Vec2d(*loc), context.generation + 1)
             if body is not None:
-                print(f"{body} was born")
+                logger.info(f"{body} was born")
                 manager.register(body)
             if body is not None:
                 manager.register(body)
@@ -155,7 +154,7 @@ def main(
             visualizer.show()
 
         if env.is_extinct():
-            print(f"Extinct after {i} steps")
+            logger.info(f"Extinct after {i} steps")
             break
 
 

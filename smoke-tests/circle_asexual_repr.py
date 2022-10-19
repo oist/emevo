@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import typer
+from loguru import logger
 from numpy.random import PCG64
 from pymunk.vec2d import Vec2d
 
@@ -45,9 +46,7 @@ def main(
     video: Path | None = None,
 ) -> None:
     if debug:
-        import loguru
-
-        loguru.logger.enable("emevo")
+        logger.enable("emevo")
 
     avg_lifetime = steps // 2
     if hazard == HazardFn.CONST:
@@ -68,7 +67,7 @@ def main(
         hazard=hazard_fn,
         energy=1.0,
     )
-    print(f"Expected num. of children: {exp_n_children}")
+    logger.info(f"Expected num. of children: {exp_n_children}")
 
     manager = bd.AsexualReprManager(
         initial_status_fn=partial(bd.statuses.Status, age=1, energy=4.0),
@@ -107,7 +106,7 @@ def main(
         deads, newborns = manager.step()
 
         for dead in deads:
-            print(f"{dead.body} is dead with {dead.status}")
+            logger.info(f"{dead.body} is dead with {dead.status}")
             env.dead(dead.body)
 
         for context in map(operator.attrgetter("context"), newborns):
@@ -119,7 +118,7 @@ def main(
             )
             body = env.born(Vec2d(*loc), context.generation + 1)
             if body is not None:
-                print(f"{body} was born")
+                logger.info(f"{body} was born")
                 manager.register(body)
 
         if visualizer is not None:
@@ -127,7 +126,7 @@ def main(
             visualizer.show()
 
         if env.is_extinct():
-            print(f"Extinct after {i} steps")
+            logger.info(f"Extinct after {i} steps")
             break
 
 
