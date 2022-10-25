@@ -41,8 +41,9 @@ class Oviparous(Newborn[LOC]):
         self,
         parent: Body,
         time_to_birth: int,
+        info: Any = None,
     ) -> None:
-        super().__init__(parent, time_to_birth)
+        super().__init__(parent, time_to_birth, info=info)
         self._location = parent.location()
 
     def location(self) -> LOC:
@@ -53,4 +54,4 @@ class Viviparous(Newborn[LOC]):
     """A newborn stays in a parent's body for a while and will be born."""
 
     def location(self) -> LOC:
-        return self._parent.location()
+        return self.parent.location()
