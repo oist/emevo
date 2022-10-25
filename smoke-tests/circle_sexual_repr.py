@@ -33,10 +33,7 @@ class Rendering(str, enum.Enum):
     MODERNGL = "moderngl"
 
 
-def birth_fn(
-    status_a: bd.statuses.Status,
-    status_b: bd.statuses.Status,
-) -> float:
+def birth_fn(status_a: bd.Status, status_b: bd.Status) -> float:
     avg_energy = (status_a.energy + status_b.energy) / 2.0
     return 1 / (1.0 + np.exp(-avg_energy))
 
@@ -47,7 +44,6 @@ def main(
     food_initial_force: tuple[float, float] = (0.0, 0.0),
     agent_radius: float = 12.0,
     seed: int = 1,
-    newborn_kind: str = "oviparous",
     hazard: HazardFn = HazardFn.CONST,
     debug: bool = False,
 ) -> None:
@@ -70,41 +66,19 @@ def main(
         energy_delay=0.0,
     )
 
-    if newborn_kind == "oviparous":
-
-        def produce_oviparous(_sa, _sb, encount: Encount) -> bd.Oviparous:
-            loc = (encount.a.location() + encount.b.location()) * 0.5
-            return bd.Oviparous(
-                context=SimpleContext(encount.a.generation + 1, loc),
-                time_to_birth=5,
-            )
-
-        manager = bd.SexualReprManager(
-            initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
-            hazard_fn=hazard_fn,
-            birth_fn=birth_fn.sexual,
-            produce_fn=produce_oviparous,
+    def produce(_sa, _sb, encount: Encount) -> bd.Oviparous:
+        loc = encount.a.location()
+        return bd.Oviparous(
+            parent=encount.a,
+            time_to_birth=5,
         )
 
-    elif newborn_kind == "viviparous":
-
-        def produce_viviparous(_sa, _sb, encount: Encount) -> bd.Viviparous:
-            loc = encount.a.location()
-            return bd.Viviparous(
-                context=SimpleContext(encount.a.generation + 1, loc),
-                parent=encount.a,
-                time_to_birth=5,
-            )
-
-        manager = bd.SexualReprManager(
-            initial_status_fn=partial(bd.statuses.Status, age=1, energy=0.0),
-            hazard_fn=hazard_fn,
-            birth_fn=birth_fn.sexual,
-            produce_fn=produce_viviparous,
-        )
-    else:
-
-        raise ValueError(f"Unknown newborn kind {newborn_kind}")
+    manager = bd.SexualReprManager(
+        initial_status_fn=partial(bd.Status, age=1, energy=0.0),
+        hazard_fn=hazard_fn,
+        birth_fn=birth_fn.sexual,
+        produce_fn=produce,
+    )
 
     env = make(
         "CircleForaging-v0",
@@ -135,14 +109,14 @@ def main(
             logger.info(f"{dead.body} is dead with {dead.status}")
             env.dead(dead.body)
 
-        for context in map(operator.attrgetter("context"), newborns):
+        for newborn in newborns:
             loc = utils.sample_location(
                 gen,
-                context.location,
+                newborn.location(),
                 radius_max=agent_radius * 3,
                 radius_min=agent_radius * 1.5,
             )
-            body = env.born(Vec2d(*loc), context.generation + 1)
+            body = env.born(Vec2d(*loc), newborn.parent.generation + 1)
             if body is not None:
                 logger.info(f"{body} was born")
                 manager.register(body)

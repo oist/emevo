@@ -1,7 +1,6 @@
 """Example of asexual reproduction in circle foraging environment"""
 from __future__ import annotations
 
-import dataclasses
 import enum
 import operator
 from functools import partial
@@ -16,12 +15,6 @@ from pymunk.vec2d import Vec2d
 from emevo import birth_and_death as bd
 from emevo import make, utils
 from emevo import visualizer as evis
-
-
-@dataclasses.dataclass
-class SimpleContext:
-    generation: int
-    location: Vec2d
 
 
 class Rendering(str, enum.Enum):
@@ -74,7 +67,7 @@ def main(
         hazard_fn=hazard_fn,
         birth_fn=birth_fn.asexual,
         produce_fn=lambda _, body: bd.Oviparous(
-            context=SimpleContext(body.generation + 1, body.location()),
+            parent=body,
             time_to_birth=5,
         ),
     )
@@ -109,14 +102,14 @@ def main(
             logger.info(f"{dead.body} is dead with {dead.status}")
             env.dead(dead.body)
 
-        for context in map(operator.attrgetter("context"), newborns):
+        for newborn in newborns:
             loc = utils.sample_location(
                 gen,
-                context.location,
+                newborn.location(),
                 radius_max=agent_radius * 3,
                 radius_min=agent_radius * 1.5,
             )
-            body = env.born(Vec2d(*loc), context.generation + 1)
+            body = env.born(Vec2d(*loc), newborn.parent.generation + 1)
             if body is not None:
                 logger.info(f"{body} was born")
                 manager.register(body)

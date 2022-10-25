@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 from functools import partial
 from typing import Callable
 
@@ -13,12 +12,6 @@ from emevo import birth_and_death as bd
 from emevo import spaces
 
 DEFAULT_ENERGY_LEVEL: int = 10
-
-
-@dataclasses.dataclass
-class FakeContext:
-    generation: int
-    location: int
 
 
 class FakeBody(Body):
@@ -69,7 +62,7 @@ def test_asexual(
             status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
         ),
         produce_fn=lambda _status, body: bd.Oviparous(
-            context=FakeContext(body.generation + 1, 0),
+            parent=body,
             time_to_birth=STEPS_TO_BIRTH,
         ),
     )
@@ -110,11 +103,11 @@ def test_asexual(
             assert len(newborns) == 0
 
 
-@pytest.mark.parametrize("newborn_kind", ["oviparous", "viviparous"])
+@pytest.mark.parametrize("newborn_cls", [bd.Oviparous, bd.Viviparous])
 def test_sexual(
     status_fn: Callable[[], bd.Status],
     hazard_fn: Callable[[bd.Status], float],
-    newborn_kind: str,
+    newborn_cls: type[bd.Newborn],
 ) -> None:
     """Test Sexual reproduction"""
 
@@ -132,39 +125,18 @@ def test_sexual(
         else:
             return 0.0
 
-    if newborn_kind == "oviparous":
-
-        def produce_oviparous(_sa, _sb, encount: Encount) -> bd.Oviparous:
-            return bd.Oviparous(
-                context=FakeContext(encount.a.generation + 1, 0),
-                time_to_birth=STEPS_TO_BIRTH,
-            )
-
-        manager = bd.SexualReprManager(
-            initial_status_fn=status_fn,
-            hazard_fn=hazard_fn,
-            birth_fn=success_prob,
-            produce_fn=produce_oviparous,
+    def produce(_sa, _sb, encount: Encount) -> bd.Newborn:
+        return newborn_cls(
+            parent=encount.a,
+            time_to_birth=STEPS_TO_BIRTH,
         )
 
-    elif newborn_kind == "viviparous":
-
-        def produce_viviparous(_sa, _sb, encount: Encount) -> bd.Viviparous:
-            return bd.Viviparous(
-                context=FakeContext(encount.a.generation + 1, 0),
-                parent=encount.a,
-                time_to_birth=STEPS_TO_BIRTH,
-            )
-
-        manager = bd.SexualReprManager(
-            initial_status_fn=status_fn,
-            hazard_fn=hazard_fn,
-            birth_fn=success_prob,
-            produce_fn=produce_viviparous,
-        )
-    else:
-
-        raise ValueError(f"Unknown newborn kind {newborn_kind}")
+    manager = bd.SexualReprManager(
+        initial_status_fn=status_fn,
+        hazard_fn=hazard_fn,
+        birth_fn=success_prob,
+        produce_fn=produce,
+    )
 
     _add_bodies(manager)
 
