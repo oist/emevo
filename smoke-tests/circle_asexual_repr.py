@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import enum
 import operator
+import sys
 from functools import partial
 from pathlib import Path
 
@@ -33,6 +34,9 @@ def main(
     render: Rendering | None = None,
     food_initial_force: tuple[float, float] = (0.0, 0.0),
     agent_radius: float = 12.0,
+    n_agent_sensors: int = 8,
+    sensor_length: float = 10.0,
+    env_shape: str = "square",
     seed: int = 1,
     hazard: HazardFn = HazardFn.CONST,
     debug: bool = False,
@@ -40,6 +44,11 @@ def main(
 ) -> None:
     if debug:
         logger.enable("emevo")
+    logger.add(
+        sys.stderr,
+        filter="__main__",
+        level="DEBUG" if debug else "INFO",
+    )
 
     avg_lifetime = steps // 2
     if hazard == HazardFn.CONST:
@@ -72,7 +81,13 @@ def main(
         ),
     )
 
-    env = make("CircleForaging-v0", food_initial_force=food_initial_force)
+    env = make(
+        "CircleForaging-v0",
+        food_initial_force=food_initial_force,
+        n_agent_sensors=n_agent_sensors,
+        sensor_length=sensor_length,
+        env_shape=env_shape,
+    )
     manager.register(env.bodies())
     gen = np.random.Generator(PCG64(seed=seed))
 

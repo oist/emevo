@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-import operator
+import sys
 from functools import partial
 
 import numpy as np
@@ -43,12 +43,21 @@ def main(
     render: Rendering | None = None,
     food_initial_force: tuple[float, float] = (0.0, 0.0),
     agent_radius: float = 12.0,
+    n_agent_sensors: int = 8,
+    sensor_length: float = 10.0,
+    env_shape: str = "square",
     seed: int = 1,
     hazard: HazardFn = HazardFn.CONST,
     debug: bool = False,
 ) -> None:
+    logger.remove()
     if debug:
         logger.enable("emevo")
+    logger.add(
+        sys.stderr,
+        filter="__main__",
+        level="DEBUG" if debug else "INFO",
+    )
 
     avg_lifetime = steps // 2
 
@@ -67,7 +76,6 @@ def main(
     )
 
     def produce(_sa, _sb, encount: Encount) -> bd.Oviparous:
-        loc = encount.a.location()
         return bd.Oviparous(
             parent=encount.a,
             time_to_birth=5,
@@ -84,6 +92,9 @@ def main(
         "CircleForaging-v0",
         food_initial_force=food_initial_force,
         agent_radius=agent_radius,
+        n_agent_sensors=n_agent_sensors,
+        sensor_length=sensor_length,
+        env_shape=env_shape,
     )
     manager.register(env.bodies())
     gen = np.random.Generator(PCG64(seed=seed))
@@ -96,10 +107,14 @@ def main(
     for i in range(steps):
         bodies = env.bodies()
         actions = {body: body.act_space.sample(gen) for body in bodies}
+        logger.debug("Step start")
         encounts = env.step(actions)
+        logger.debug("Step end")
         for body in bodies:
             action_cost = np.linalg.norm(actions[body]) * 0.01
+            logger.debug("Observe start")
             observation = env.observe(body)
+            logger.debug("Observe end")
             energy_delta = observation.n_collided_foods - action_cost
             manager.update_status(body, energy_delta=energy_delta)
         _ = manager.reproduce(encounts)
