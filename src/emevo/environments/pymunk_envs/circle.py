@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from functools import partial
 from typing import Any, Literal, NamedTuple
-from uuid import UUID
 
 import numpy as np
 import pymunk
@@ -92,7 +91,6 @@ class CFBody(Body[Vec2d]):
         super().__init__(
             BoxSpace(low=act_low, high=act_high),
             obs_space,
-            "ForgagingBody",
             generation,
             birthtime,
         )
@@ -263,7 +261,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             )
 
         self._bodies = []
-        self._body_uuids = {}
+        self._body_indices = {}
         self._foods: dict[pymunk.Body, pymunk.Shape] = {}
         self._encounted_bodies = set()
         self._generator = Generator(PCG64(seed=seed))
@@ -272,9 +270,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         # Place bodies and foods
         self._initialize_bodies_and_foods()
         # Setup all collision handlers
-        self._food_handler = utils.FoodHandler(self._body_uuids)
-        self._mating_handler = utils.MatingHandler(self._body_uuids)
-        self._static_handler = utils.StaticHandler(self._body_uuids)
+        self._food_handler = utils.FoodHandler(self._body_indices)
+        self._mating_handler = utils.MatingHandler(self._body_indices)
+        self._static_handler = utils.StaticHandler(self._body_indices)
 
         utils.add_pre_handler(
             self._space,
@@ -340,9 +338,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         """
         sensor_data = self._accumulate_sensor_data(body)
         collision_data = np.zeros(3, dtype=np.float32)
-        collision_data[0] = body.uuid in self._encounted_bodies
-        collision_data[1] = self._food_handler.n_eaten_foods[body.uuid]
-        collision_data[2] = body.uuid in self._static_handler.collided_bodies
+        collision_data[0] = body.index in self._encounted_bodies
+        collision_data[1] = self._food_handler.n_ate_foods[body.index]
+        collision_data[2] = body.index in self._static_handler.collided_bodies
 
         return CFObs(
             sensor=sensor_data,
@@ -378,7 +376,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     def dead(self, body: CFBody) -> None:
         body._remove(self._space)
         self._bodies.remove(body)
-        del self._body_uuids[body._body]
+        del self._body_indices[body._body]
 
     def is_extinct(self) -> bool:
         return len(self._bodies) == 0
@@ -431,13 +429,11 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
 
     def _all_encounts(self) -> list[Encount]:
         all_encounts = []
-        for uuid_a, uuid_b in self._mating_handler.filter_pairs(
-            self._encount_threshold
-        ):
-            self._encounted_bodies.add(uuid_a)
-            self._encounted_bodies.add(uuid_b)
-            body_a = self._find_body_by_uuid(uuid_a)
-            body_b = self._find_body_by_uuid(uuid_b)
+        for id_a, id_b in self._mating_handler.filter_pairs(self._encount_threshold):
+            self._encounted_bodies.add(id_a)
+            self._encounted_bodies.add(id_b)
+            body_a = self._find_body_by_id(id_a)
+            body_b = self._find_body_by_id(id_b)
             all_encounts.append(Encount(body_a, body_b))
         return all_encounts
 
@@ -458,11 +454,11 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         )
         return nearest is None
 
-    def _find_body_by_uuid(self, uuid: UUID) -> CFBody:
+    def _find_body_by_id(self, index: int) -> CFBody:
         for body in self._bodies:
-            if body.uuid == uuid:
+            if body.index == index:
                 return body
-        raise ValueError(f"Invalid agent uuid: {uuid}")
+        raise ValueError(f"Invalid agent index: {index}")
 
     def _initialize_bodies_and_foods(self) -> None:
         assert len(self._bodies) == 0 and len(self._foods) == 0
@@ -492,7 +488,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             max_abs_velocity=self._max_abs_velocity,
             loc=loc,
         )
-        self._body_uuids[body_with_sensors.body] = fgbody.uuid
+        self._body_indices[body_with_sensors.body] = fgbody.index
         return fgbody
 
     def _make_food(self, loc: Vec2d) -> tuple[pymunk.Body, pymunk.Shape]:
