@@ -70,7 +70,7 @@ class Body(Locatable[LOC], abc.ABC):
 
     def __repr__(self) -> str:
         birthtime, gen, index = dataclasses.astuple(self._profile)
-        return f"{index} (gen: {gen} birth: {birthtime})"
+        return f"Body {index} (gen: {gen} birth: {birthtime})"
 
     def __eq__(self, other: Body) -> bool:
         return self._profile == other._profile
