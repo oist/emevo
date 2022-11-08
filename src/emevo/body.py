@@ -72,11 +72,17 @@ class Body(Locatable[LOC], abc.ABC):
         birthtime, gen, index = dataclasses.astuple(self._profile)
         return f"Body {index} (gen: {gen} birth: {birthtime})"
 
-    def __eq__(self, other: Body) -> bool:
-        return self._profile == other._profile
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Body):
+            return self._profile == other._profile
+        else:
+            return False
 
-    def __ne__(self, other: Body) -> bool:
-        return self._profile != other._profile
+    def __ne__(self, other: Any) -> bool:
+        if isinstance(other, Body):
+            return self._profile != other._profile
+        else:
+            return True
 
     def __hash__(self) -> int:
         return hash(self._profile)
