@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import abc
 import dataclasses
+import functools
 from collections import defaultdict
 from typing import Any, Generic, NamedTuple, NoReturn, TypeVar
 
@@ -28,7 +29,11 @@ class Profile:
     generation: int
     index: int
 
+    def __lt__(self, other: Profile) -> bool:
+        return self.index < other.index
 
+
+@functools.total_ordering
 class Body(Locatable[LOC], abc.ABC):
     """
     Reprsents the bodily existance of the agent.
@@ -78,9 +83,9 @@ class Body(Locatable[LOC], abc.ABC):
         else:
             return False
 
-    def __ne__(self, other: Any) -> bool:
+    def __lt__(self, other: Any) -> bool:
         if isinstance(other, Body):
-            return self._profile != other._profile
+            return self._profile < other._profile
         else:
             return True
 
