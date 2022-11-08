@@ -3,31 +3,13 @@ from __future__ import annotations
 from functools import partial
 from typing import Callable
 
-import numpy as np
 import pytest
-from numpy.typing import NDArray
 
-from emevo import Body, Encount
+from emevo import Encount
 from emevo import birth_and_death as bd
-from emevo import spaces
+from emevo._test_utils import FakeBody
 
 DEFAULT_ENERGY_LEVEL: int = 10
-
-
-class FakeBody(Body):
-    def __init__(self, name: str) -> None:
-        act_space = spaces.BoxSpace(
-            np.zeros(1, dtype=np.float32),
-            np.ones(1, dtype=np.float32),
-        )
-        obs_space = spaces.BoxSpace(
-            np.zeros(1, dtype=np.float32),
-            np.ones(1, dtype=np.float32),
-        )
-        super().__init__(act_space, obs_space, name)
-
-    def location(self) -> NDArray:
-        return np.array(())
 
 
 @pytest.fixture
@@ -42,7 +24,7 @@ def hazard_fn() -> bd.death.HazardFunction:
 
 def _add_bodies(manager, n_bodies: int = 5) -> None:
     for _ in range(n_bodies):
-        manager.register(FakeBody(name="FakeBody"))
+        manager.register(FakeBody())
 
 
 def test_asexual(

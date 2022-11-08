@@ -29,7 +29,7 @@ class CFObs(NamedTuple):
 
     sensor: NDArray
     collision: NDArray
-    velocity: Vec2d
+    velocity: NDArray
     angle: float
     angular_velocity: float
 

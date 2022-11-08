@@ -9,9 +9,26 @@ import itertools
 import numpy as np
 from numpy.typing import NDArray
 
+from emevo import Body, spaces
 from emevo.environments import CircleForaging
 from emevo.environments.utils.food_repr import ReprLoc, ReprNum
 from emevo.environments.utils.locating import InitLoc
+
+
+class FakeBody(Body):
+    def __init__(self, act_dim: int = 1, obs_dim: int = 1) -> None:
+        act_space = spaces.BoxSpace(
+            np.zeros(act_dim, dtype=np.float32),
+            np.ones(act_dim, dtype=np.float32),
+        )
+        obs_space = spaces.BoxSpace(
+            np.zeros(obs_dim, dtype=np.float32),
+            np.ones(obs_dim, dtype=np.float32),
+        )
+        super().__init__(act_space, obs_space)
+
+    def location(self) -> NDArray:
+        return np.array(())
 
 
 def predefined_env(
