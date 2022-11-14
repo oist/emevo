@@ -302,17 +302,15 @@ def _collect_heads(shapes: list[pymunk.Shape]) -> NDArray:
 
 
 def _collect_policies(
-    bodies_and_policies: Iterable[tuple[pymunk.Body, float, float]],
+    bodies_and_policies: Iterable[tuple[pymunk.Body, NDArray]],
     max_arrow_length: float,
 ) -> NDArray:
-    max_policy = max(
-        map(lambda pp: np.sqrt(pp[1] ** 2 + pp[2] ** 2), bodies_and_policies)
-    )
+    max_policy = max(map(lambda bp: np.linalg.norm(bp[1]), bodies_and_policies))  # type: ignore
     policy_scaling = max_arrow_length / max_policy
     points = []
-    for body, px, py in bodies_and_policies:
+    for body, policy in bodies_and_policies:
         a = body.position
-        policy = pymunk.Vec2d(px * policy_scaling, py * policy_scaling)
+        policy = pymunk.Vec2d(*(policy * policy_scaling))
         points.append(a)
         points.append(a + policy.rotated(body.angle))
     return np.array(points, dtype=np.float32)
