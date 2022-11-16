@@ -3,15 +3,10 @@
 from __future__ import annotations
 
 import dataclasses
-import sys
 from typing import Callable, Generic, Iterable
 
-if sys.version_info < (3, 10):
-    from typing_extensions import ParamSpec
-else:
-    from typing import ParamSpec
-
 import numpy as np
+from typing_extensions import ParamSpec
 
 from emevo.birth_and_death.newborn import Newborn
 from emevo.birth_and_death.status import Status
