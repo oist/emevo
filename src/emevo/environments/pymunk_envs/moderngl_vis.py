@@ -305,8 +305,13 @@ def _collect_policies(
     bodies_and_policies: Iterable[tuple[pymunk.Body, NDArray]],
     max_arrow_length: float,
 ) -> NDArray:
-    max_policy = max(map(lambda bp: np.linalg.norm(bp[1]), bodies_and_policies))  # type: ignore
-    policy_scaling = max_arrow_length / max_policy
+    max_policy_norm = max(
+        map(
+            lambda _, policy: np.linalg.norm(policy),  # type: ignore
+            bodies_and_policies,
+        )
+    )
+    policy_scaling = max_arrow_length / max_policy_norm
     points = []
     for body, policy in bodies_and_policies:
         a = body.position
