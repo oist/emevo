@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Callable, Iterable
+import sys
+from typing import Callable, Generic, Iterable
+
+if sys.version_info < (3, 10):
+    from typing_extensions import ParamSpec
+else:
+    from typing import ParamSpec
 
 import numpy as np
 
@@ -20,7 +26,10 @@ class DeadBody:
     status: Status
 
 
-class _BaseManager:
+P = ParamSpec("P")
+
+
+class _BaseManager(Generic[P]):
     """
     Manager manages energy level, birth and death of agents.
     Note that Manager does not manage matings.
@@ -28,7 +37,7 @@ class _BaseManager:
 
     def __init__(
         self,
-        initial_status_fn: Callable[..., Status],
+        initial_status_fn: Callable[P, Status],
         hazard_fn: Callable[[Status], float],
         rng: Callable[[], float] = np.random.rand,
     ) -> None:
@@ -41,7 +50,12 @@ class _BaseManager:
     def available_bodies(self) -> Iterable[Body]:
         return self._statuses.keys()
 
-    def register(self, body: Body | Iterable[Body], *args, **kwargs) -> None:
+    def register(
+        self,
+        body: Body | Iterable[Body],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> None:
         if isinstance(body, Body):
             self._statuses[body] = self._initial_status_fn(*args, **kwargs)
         else:
@@ -76,7 +90,7 @@ class _BaseManager:
 class AsexualReprManager(_BaseManager):
     def __init__(
         self,
-        initial_status_fn: Callable[..., Status],
+        initial_status_fn: Callable[P, Status],
         hazard_fn: Callable[[Status], float],
         birth_fn: Callable[[Status], float],
         produce_fn: Callable[[Status, Body], Newborn],
@@ -110,7 +124,7 @@ class AsexualReprManager(_BaseManager):
 class SexualReprManager(_BaseManager):
     def __init__(
         self,
-        initial_status_fn: Callable[..., Status],
+        initial_status_fn: Callable[P, Status],
         hazard_fn: Callable[[Status], float],
         birth_fn: Callable[[Status, Status], float],
         produce_fn: Callable[[Status, Status, Encount], Newborn],
