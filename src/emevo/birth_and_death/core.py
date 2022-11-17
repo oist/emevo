@@ -78,8 +78,8 @@ class _BaseManager(Generic[P]):
 
         return deads, newborns
 
-    def update_status(self, body: Body, **updates) -> None:
-        self._statuses[body].update(**updates)
+    def update_status(self, body: Body, **updates) -> Status:
+        return self._statuses[body].update(**updates)
 
 
 class AsexualReprManager(_BaseManager):

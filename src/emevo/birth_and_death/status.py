@@ -1,5 +1,7 @@
 import dataclasses
 
+from typing_extensions import Self
+
 
 @dataclasses.dataclass
 class Status:
@@ -18,7 +20,8 @@ class Status:
         self.update(energy_delta=-shared)
         return shared
 
-    def update(self, *, energy_delta: float) -> None:
+    def update(self, *, energy_delta: float) -> Self:
         """Update energy."""
         energy = self.energy + energy_delta
         self.energy = max(0.0, energy)
+        return self

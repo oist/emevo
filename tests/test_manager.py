@@ -53,10 +53,14 @@ def test_asexual(
     bodies = list(manager.available_bodies())
     for step_idx in range(STEPS_TO_DEATH):
         for body_idx, body in enumerate(bodies):
-            manager.update_status(
+            status = manager.update_status(
                 body,
                 energy_delta=-1.0 if body_idx % 2 == 1 else 1.0,
             )
+            if body_idx % 2 == 1:
+                assert status.energy == DEFAULT_ENERGY_LEVEL - step_idx - 1.0
+            else:
+                assert status.energy == DEFAULT_ENERGY_LEVEL + step_idx + 1.0
         parents = manager.reproduce(bodies)
         assert len(parents) == 0
         deads, newborns = manager.step()
@@ -125,8 +129,14 @@ def test_sexual(
     bodies = list(manager.available_bodies())
     for step_idx in range(STEPS_TO_DEATH):
         for body_idx, body in enumerate(bodies):
-            diff = -1.0 if body_idx % 2 == 1 else 1.0
-            manager.update_status(body, energy_delta=diff)
+            status = manager.update_status(
+                body,
+                energy_delta=-1.0 if body_idx % 2 == 1 else 1.0,
+            )
+            if body_idx % 2 == 1:
+                assert status.energy == DEFAULT_ENERGY_LEVEL - step_idx - 1.0
+            else:
+                assert status.energy == DEFAULT_ENERGY_LEVEL + step_idx + 1.0
         deads, newborns = manager.step()
         if step_idx == STEPS_TO_DEATH - 1:
             assert len(deads) == 2
