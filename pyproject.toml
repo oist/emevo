@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Life",
     "Typing :: Typed",
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.8"
 dependencies = [
     "loguru >= 0.6",
     "numpy >= 1.20",
