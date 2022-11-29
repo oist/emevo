@@ -506,9 +506,9 @@ class MglVisualizer:
             screen_x=self._screen_x[screen_idx[0]],
             screen_y=self._screen_y[screen_idx[1]],
         )
-        prog["proj"].write(proj)
+        prog["proj"].write(proj)  # type: ignore
         for key, value in kwargs.items():
-            prog[key].write(value)
+            prog[key].write(value)  # type: ignore
         return prog
 
     def show(self) -> None:
