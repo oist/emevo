@@ -306,10 +306,7 @@ def _collect_policies(
     max_arrow_length: float,
 ) -> NDArray:
     max_policy_norm = max(
-        map(
-            lambda _, policy: np.linalg.norm(policy),  # type: ignore
-            bodies_and_policies,
-        )
+        map(lambda bp: np.linalg.norm(bp[1]), bodies_and_policies)  # type: ignore
     )
     policy_scaling = max_arrow_length / max_policy_norm
     points = []
