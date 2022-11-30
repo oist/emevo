@@ -321,8 +321,8 @@ def _collect_policies(
 def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
     """Clip ranges to [-1, 1]"""
     total = sum(lengthes)
-    left = -1.0
     res = []
+    left = -1.0
     for length in lengthes:
         right = left + 2.0 * length / total
         res.append((left, right))
@@ -351,7 +351,7 @@ class MglVisualizer:
         self._figsize = w + sum(hoffsets), h + sum(voffsets)
         self._screen_x = _get_clip_ranges([w, *hoffsets])
         self._screen_y = _get_clip_ranges([h, *voffsets])
-        self._xrange, self._yrange = x_range, y_range
+        self._x_range, self._y_range = x_range, y_range
         self._range_min = min(x_range, y_range)
         if x_range < y_range:
             self._range_min = x_range
@@ -501,8 +501,8 @@ class MglVisualizer:
             fragment_shader=fragment_shader,
         )
         proj = _make_projection_matrix(
-            game_x=game_x or (0.0, self._xrange),
-            game_y=game_y or (0.0, self._yrange),
+            game_x=game_x or (0, self._x_range),
+            game_y=game_y or (0, self._y_range),
             screen_x=self._screen_x[screen_idx[0]],
             screen_y=self._screen_y[screen_idx[1]],
         )
