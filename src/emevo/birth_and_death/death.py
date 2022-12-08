@@ -79,23 +79,30 @@ class Constant(HazardFunction):
 class Gompertz(HazardFunction):
     """
     Hazard with exponentially increasing death rate.
+    α = α_age + α_energy / (1 + exp(energy - energy_threshold))
     h(t) = α exp(β1t - β2energy)
     H(t) = α/β exp(β1t - β2energy)
     S(t) = exp(-α/β exp(β1t - β2energy))
     """
 
-    alpha: float = 2e-5
+    alpha_age: float = 2e-5
+    alpha_energy: float = 0.1
     beta_age: float = 1e-5
-    beta_energy: float = 1e-5
+    beta_energy: float = 1e-4
+    energy_threshold: float = 10.0
+
+    def _alpha(self, status: Status) -> float:
+        exp_energy = np.exp(status.energy - self.energy_threshold)
+        return self.alpha_age + self.alpha_energy / (1 + exp_energy)
 
     def _beta_sum(self, status: Status) -> float:
         return self.beta_age * status.age - self.beta_energy * status.energy
 
     def __call__(self, status: Status) -> float:
-        return self.alpha * np.exp(self._beta_sum(status))
+        return self._alpha(status) * np.exp(self._beta_sum(status))
 
     def cumulative(self, status: Status) -> float:
-        return self.alpha / self.beta_age * np.exp(self._beta_sum(status))
+        return self._alpha(status) / self.beta_age * np.exp(self._beta_sum(status))
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
