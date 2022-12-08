@@ -1,6 +1,7 @@
 """ Collection of hazard functions
 """
 import dataclasses
+import functools
 from typing import Protocol
 
 import numpy as np
@@ -53,19 +54,23 @@ class Deterministic(HazardFunction):
 class Constant(HazardFunction):
     """
     Hazard with constant death rate.
-    α = α_age + α_energy / (1 + exp(energy - energy_threshold))
+    Energy
+    α = α_const + α_energy * exp(-γenergy)
     h(t) = α
     H(t) = αt
     S(t) = exp(-αt)
     """
 
-    alpha_age: float = 4e-5
-    alpha_energy: float = 0.1
-    energy_threshold: float = 10.0
+    alpha_const: float = 1e-5
+    alpha_energy: float = 1e-6
+    gamma: float = 1.0
+
+    def _alpha(self, status: Status) -> float:
+        alpha_energy = self.alpha_energy * np.exp(-self.gamma * status.energy)
+        return self.alpha_const + alpha_energy
 
     def __call__(self, status: Status) -> float:
-        exp_energy = np.exp(status.energy - self.energy_threshold)
-        return self.alpha_age + self.alpha_energy / (1 + exp_energy)
+        return self._alpha(status)
 
     def cumulative(self, status: Status) -> float:
         alpha = self(status)
@@ -76,33 +81,43 @@ class Constant(HazardFunction):
 
 
 @dataclasses.dataclass
-class Gompertz(HazardFunction):
+class Gompertz(Constant):
     """
     Hazard with exponentially increasing death rate.
-    α = α_age + α_energy / (1 + exp(energy - energy_threshold))
-    h(t) = α exp(β1t - β2energy)
-    H(t) = α/β exp(β1t - β2energy)
-    S(t) = exp(-α/β exp(β1t - β2energy))
+    α = α_const + α_energy * exp(-γenergy)
+    h(t) = α exp(βt)
+    H(t) = α/β exp(βt)
+    S(t) = exp(-α/β exp(βt))
     """
 
-    alpha_age: float = 2e-5
-    alpha_energy: float = 0.1
-    beta_age: float = 1e-5
-    beta_energy: float = 1e-4
-    energy_threshold: float = 10.0
+    beta: float = 1e-5
 
-    def _alpha(self, status: Status) -> float:
-        exp_energy = np.exp(status.energy - self.energy_threshold)
-        return self.alpha_age + self.alpha_energy / (1 + exp_energy)
+    def __call__(self, status: Status) -> float:
+        return self._alpha(status) * np.exp(self.beta * status.age)
+
+    def cumulative(self, status: Status) -> float:
+        return self._alpha(status) / self.beta * np.exp(self.beta * status.age)
+
+    def survival(self, status: Status) -> float:
+        return np.exp(-self.cumulative(status))
+
+
+@dataclasses.dataclass
+class BEGompertz(HazardFunction):
+    """Another parametrization of Gompertz. Not used now."""
+
+    alpha: float = 2e-5
+    beta_age: float = 1e-5
+    beta_energy: float = 1e-5
 
     def _beta_sum(self, status: Status) -> float:
         return self.beta_age * status.age - self.beta_energy * status.energy
 
     def __call__(self, status: Status) -> float:
-        return self._alpha(status) * np.exp(self._beta_sum(status))
+        return self.alpha * np.exp(self._beta_sum(status))
 
     def cumulative(self, status: Status) -> float:
-        return self._alpha(status) / self.beta_age * np.exp(self._beta_sum(status))
+        return self.alpha / self.beta_age * np.exp(self._beta_sum(status))
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
