@@ -81,6 +81,10 @@ class _BaseManager(Generic[P]):
     def update_status(self, body: Body, **updates) -> Status:
         return self._statuses[body].update(**updates)
 
+    def energy(self, body: Body) -> float:
+        """To use with enviroment's energy_fn"""
+        return self._statuses[body].energy
+
 
 class AsexualReprManager(_BaseManager):
     def __init__(
