@@ -13,8 +13,9 @@ from numpy.random import PCG64
 from pymunk.vec2d import Vec2d
 
 from emevo import birth_and_death as bd
-from emevo import make, utils
+from emevo import make
 from emevo import visualizer as evis
+from emevo._test_utils import sample_location
 
 
 class Rendering(str, enum.Enum):
@@ -51,9 +52,18 @@ def main(
 
     avg_lifetime = steps // 2
     if hazard == HazardFn.CONST:
-        hazard_fn = bd.death.Deterministic(-10.0, avg_lifetime)
+        hazard_fn = bd.death.Constant(
+            alpha_const=1.0 / avg_lifetime,
+            alpha_energy=1.0 / avg_lifetime,
+            gamma=0.1,
+        )
     elif hazard == HazardFn.GOMPERTZ:
-        hazard_fn = bd.death.Gompertz(alpha=4e-5 / np.exp(1e-5 * avg_lifetime))
+        hazard_fn = bd.death.Gompertz(
+            alpha_const=1.0 / avg_lifetime,
+            alpha_energy=1.0 / avg_lifetime,
+            gamma=0.1,
+            beta=1e-4,
+        )
     else:
         raise ValueError(f"Invalid hazard {hazard}")
     birth_fn = bd.birth.Logistic(
@@ -117,7 +127,7 @@ def main(
             env.dead(dead.body)
 
         for newborn in newborns:
-            loc = utils.sample_location(
+            loc = sample_location(
                 gen,
                 newborn.location(),
                 radius_max=agent_radius * 3,
