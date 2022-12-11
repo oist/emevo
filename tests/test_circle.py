@@ -63,6 +63,7 @@ def env() -> CircleForaging:
         n_agent_sensors=N_SENSORS,
         n_physics_steps=1,
         max_abs_velocity=MAX_ABS_VELOCITY,
+        energy_fn=lambda body: float(body.index),
         ylim=YLIM,
         dt=DT,
     )
@@ -255,7 +256,7 @@ def test_observe(env: CircleForaging) -> None:
 
     _ = env.step({body: np.array([0.0, -1.0])})
     observation = env.observe(body)
-    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 1 + 1,)
+    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 1 + 1 + 1,)
 
 
 def test_can_place(env: CircleForaging) -> None:
@@ -270,3 +271,13 @@ def test_can_place(env: CircleForaging) -> None:
     assert env._can_place(Vec2d(198.5, 198.5), 1.0)
     assert not env._can_place(Vec2d(50.0, 48.0), 5.0)
     assert env._can_place(Vec2d(50.0, 48.0), 4.0)
+
+
+def test_energy_fn(env: CircleForaging) -> None:
+    """
+    Test the observation shape
+    """
+    bodies = env.bodies()
+    for body in bodies:
+        observation = env.observe(body)
+        assert body.index == observation.energy

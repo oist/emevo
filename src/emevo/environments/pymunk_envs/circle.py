@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, Literal, NamedTuple
+from typing import Any, Callable, Literal, NamedTuple
 
 import numpy as np
 import pymunk
@@ -32,11 +32,17 @@ class CFObs(NamedTuple):
     velocity: NDArray
     angle: float
     angular_velocity: float
+    energy: float
 
     def __array__(self) -> NDArray:
-        sensor = self.sensor.reshape(-1)
-        v_a_av = np.array((*self.velocity, self.angle, self.angular_velocity))
-        return np.concatenate((sensor, self.collision, v_a_av))
+        return np.concatenate(
+            (
+                self.sensor.reshape(-1),
+                self.collision,
+                self.velocity,
+                [self.angle, self.angular_velocity, self.energy],
+            )
+        )
 
     @property
     def n_collided_foods(self) -> float:
@@ -74,11 +80,7 @@ class CFBody(Body[Vec2d]):
         act_high = np.ones(2, dtype=np.float32) * max_abs_act
         obs_space = NamedTupleSpace(
             CFObs,
-            sensor=BoxSpace(
-                low=0.0,
-                high=1.0,
-                shape=(n_sensors, 3),
-            ),
+            sensor=BoxSpace(low=0.0, high=1.0, shape=(n_sensors, 3)),
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
             velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
             angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
@@ -87,6 +89,7 @@ class CFBody(Body[Vec2d]):
                 high=max_abs_velocity,
                 shape=(1,),
             ),
+            energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
         )
         super().__init__(
             BoxSpace(low=act_low, high=act_high),
@@ -110,6 +113,10 @@ class CFBody(Body[Vec2d]):
 
 def _range(segment: tuple[float, float]) -> float:
     return segment[1] - segment[0]
+
+
+def _default_energy_function(_body: CFBody) -> float:
+    return 0.0
 
 
 class CircleForaging(Env[NDArray, Vec2d, CFObs]):
@@ -146,6 +153,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         max_place_attempts: int = 10,
         body_elasticity: float = 0.4,
         nofriction: bool = False,
+        energy_fn: Callable[[CFBody], float] = _default_energy_function,
         seed: int | None = None,
     ) -> None:
         # Just copy some invariable configs
@@ -161,6 +169,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._max_abs_force = max_abs_force
         self._max_abs_velocity = max_abs_velocity
         self._food_initial_force = food_initial_force
+        self._energy_fn = energy_fn
 
         if env_shape == "square":
             self._coordinate = SquareCoordinate(xlim, ylim, self._WALL_RADIUS)
@@ -348,6 +357,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             velocity=body._body.velocity,
             angle=body._body.angle % (2.0 * np.pi),
             angular_velocity=body._body.angular_velocity,
+            energy=self._energy_fn(body),
         )
 
     def reset(self, seed: int | NDArray | None = None) -> None:

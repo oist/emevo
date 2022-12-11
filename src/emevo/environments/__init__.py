@@ -3,7 +3,7 @@
 
 
 from emevo.environments.pymunk_envs import circle
-from emevo.environments.pymunk_envs.circle import CircleForaging
+from emevo.environments.pymunk_envs.circle import CFBody, CFObs, CircleForaging
 from emevo.environments.registry import description, make, register
 
 register(
