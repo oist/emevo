@@ -304,6 +304,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             self._static_handler,
         )
 
+    def set_energy_fn(self, energy_fn: Callable[[CFBody], float]) -> None:
+        self._energy_fn = energy_fn
+
     def get_space(self) -> pymunk.Space:
         return self._space
 
