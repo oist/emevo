@@ -1,7 +1,6 @@
 """ Collection of hazard functions
 """
 import dataclasses
-import functools
 from typing import Protocol
 
 import numpy as np
