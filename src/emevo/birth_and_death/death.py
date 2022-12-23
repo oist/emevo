@@ -54,7 +54,6 @@ class Deterministic(HazardFunction):
 class Constant(HazardFunction):
     """
     Hazard with constant death rate.
-    Energy
     α = α_const + α_energy * exp(-γenergy)
     h(t) = α
     H(t) = αt
