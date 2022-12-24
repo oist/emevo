@@ -104,8 +104,8 @@ class CFBodyRotatable(CFBody):
         self._top = Vec2d(0, radius)
 
     def _apply_force(self, force: NDArray) -> None:
-        forward, rot = force
-        self._body.apply_force_at_local_point(Vec2d(0, forward))
+        x, y, rot = force
+        self._body.apply_force_at_local_point(Vec2d(x, y))
         self._body.apply_force_at_local_point(Vec2d(rot, 0), self._top)
 
 
@@ -119,7 +119,7 @@ def make_cfbody(
     max_abs_rot: float,
     max_abs_velocity: float,
     loc: Vec2d,
-    precise_rotaion: bool,
+    allow_controlling_rotation: bool,
 ) -> CFBody:
     body, shape, sensors = body_with_sensors
     body.position = loc
@@ -138,8 +138,11 @@ def make_cfbody(
         ),
         energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
     )
-    if precise_rotaion:
-        act_low = np.array([-max_abs_force, -max_abs_rot], dtype=np.float32)
+    if allow_controlling_rotation:
+        act_low = np.array(
+            [-max_abs_force, -max_abs_force, -max_abs_rot],
+            dtype=np.float32,
+        )
         act_high = act_low * -1
         body_cls = CFBodyRotatable
     else:
@@ -182,7 +185,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         env_radius: float = 120.0,
         env_shape: Literal["square", "circle"] = "square",
         n_agent_sensors: int = 8,
-        precise_rotaion: bool = False,
+        allow_controlling_rotation: bool = False,
         sensor_length: float = 10.0,
         sensor_range: tuple[float, float] = (-180.0, 180.0),
         agent_radius: float = 12.0,
@@ -220,7 +223,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._max_abs_velocity = max_abs_velocity
         self._food_initial_force = food_initial_force
         self._energy_fn = energy_fn
-        self._precise_rotaion = precise_rotaion
+        self._allow_controlling_rotation = allow_controlling_rotation
 
         if env_shape == "square":
             self._coordinate = SquareCoordinate(xlim, ylim, self._WALL_RADIUS)
@@ -552,7 +555,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             max_abs_rot=self._max_abs_rot,
             max_abs_velocity=self._max_abs_velocity,
             loc=loc,
-            precise_rotaion=self._precise_rotaion,
+            allow_controlling_rotation=self._allow_controlling_rotation,
         )
         self._body_indices[body_with_sensors.body] = fgbody.index
         return fgbody
