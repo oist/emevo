@@ -134,6 +134,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         ylim: tuple[float, float] = (0.0, 200.0),
         env_radius: float = 120.0,
         env_shape: Literal["square", "circle"] = "square",
+        obstacles: list[tuple[float, float, float, float]] | None = None,
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
         sensor_range: tuple[float, float] = (-180.0, 180.0),
@@ -269,6 +270,16 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
                 friction=wall_friction,
             )
 
+        # Set obstacles
+        if obstacles is not None:
+            for obstacle in obstacles:
+                utils.add_static_line(
+                    self._space,
+                    obstacle[:2],
+                    obstacle[2:],
+                    friction=wall_friction,
+                    radius=self._WALL_RADIUS,
+                )
         self._bodies = []
         self._body_indices = {}
         self._foods: dict[pymunk.Body, pymunk.Shape] = {}

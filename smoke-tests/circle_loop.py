@@ -24,6 +24,7 @@ def main(
     debug: bool = False,
     forward_sensor: bool = False,
     use_test_env: bool = False,
+    obstacles: bool = False,
     env_shape: str = "square",
 ) -> None:
     if debug:
@@ -35,6 +36,9 @@ def main(
         env_kwargs = {"sensor_range": (-60, 60), "sensor_length": 16}
     else:
         env_kwargs = {}
+
+    if obstacles:
+        env_kwargs["obstacles"] = [(100, 50, 100, 200)]
 
     if use_test_env:
         env = test_utils.predefined_env(**env_kwargs)
