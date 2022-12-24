@@ -69,7 +69,7 @@ def main(
     birth_fn = bd.birth.Logistic(
         scale=10.0 / avg_lifetime,
         alpha=0.1,
-        beta=10.0 / avg_lifetime,
+        beta_age=10.0 / avg_lifetime,
         age_delay=avg_lifetime / 4,
         energy_delay=0.0,
     )

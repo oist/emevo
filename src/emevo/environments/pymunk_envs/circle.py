@@ -64,23 +64,39 @@ class CFBody(Body[Vec2d]):
     def __init__(
         self,
         *,
-        body: pymunk.Body,
-        shape: pymunk.Shape,
-        sensors: list[pymunk.Segment],
-        act_space: BoxSpace,
-        obs_space: NamedTupleSpace,
+        body_with_sensors: utils.BodyWithSensors,
+        space: pymunk.Space,
         generation: int,
         birthtime: int,
+        max_abs_act: float,
+        max_abs_velocity: float,
+        loc: Vec2d,
     ) -> None:
+        self._body, self._shape, self._sensors = body_with_sensors
+        self._body.position = loc
+        space.add(self._body, self._shape, *self._sensors)
+        n_sensors = len(self._sensors)
+        act_low = np.ones(2, dtype=np.float32) * -max_abs_act
+        act_high = np.ones(2, dtype=np.float32) * max_abs_act
+        obs_space = NamedTupleSpace(
+            CFObs,
+            sensor=BoxSpace(low=0.0, high=1.0, shape=(n_sensors, 3)),
+            collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
+            velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
+            angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
+            angular_velocity=BoxSpace(
+                low=-max_abs_velocity,
+                high=max_abs_velocity,
+                shape=(1,),
+            ),
+            energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
+        )
         super().__init__(
-            act_space,
+            BoxSpace(low=act_low, high=act_high),
             obs_space,
             generation,
             birthtime,
         )
-        self._body = body
-        self._shape = shape
-        self._sensors = sensors
 
     def info(self) -> Any:
         return _CFBodyInfo(position=self._body.position, velocity=self._body.velocity)
@@ -93,72 +109,6 @@ class CFBody(Body[Vec2d]):
 
     def location(self) -> pymunk.vec2d.Vec2d:
         return self._body.position
-
-
-class CFBodyRotatable(CFBody):
-    """Body of an agent."""
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        radius = self._shape.radius
-        self._top = Vec2d(0, radius)
-
-    def _apply_force(self, force: NDArray) -> None:
-        x, y, rot = force
-        self._body.apply_force_at_local_point(Vec2d(x, y))
-        self._body.apply_force_at_local_point(Vec2d(rot, 0), self._top)
-
-
-def make_cfbody(
-    *,
-    body_with_sensors: utils.BodyWithSensors,
-    space: pymunk.Space,
-    generation: int,
-    birthtime: int,
-    max_abs_force: float,
-    max_abs_rot: float,
-    max_abs_velocity: float,
-    loc: Vec2d,
-    allow_controlling_rotation: bool,
-) -> CFBody:
-    body, shape, sensors = body_with_sensors
-    body.position = loc
-    space.add(body, shape, *sensors)
-    n_sensors = len(sensors)
-    obs_space = NamedTupleSpace(
-        CFObs,
-        sensor=BoxSpace(low=0.0, high=1.0, shape=(n_sensors, 3)),
-        collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
-        velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
-        angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
-        angular_velocity=BoxSpace(
-            low=-max_abs_velocity,
-            high=max_abs_velocity,
-            shape=(1,),
-        ),
-        energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
-    )
-    if allow_controlling_rotation:
-        act_low = np.array(
-            [-max_abs_force, -max_abs_force, -max_abs_rot],
-            dtype=np.float32,
-        )
-        act_high = act_low * -1
-        body_cls = CFBodyRotatable
-    else:
-        act_low = np.ones(2, dtype=np.float32) * -max_abs_force
-        act_high = np.ones(2, dtype=np.float32) * max_abs_force
-        body_cls = CFBody
-
-    return body_cls(
-        body=body,
-        shape=shape,
-        sensors=sensors,
-        act_space=BoxSpace(act_low, act_high),
-        obs_space=obs_space,
-        generation=generation,
-        birthtime=birthtime,
-    )
 
 
 def _range(segment: tuple[float, float]) -> float:
@@ -185,19 +135,17 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         env_radius: float = 120.0,
         env_shape: Literal["square", "circle"] = "square",
         n_agent_sensors: int = 8,
-        allow_controlling_rotation: bool = False,
         sensor_length: float = 10.0,
         sensor_range: tuple[float, float] = (-180.0, 180.0),
         agent_radius: float = 12.0,
-        agent_mass: float = 3.0,
+        agent_mass: float = 1.4,
         agent_friction: float = 0.1,
         food_radius: float = 4.0,
-        food_mass: float = 1.0,
+        food_mass: float = 0.25,
         food_friction: float = 0.1,
         food_initial_force: tuple[float, float] = (0.0, 0.0),
         wall_friction: float = 0.05,
         max_abs_force: float = 1.0,
-        max_abs_rot: float = 0.1,
         max_abs_velocity: float = 1.0,
         dt: float = 0.05,
         encount_threshold: int = 2,
@@ -219,11 +167,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._n_sensors = n_agent_sensors
         self._sensor_length = sensor_length
         self._max_abs_force = max_abs_force
-        self._max_abs_rot = max_abs_rot
         self._max_abs_velocity = max_abs_velocity
         self._food_initial_force = food_initial_force
         self._energy_fn = energy_fn
-        self._allow_controlling_rotation = allow_controlling_rotation
 
         if env_shape == "square":
             self._coordinate = SquareCoordinate(xlim, ylim, self._WALL_RADIUS)
@@ -546,16 +492,14 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         body_with_sensors.body.velocify_func = utils.limit_velocity(
             self._max_abs_velocity
         )
-        fgbody = make_cfbody(
+        fgbody = CFBody(
             body_with_sensors=body_with_sensors,
             space=self._space,
             generation=generation,
             birthtime=self._sim_steps,
-            max_abs_force=self._max_abs_force,
-            max_abs_rot=self._max_abs_rot,
+            max_abs_act=self._max_abs_force,
             max_abs_velocity=self._max_abs_velocity,
             loc=loc,
-            allow_controlling_rotation=self._allow_controlling_rotation,
         )
         self._body_indices[body_with_sensors.body] = fgbody.index
         return fgbody
