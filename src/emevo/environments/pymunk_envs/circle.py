@@ -530,7 +530,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             else:
                 loc = Vec2d(*point)
                 food_locations.append(loc)
-                food_body, food_shape = self._make_food(loc=Vec2d(*point))
+                food_body, food_shape = self._make_food(loc=loc)
                 self._foods[food_body] = food_shape
                 success += 1
         return success

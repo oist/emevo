@@ -7,6 +7,7 @@ from typing import Any, Callable, Iterable, NamedTuple
 
 import numpy as np
 import pymunk
+from pymunk.body import Vec2d
 from pymunk.shapes import Circle
 
 SENSOR_OFFSET: float = 1e-6
@@ -225,13 +226,14 @@ def circle_body_with_sensors(
     )
     sensors = []
     sensor_rad = np.deg2rad(sensor_range)
+    sensor_in = Vec2d(radius + SENSOR_OFFSET, 0.0)
+    sensor_out = Vec2d(radius + sensor_length, 0.0)
     for theta in np.linspace(sensor_rad[0], sensor_rad[1], n_sensors + 1)[:-1]:
-        x, y = np.cos(theta), np.sin(theta)
         seg = pymunk.Segment(
             body,
-            (x * (radius + SENSOR_OFFSET), y * (radius + SENSOR_OFFSET)),
-            (x * (radius + sensor_length), (y * (radius + sensor_length))),
-            0.5,  # This is not used
+            sensor_in.rotated(theta),
+            sensor_out.rotated(theta),
+            0.5,
         )
         seg.sensor = True
         seg.collision_type = CollisionType.SENSOR
@@ -263,6 +265,7 @@ def add_static_square(
     xmax: float,
     ymin: float,
     ymax: float,
+    rounded_ratio: float = 0.1,
     **kwargs,
 ) -> list[pymunk.Segment]:
     p1 = xmin, ymin
@@ -270,20 +273,32 @@ def add_static_square(
     p3 = xmax, ymax
     p4 = xmax, ymin
     lines = []
-    for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
-        line = add_static_line(space, start, end, **kwargs)
-        lines.append(line)
+    if rounded_ratio > 0:
+        for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
+            start_to_end = Vec2d(*end) - Vec2d(*start)
+            stop = end - start_to_end * rounded_ratio
+            line = add_static_line(
+                space,
+                start + start_to_end * rounded_ratio,
+                stop,
+                **kwargs,
+            )
+            lines.append(line)
+            stop2end = end - stop
+            center = stop + stop2end.rotated(-np.pi / 2)
+            for i in range(4):
+                line = add_static_line(
+                    space,
+                    center + stop2end.rotated(np.pi / 8 * i),
+                    center + stop2end.rotated(np.pi / 8 * (i + 1)),
+                    **kwargs,
+                )
+                lines.append(line)
+    else:
+        for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
+            line = add_static_line(space, start, end, **kwargs)
+            lines.append(line)
     return lines
-
-
-def _point_on_circle(
-    center: tuple[float, float],
-    radius: float,
-    theta: float,
-) -> tuple[float, float]:
-    cx, cy = center
-    x, y = np.cos(theta), np.sin(theta)
-    return cx + x * radius, cy + y * radius
 
 
 def add_static_approximated_circle(
@@ -295,10 +310,13 @@ def add_static_approximated_circle(
 ) -> list[pymunk.Segment]:
     unit = np.pi * 2 / n_lines
     lines = []
+    t0 = Vec2d(radius, 0.0)
     for i in range(n_lines):
-        theta1, theta2 = unit * i, unit * (i + 1)
-        start = _point_on_circle(center, radius, theta1)
-        end = _point_on_circle(center, radius, theta2)
-        line = add_static_line(space, start, end, **kwargs)
+        line = add_static_line(
+            space,
+            center + t0.rotated(unit * i),
+            center + t0.rotated(unit * (i + 1)),
+            **kwargs,
+        )
         lines.append(line)
     return lines
