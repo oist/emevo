@@ -154,6 +154,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         max_place_attempts: int = 10,
         body_elasticity: float = 0.4,
         nofriction: bool = False,
+        threaded: bool = False,
         energy_fn: Callable[[CFBody], float] = _default_energy_function,
         seed: int | None = None,
     ) -> None:
@@ -252,7 +253,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._sim_steps = 0
         self._n_foods = 0
         # Make pymunk world and add bodies
-        self._space = pymunk.Space()
+        self._space = pymunk.Space(threaded=threaded)
+        if threaded:
+            self._space.threads = 2
         # Setup physical objects
         if isinstance(self._coordinate, SquareCoordinate):
             utils.add_static_square(

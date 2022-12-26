@@ -50,3 +50,5 @@ six==1.16.0
     # via multipledispatch
 typer==0.4.0
     # via -r requirements/smoke.in
+typing-extensions==4.4.0
+    # via -r requirements/self.txt

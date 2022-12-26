@@ -30,6 +30,12 @@ def compile(session: nox.Session) -> None:
 
 
 @nox.session(reuse_venv=True)
+def bench(session: nox.Session) -> None:
+    _sync(session, "requirements/bench.txt")
+    session.run("pytest", "benches", *session.posargs)
+
+
+@nox.session(reuse_venv=True)
 def format(session: nox.Session) -> None:
     _sync(session, "requirements/format.txt")
     session.run("black", *SOURCES)

@@ -256,7 +256,7 @@ def test_observe(env: CircleForaging) -> None:
 
     _ = env.step({body: np.array([0.0, -1.0])})
     observation = env.observe(body)
-    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 1 + 1 + 1,)
+    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 2 + 1,)
 
 
 def test_can_place(env: CircleForaging) -> None:

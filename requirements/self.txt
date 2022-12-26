@@ -18,3 +18,5 @@ pymunk==6.2.1
     # via emevo (pyproject.toml)
 scipy==1.9.1
     # via emevo (pyproject.toml)
+typing-extensions==4.4.0
+    # via emevo (pyproject.toml)

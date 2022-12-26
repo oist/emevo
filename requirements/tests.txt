@@ -38,3 +38,5 @@ scipy==1.9.1
     # via -r requirements/self.txt
 tomli==2.0.1
     # via pytest
+typing-extensions==4.4.0
+    # via -r requirements/self.txt
