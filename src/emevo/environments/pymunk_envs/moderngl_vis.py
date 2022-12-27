@@ -348,7 +348,7 @@ class MglVisualizer:
         if figsize is None:
             figsize = x_range * 3.0, y_range * 3.0
         w, h = int(figsize[0]), int(figsize[1])
-        self._figsize = w + sum(hoffsets), h + sum(voffsets)
+        self._figsize = w + int(sum(hoffsets)), h + int(sum(voffsets))
         self._screen_x = _get_clip_ranges([w, *hoffsets])
         self._screen_y = _get_clip_ranges([h, *voffsets])
         self._x_range, self._y_range = x_range, y_range
