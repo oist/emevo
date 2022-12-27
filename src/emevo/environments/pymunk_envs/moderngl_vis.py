@@ -465,9 +465,11 @@ class MglVisualizer:
                 self._overlays["arrow"].render()
         elif key.startswith("stack"):
             xi, yi = map(int, key.split("-")[1:])
-            image = value
+            image = np.flipud(value)
+            h, w = image.shape[:2]
+            image_bytes = image.tobytes()
             if key not in self._overlays:
-                texture = self._window.ctx.texture(image.shape[:2], 3, image.tobytes())
+                texture = self._window.ctx.texture((w, h), 3, image_bytes)
                 texture.build_mipmaps()
                 program = self._make_gl_program(
                     vertex_shader=_TEXTURE_VERTEX_SHADER,
@@ -477,7 +479,7 @@ class MglVisualizer:
                     game_y=(0.0, 1.0),
                 )
                 self._overlays[key] = TextureVA(self._window.ctx, program, texture)
-            self._overlays[key].update(image.tobytes())
+            self._overlays[key].update(image_bytes)
             self._overlays[key].render()
         else:
             raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
