@@ -44,7 +44,7 @@ class ReprNumLogistic:
 
     def __call__(self, current_num: int) -> int:
         dn_dt = self.growth_rate * current_num * (1 - current_num / self.capacity)
-        return np.rint(dn_dt)
+        return int(np.rint(dn_dt))
 
 
 class ReprNum(str, enum.Enum):
