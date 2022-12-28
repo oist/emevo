@@ -9,6 +9,7 @@ class Status:
 
     age: float
     energy: float
+    capacity: float = 100.0
 
     def step(self) -> None:
         """Get older."""
@@ -23,5 +24,5 @@ class Status:
     def update(self, *, energy_delta: float) -> Self:
         """Update energy."""
         energy = self.energy + energy_delta
-        self.energy = max(0.0, energy)
+        self.energy = min(max(0.0, energy), self.capacity)
         return self

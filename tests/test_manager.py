@@ -101,10 +101,7 @@ def test_sexual(
     STEPS_TO_DEATH: int = 10
     STEPS_TO_BIRTH: int = 3
 
-    def success_prob(
-        status_a: bd.Status,
-        status_b: bd.Status,
-    ) -> float:
+    def success_prob(status_a: bd.Status, status_b: bd.Status) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
         if status_a.energy > threshold and status_b.energy > threshold:
             return 1.0
