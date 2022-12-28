@@ -102,6 +102,29 @@ class Gompertz(Constant):
 
 
 @dataclasses.dataclass
+class SeparatedGompertz(Constant):
+    """
+    Hazard with exponentially increasing death rate.
+    h(t) = α exp(βt) *
+    H(t) = α/β exp(βt)
+    S(t) = exp(-α/β exp(βt))
+    """
+
+    alpha: float = 1e-5
+    gamma: float = 1.0
+    beta: float = 1e-5
+
+    def __call__(self, status: Status) -> float:
+        return self._alpha(status) * np.exp(self.beta * status.age)
+
+    def cumulative(self, status: Status) -> float:
+        return self._alpha(status) / self.beta * np.exp(self.beta * status.age)
+
+    def survival(self, status: Status) -> float:
+        return np.exp(-self.cumulative(status))
+
+
+@dataclasses.dataclass
 class BEGompertz(HazardFunction):
     """Another parametrization of Gompertz. Not used now."""
 
