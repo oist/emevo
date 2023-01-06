@@ -80,6 +80,31 @@ class Constant(HazardFunction):
 
 
 @dataclasses.dataclass
+class EnergyLogistic(HazardFunction):
+    """
+    Hazard with death rate that only depends on energy.
+    h(e) = h_max (1 - 1 / (1 + αexp(e0 - e))
+    """
+
+    alpha: float = 0.1
+    hmax: float = 0.1
+    e0: float = 3.0
+
+    def _energy_death_rate(self, energy: float) -> float:
+        exp_neg_energy = self.alpha * np.exp(self.e0 - energy)
+        return self.hmax * (1.0 - 1.0 / (1.0 + self.alpha * exp_neg_energy))
+
+    def __call__(self, status: Status) -> float:
+        return self._energy_death_rate(status.energy)
+
+    def cumulative(self, status: Status) -> float:
+        return self._energy_death_rate(status.energy) * status.age
+
+    def survival(self, status: Status) -> float:
+        return np.exp(-self.cumulative(status))
+
+
+@dataclasses.dataclass
 class Gompertz(Constant):
     """
     Hazard with exponentially increasing death rate.
@@ -102,23 +127,26 @@ class Gompertz(Constant):
 
 
 @dataclasses.dataclass
-class SeparatedGompertz(Constant):
+class SeparatedGompertz(EnergyLogistic):
     """
     Hazard with exponentially increasing death rate.
-    h(t) = α exp(βt) *
-    H(t) = α/β exp(βt)
-    S(t) = exp(-α/β exp(βt))
+    h(e) = -scale / (1 + αexp(d - e))
+    h(t) = αexp(βt) + h(e)
+    H(t) = h(e) α/β exp(βt)
+    S(t) = exp(-h(e) α/β exp(βt))
     """
 
-    alpha: float = 1e-5
-    gamma: float = 1.0
+    alpha_age: float = 1e-6
     beta: float = 1e-5
 
     def __call__(self, status: Status) -> float:
-        return self._alpha(status) * np.exp(self.beta * status.age)
+        age = self.alpha_age * np.exp(self.beta * status.age)
+        energy = self._energy_death_rate(status.energy)
+        return age + energy
 
     def cumulative(self, status: Status) -> float:
-        return self._alpha(status) / self.beta * np.exp(self.beta * status.age)
+        energy = self._energy_death_rate(status.energy) * status.age
+        return energy + self.alpha_age / self.beta * np.exp(self.beta * status.age)
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
