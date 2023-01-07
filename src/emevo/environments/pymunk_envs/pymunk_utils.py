@@ -146,11 +146,14 @@ class StaticHandler:
         self.collided_bodies.clear()
 
 
+_DEFAULT_MASK = pymunk.ShapeFilter.ALL_MASKS() ^ (1 << CollisionType.SENSOR.value)
+
+
 def sensor_query(
     space: pymunk.Space,
     body: pymunk.Body,
     segment: pymunk.Segment,
-    mask: int = pymunk.ShapeFilter.ALL_MASKS() ^ (1 << CollisionType.SENSOR.value),
+    mask: int = _DEFAULT_MASK,
 ) -> tuple[CollisionType, float] | None:
     """Get the nearest object aligned with given segment"""
     start = body.position + segment.a
