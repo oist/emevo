@@ -8,5 +8,6 @@
 **/*.egg-info/
 **/.mypy_cache/
 .ipynb_checkpoints/
+requirements/*.txt
 # This should be local
 pyrightconfig.json

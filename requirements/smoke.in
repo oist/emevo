@@ -1,6 +1,2 @@
--r self.txt
-imageio-ffmpeg
-moderngl
-moderngl-window
-pygame
+-e .[moderngl,video,pygame]
 typer

@@ -59,6 +59,7 @@ class SaveVideoWrapper(VisWrapper[ENV]):
         self._path = filename
         self._writer = None
         self._iio_kwargs = kwargs
+        self._count = 0
 
     def close(self) -> None:
         self.unwrapped.close()
@@ -66,17 +67,18 @@ class SaveVideoWrapper(VisWrapper[ENV]):
             self._writer.close()
 
     def show(self) -> None:
+        self._count += 1
         image = self.unwrapped.get_image()
-
         if self._writer is None:
+            h, w = image.shape[:2]
             from imageio_ffmpeg import write_frames
 
             self._writer = write_frames(
                 self._path,
-                image.shape[:2],
+                (w, h),
                 pix_fmt_in="rgb24" if image.shape[2] == 3 else "rgba",
                 **self._iio_kwargs,
             )
             self._writer.send(None)  # seed the generator
-        self._writer.send(image)
+        self._writer.send(image.tobytes())  # seed the generator
         self.unwrapped.show()

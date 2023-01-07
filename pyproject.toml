@@ -33,7 +33,7 @@ moderngl = [
     "moderngl-window >= 2.4"
 ]
 pygame = ["pygame >= 2.0"]
-video = ["imageio-ffmpeg"]
+video = ["imageio-ffmpeg >= 0.4"]
 
 [project.readme]
 file = "README.md"

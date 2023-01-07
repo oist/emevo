@@ -426,7 +426,7 @@ class MglVisualizer:
             dtype=np.uint8,
         )
         w, h = self._figsize
-        return np.ascontiguousarray(output.reshape(w, h, -1)[::-1])
+        return output.reshape(h, w, -1)[::-1]
 
     def render(self, env: PymunkEnv) -> None:
         self._window.clear(1.0, 1.0, 1.0)

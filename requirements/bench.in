@@ -1,4 +1,3 @@
--e ../emevo
 -e .
 pygal
 pytest-benchmark
