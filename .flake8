@@ -7,7 +7,7 @@
 # ISC = implicit str concat
 select = B, E, F, W, B9, ISC
 max-line-length = 88
-ignore = W391, W503, F821, E203, E231
+ignore = W391, W503, F821, E203, E231, B905
 per-file-ignores =
     # __init__ module exports names
     src/**/__init__.py: F401
