@@ -33,5 +33,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install nox
+      - name: Run pip compile
+        run: nox --session=compile
       - name: Run tests
         run: nox --session=${{ matrix.nox }} --python=${{ matrix.python }}
