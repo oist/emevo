@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 import dataclasses
-from typing import Any
 
 from typing_extensions import Self
 
@@ -13,7 +10,6 @@ class Status:
     age: float
     energy: float
     capacity: float = 100.0
-    metadata: dict[str, Any] | None = None
 
     def step(self) -> None:
         """Get older."""
