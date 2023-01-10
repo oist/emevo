@@ -139,7 +139,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         sensor_length: float = 10.0,
         sensor_range: tuple[float, float] = (-180.0, 180.0),
         agent_radius: float = 12.0,
-        agent_mass: float = 1.4,
+        agent_mass: float = 1.0,
         agent_friction: float = 0.1,
         food_radius: float = 4.0,
         food_mass: float = 0.25,
