@@ -35,7 +35,7 @@ def main(
         loguru.logger.enable("emevo")
 
     if forward_sensor:
-        env_kwargs = {"sensor_range": (-60, 60), "sensor_length": 16}
+        env_kwargs = {"sensor_range": (-30, 30), "sensor_length": 100}
     else:
         env_kwargs = {}
 

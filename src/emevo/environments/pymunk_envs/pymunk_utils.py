@@ -229,8 +229,8 @@ def circle_body_with_sensors(
     )
     sensors = []
     sensor_rad = np.deg2rad(sensor_range)
-    sensor_in = Vec2d(radius + SENSOR_OFFSET, 0.0)
-    sensor_out = Vec2d(radius + sensor_length, 0.0)
+    sensor_in = Vec2d(0.0, radius + SENSOR_OFFSET)
+    sensor_out = Vec2d(0.0, radius + sensor_length)
     for theta in np.linspace(sensor_rad[0], sensor_rad[1], n_sensors + 1)[:-1]:
         seg = pymunk.Segment(
             body,
