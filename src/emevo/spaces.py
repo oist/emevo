@@ -16,16 +16,20 @@ class Space(abc.ABC, Generic[INSTANCE]):
     shape: tuple[int, ...]
 
     @abc.abstractmethod
-    def contains(self, x: INSTANCE) -> bool:
-        pass
+    def clip(self, x: NDArray) -> NDArray:
+        raise NotImplementedError()
 
     @abc.abstractmethod
-    def sample(self, generator: Generator) -> INSTANCE:
+    def contains(self, x: INSTANCE) -> bool:
         pass
 
     @abc.abstractmethod
     def flatten(self) -> BoxSpace:
         raise NotImplementedError()
+
+    @abc.abstractmethod
+    def sample(self, generator: Generator) -> INSTANCE:
+        pass
 
 
 def _short_repr(arr: NDArray) -> str:
@@ -92,6 +96,20 @@ class BoxSpace(Space[NDArray]):
         else:
             raise ValueError("manner is not in {'below', 'above', 'both'}")
 
+    def clip(self, x: NDArray) -> NDArray:
+        return np.clip(x, a_min=self.low, a_max=self.high)
+
+    def contains(self, x: NDArray) -> bool:
+        return bool(
+            np.can_cast(x.dtype, self.dtype)
+            and x.shape == self.shape
+            and np.all(x >= self.low)
+            and np.all(x <= self.high)
+        )
+
+    def flatten(self) -> BoxSpace:
+        return BoxSpace(low=self.low.flatten(), high=self.high.flatten())
+
     def sample(self, generator: Generator) -> NDArray:
         high = self.high if self.dtype.kind == "f" else self.high.astype("int64") + 1
         sample = np.empty(self.shape)
@@ -121,13 +139,9 @@ class BoxSpace(Space[NDArray]):
             sample = np.floor(sample)
         return sample.astype(self.dtype)
 
-    def contains(self, x: NDArray) -> bool:
-        return bool(
-            np.can_cast(x.dtype, self.dtype)
-            and x.shape == self.shape
-            and np.all(x >= self.low)
-            and np.all(x <= self.high)
-        )
+    def normalize(self, normalized: NDArray) -> NDArray:
+        range_ = self.high - self.low  # type: ignore
+        return (normalized - self.low) / range_  # type: ignore
 
     def __repr__(self) -> str:
         return f"Box({self.low_repr}, {self.high_repr}, {self.shape}, {self.dtype})"
@@ -140,13 +154,6 @@ class BoxSpace(Space[NDArray]):
             and np.allclose(self.low, other.low)
             and np.allclose(self.high, other.high)
         )
-
-    def flatten(self) -> BoxSpace:
-        return BoxSpace(low=self.low.flatten(), high=self.high.flatten())
-
-    def normalize(self, normalized: NDArray) -> NDArray:
-        range_ = self.high - self.low  # type: ignore
-        return (normalized - self.low) / range_  # type: ignore
 
 
 def get_inf(dtype, sign: str) -> int | float:
@@ -204,8 +211,8 @@ class DiscreteSpace(Space[int]):
         self.n = int(n)
         self.start = int(start)
 
-    def sample(self, generator: Generator) -> int:
-        return int(self.start + generator.integers(self.n))
+    def clip(self, x: int) -> int:
+        return min(max(0, x), self.n - 1)
 
     def contains(self, x: int) -> bool:
         """Return boolean specifying if x is a valid member of this space."""
@@ -218,6 +225,12 @@ class DiscreteSpace(Space[int]):
         else:
             return False
         return self.start <= as_int < self.start + self.n
+
+    def flatten(self) -> BoxSpace:
+        return BoxSpace(low=np.zeros(self.n), high=np.ones(self.n))
+
+    def sample(self, generator: Generator) -> int:
+        return int(self.start + generator.integers(self.n))
 
     def __repr__(self) -> str:
         """Gives a string representation of this space."""
@@ -232,9 +245,6 @@ class DiscreteSpace(Space[int]):
             and self.n == other.n
             and self.start == other.start
         )
-
-    def flatten(self) -> BoxSpace:
-        return BoxSpace(low=np.zeros(self.n), high=np.ones(self.n))
 
 
 class NamedTupleSpace(Space[NamedTuple], Iterable):
@@ -264,9 +274,9 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         self.dtype = dtype
         self.shape = tuple(space.shape for space in self.spaces)
 
-    def sample(self, generator: Generator) -> Any:
-        samples = tuple(space.sample(generator) for space in self.spaces)
-        return self._cls(*samples)
+    def clip(self, x: tuple) -> Any:
+        clipped = [space.clip(value) for value, space in zip(x, self.spaces)]
+        return self._cls(*clipped)
 
     def contains(self, x: tuple) -> bool:
         """Return boolean specifying if x is a valid member of this space."""
@@ -275,6 +285,16 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
                 return False
 
         return True
+
+    def flatten(self) -> BoxSpace:
+        spaces = [space.flatten() for space in self.spaces]
+        low = np.concatenate([space.low for space in spaces])
+        high = np.concatenate([space.high for space in spaces])
+        return BoxSpace(low=low, high=high)
+
+    def sample(self, generator: Generator) -> Any:
+        samples = [space.sample(generator) for space in self.spaces]
+        return self._cls(*samples)
 
     def __getitem__(self, key: str) -> Space:
         """Get the space that is associated to `key`."""
@@ -295,9 +315,3 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         )
         name = self._space_cls.__name__
         return f"{name}({spaces})"
-
-    def flatten(self) -> BoxSpace:
-        spaces = [space.flatten() for space in self.spaces]
-        low = np.concatenate([space.low for space in spaces])
-        high = np.concatenate([space.high for space in spaces])
-        return BoxSpace(low=low, high=high)
