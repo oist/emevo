@@ -25,6 +25,7 @@ def main(
     forward_sensor: bool = False,
     use_test_env: bool = False,
     obstacles: bool = False,
+    angle: bool = False,
     env_shape: str = "square",
     logistic_foods: bool = False,
 ) -> None:
@@ -40,6 +41,9 @@ def main(
 
     if obstacles:
         env_kwargs["obstacles"] = [(100, 50, 100, 200)]
+
+    if angle:
+        env_kwargs["max_abs_angle"] = np.pi / 10
 
     if logistic_foods:
         env_kwargs["food_num_fn"] = ("logistic", 6, 1.1, 12)

@@ -31,7 +31,6 @@ class CFObs(NamedTuple):
     collision: NDArray
     velocity: NDArray
     angle: float
-    angular_velocity: float
     energy: float
 
     def __array__(self) -> NDArray:
@@ -40,7 +39,7 @@ class CFObs(NamedTuple):
                 self.sensor.reshape(-1),
                 self.collision,
                 self.velocity,
-                [self.angle, self.angular_velocity, self.energy],
+                [self.angle, self.energy],
             )
         )
 
@@ -61,6 +60,8 @@ class _CFBodyInfo(NamedTuple):
 class CFBody(Body[Vec2d]):
     """Body of an agent."""
 
+    _TWO_PI = np.pi * 2
+
     def __init__(
         self,
         *,
@@ -71,28 +72,29 @@ class CFBody(Body[Vec2d]):
         max_abs_act: float,
         max_abs_velocity: float,
         loc: Vec2d,
+        max_abs_angle: float | None = None,
     ) -> None:
         self._body, self._shape, self._sensors = body_with_sensors
         self._body.position = loc
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
-        act_low = np.ones(2, dtype=np.float32) * -max_abs_act
-        act_high = np.ones(2, dtype=np.float32) * max_abs_act
+        if max_abs_angle is None:
+            act_high = np.ones(2, dtype=np.float32) * max_abs_act
+        else:
+            act_high = np.array(
+                [max_abs_act, max_abs_act, -max_abs_angle],
+                dtype=np.float32,
+            )
         obs_space = NamedTupleSpace(
             CFObs,
             sensor=BoxSpace(low=0.0, high=1.0, shape=(n_sensors, 3)),
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
             velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
             angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
-            angular_velocity=BoxSpace(
-                low=-max_abs_velocity,
-                high=max_abs_velocity,
-                shape=(1,),
-            ),
             energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
         )
         super().__init__(
-            BoxSpace(low=act_low, high=act_high),
+            BoxSpace(low=-act_high, high=act_high),
             obs_space,
             generation,
             birthtime,
@@ -101,8 +103,14 @@ class CFBody(Body[Vec2d]):
     def info(self) -> Any:
         return _CFBodyInfo(position=self._body.position, velocity=self._body.velocity)
 
-    def _apply_force(self, force: NDArray) -> None:
-        self._body.apply_force_at_local_point(Vec2d(*force))
+    def _apply_action(self, action: NDArray) -> None:
+        action = self.act_space.clip(action)
+        if len(action) == 3:
+            fx, fy, angle = action
+            self._body.angle = (self._body.angle + angle) % self._TWO_PI
+        else:
+            fx, fy = action
+        self._body.apply_force_at_local_point(Vec2d(fx, fy))
 
     def _remove(self, space: pymunk.Space) -> None:
         space.remove(self._body, self._shape, *self._sensors)
@@ -147,6 +155,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         food_initial_force: tuple[float, float] = (0.0, 0.0),
         wall_friction: float = 0.05,
         max_abs_force: float = 1.0,
+        max_abs_angle: float | None = None,
         max_abs_velocity: float = 1.0,
         dt: float = 0.05,
         encount_threshold: int = 2,
@@ -169,6 +178,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._n_sensors = n_agent_sensors
         self._sensor_length = sensor_length
         self._max_abs_force = max_abs_force
+        self._max_abs_angle = max_abs_angle
         self._max_abs_velocity = max_abs_velocity
         self._food_initial_force = food_initial_force
         self._energy_fn = energy_fn
@@ -332,7 +342,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._before_step()
         # Add force
         for body, action in actions.items():
-            body._apply_force(action)
+            body._apply_action(action)
         # Step the simulation
         for _ in range(self._n_physics_steps):
             self._space.step(dt=self._dt)
@@ -373,7 +383,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             collision=collision_data,
             velocity=body._body.velocity,
             angle=body._body.angle % (2.0 * np.pi),
-            angular_velocity=body._body.angular_velocity,
             energy=self._energy_fn(body),
         )
 
