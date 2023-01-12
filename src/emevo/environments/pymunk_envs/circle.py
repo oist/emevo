@@ -78,7 +78,7 @@ class CFBody(Body[Vec2d]):
         self._body.position = loc
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
-        if max_abs_angle is None:
+        if max_abs_angle is None or max_abs_angle == 0.0:
             act_high = np.ones(2, dtype=np.float32) * max_abs_act
         else:
             act_high = np.array(
