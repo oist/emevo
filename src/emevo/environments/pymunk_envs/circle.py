@@ -60,8 +60,6 @@ class _CFBodyInfo(NamedTuple):
 class CFBody(Body[Vec2d]):
     """Body of an agent."""
 
-    _TWO_PI = np.pi * 2
-
     def __init__(
         self,
         *,
@@ -69,22 +67,15 @@ class CFBody(Body[Vec2d]):
         space: pymunk.Space,
         generation: int,
         birthtime: int,
-        max_abs_act: float,
+        max_abs_acts: tuple[float, float],
         max_abs_velocity: float,
-        max_abs_angle: float | None,
         loc: Vec2d,
     ) -> None:
         self._body, self._shape, self._sensors = body_with_sensors
         self._body.position = loc
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
-        if max_abs_angle is None or max_abs_angle == 0.0:
-            act_high = np.ones(2, dtype=np.float32) * max_abs_act
-        else:
-            act_high = np.array(
-                [max_abs_act, max_abs_act, max_abs_angle],
-                dtype=np.float32,
-            )
+        act_high = np.array(max_abs_acts, dtype=np.float32)
         obs_space = NamedTupleSpace(
             CFObs,
             sensor=BoxSpace(low=0.0, high=1.0, shape=(n_sensors, 3)),
@@ -105,11 +96,7 @@ class CFBody(Body[Vec2d]):
 
     def _apply_action(self, action: NDArray) -> None:
         action = self.act_space.clip(action)
-        if len(action) == 3:
-            fx, fy, angle = action
-            self._body.angle = (self._body.angle + angle) % self._TWO_PI
-        else:
-            fx, fy = action
+        fx, fy = action
         self._body.apply_force_at_local_point(Vec2d(fx, fy))
 
     def _remove(self, space: pymunk.Space) -> None:
@@ -117,6 +104,18 @@ class CFBody(Body[Vec2d]):
 
     def location(self) -> pymunk.vec2d.Vec2d:
         return self._body.position
+
+
+class AngleCtrlCFBody(CFBody):
+    """Agent body that has a different action space (forward force and angle)."""
+
+    _TWO_PI = np.pi * 2
+
+    def _apply_action(self, action: NDArray) -> None:
+        action = self.act_space.clip(action)
+        fy, angle = action
+        self._body.angle = (self._body.angle + angle) % self._TWO_PI
+        self._body.apply_force_at_local_point(Vec2d(0.0, fy))
 
 
 def _range(segment: tuple[float, float]) -> float:
@@ -515,14 +514,19 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         body_with_sensors.body.velocify_func = utils.limit_velocity(
             self._max_abs_velocity
         )
-        fgbody = CFBody(
+        if self._max_abs_angle is None or self._max_abs_angle == 0.0:
+            max_abs_acts = self._max_abs_force, self._max_abs_force
+            cls = CFBody
+        else:
+            max_abs_acts = self._max_abs_force, self._max_abs_angle
+            cls = AngleCtrlCFBody
+        fgbody = cls(
             body_with_sensors=body_with_sensors,
             space=self._space,
             generation=generation,
             birthtime=self._sim_steps,
-            max_abs_act=self._max_abs_force,
+            max_abs_acts=max_abs_acts,
             max_abs_velocity=self._max_abs_velocity,
-            max_abs_angle=self._max_abs_angle,
             loc=loc,
         )
         self._body_indices[body_with_sensors.body] = fgbody.index
