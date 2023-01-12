@@ -306,13 +306,13 @@ def _collect_policies(
     max_arrow_length: float,
 ) -> NDArray:
     max_policy_norm = max(
-        map(lambda bp: np.linalg.norm(bp[1]), bodies_and_policies)  # type: ignore
+        map(lambda bp: np.linalg.norm(bp[1][:2]), bodies_and_policies)  # type: ignore
     )
     policy_scaling = max_arrow_length / max_policy_norm
     points = []
     for body, policy in bodies_and_policies:
         a = body.position
-        policy = pymunk.Vec2d(*(policy * policy_scaling))
+        policy = pymunk.Vec2d(*(policy[:2] * policy_scaling))
         points.append(a)
         points.append(a + policy.rotated(body.angle))
     return np.array(points, dtype=np.float32)
