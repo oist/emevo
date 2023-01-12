@@ -67,7 +67,7 @@ class CFBody(Body[Vec2d]):
         space: pymunk.Space,
         generation: int,
         birthtime: int,
-        max_abs_acts: tuple[float, float],
+        max_abs_acts: list[float],
         max_abs_velocity: float,
         loc: Vec2d,
     ) -> None:
@@ -96,8 +96,7 @@ class CFBody(Body[Vec2d]):
 
     def _apply_action(self, action: NDArray) -> None:
         action = self.act_space.clip(action)
-        fx, fy = action
-        self._body.apply_force_at_local_point(Vec2d(fx, fy))
+        self._body.apply_impulse_at_local_point(Vec2d(*action))
 
     def _remove(self, space: pymunk.Space) -> None:
         space.remove(self._body, self._shape, *self._sensors)
@@ -113,9 +112,9 @@ class AngleCtrlCFBody(CFBody):
 
     def _apply_action(self, action: NDArray) -> None:
         action = self.act_space.clip(action)
-        fy, angle = action
+        fx, fy, angle = action
         self._body.angle = (self._body.angle + angle) % self._TWO_PI
-        self._body.apply_force_at_local_point(Vec2d(0.0, fy))
+        self._body.apply_impulse_at_local_point(Vec2d(fx, fy))
 
 
 def _range(segment: tuple[float, float]) -> float:
@@ -153,7 +152,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         food_friction: float = 0.1,
         food_initial_force: tuple[float, float] = (0.0, 0.0),
         wall_friction: float = 0.05,
-        max_abs_force: float = 1.0,
+        max_abs_impulse: float = 0.2,
         max_abs_angle: float | None = None,
         max_abs_velocity: float = 1.0,
         dt: float = 0.05,
@@ -176,7 +175,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._encount_threshold = min(encount_threshold, n_physics_steps)
         self._n_sensors = n_agent_sensors
         self._sensor_length = sensor_length
-        self._max_abs_force = max_abs_force
+        self._max_abs_impulse = max_abs_impulse
         self._max_abs_angle = max_abs_angle
         self._max_abs_velocity = max_abs_velocity
         self._food_initial_force = food_initial_force
@@ -515,10 +514,14 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             self._max_abs_velocity
         )
         if self._max_abs_angle is None or self._max_abs_angle == 0.0:
-            max_abs_acts = self._max_abs_force, self._max_abs_force
+            max_abs_acts = [self._max_abs_impulse, self._max_abs_impulse]
             cls = CFBody
         else:
-            max_abs_acts = self._max_abs_force, self._max_abs_angle
+            max_abs_acts = [
+                self._max_abs_impulse,
+                self._max_abs_impulse,
+                self._max_abs_angle,
+            ]
             cls = AngleCtrlCFBody
         fgbody = cls(
             body_with_sensors=body_with_sensors,
