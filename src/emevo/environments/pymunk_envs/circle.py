@@ -71,8 +71,8 @@ class CFBody(Body[Vec2d]):
         birthtime: int,
         max_abs_act: float,
         max_abs_velocity: float,
+        max_abs_angle: float | None,
         loc: Vec2d,
-        max_abs_angle: float | None = None,
     ) -> None:
         self._body, self._shape, self._sensors = body_with_sensors
         self._body.position = loc
@@ -82,7 +82,7 @@ class CFBody(Body[Vec2d]):
             act_high = np.ones(2, dtype=np.float32) * max_abs_act
         else:
             act_high = np.array(
-                [max_abs_act, max_abs_act, -max_abs_angle],
+                [max_abs_act, max_abs_act, max_abs_angle],
                 dtype=np.float32,
             )
         obs_space = NamedTupleSpace(
@@ -522,6 +522,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             birthtime=self._sim_steps,
             max_abs_act=self._max_abs_force,
             max_abs_velocity=self._max_abs_velocity,
+            max_abs_angle=self._max_abs_angle,
             loc=loc,
         )
         self._body_indices[body_with_sensors.body] = fgbody.index

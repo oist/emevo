@@ -43,7 +43,7 @@ def main(
         env_kwargs["obstacles"] = [(100, 50, 100, 200)]
 
     if angle:
-        env_kwargs["max_abs_angle"] = np.pi / 10
+        env_kwargs["max_abs_angle"] = np.pi / 20
 
     if logistic_foods:
         env_kwargs["food_num_fn"] = ("logistic", 6, 1.1, 12)
