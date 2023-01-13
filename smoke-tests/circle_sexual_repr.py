@@ -12,7 +12,7 @@ from loguru import logger
 from numpy.random import PCG64
 from pymunk.vec2d import Vec2d
 
-from emevo import Encount
+from emevo import Encount, Status
 from emevo import birth_and_death as bd
 from emevo import make
 from emevo._test_utils import sample_location
@@ -34,7 +34,7 @@ class Rendering(str, enum.Enum):
     MODERNGL = "moderngl"
 
 
-def birth_fn(status_a: bd.Status, status_b: bd.Status) -> float:
+def birth_fn(status_a: Status, status_b: Status) -> float:
     avg_energy = (status_a.energy + status_b.energy) / 2.0
     return 1 / (1.0 + np.exp(-avg_energy))
 
@@ -80,19 +80,20 @@ def main(
     birth_fn = bd.birth.Logistic(
         scale=0.1,
         alpha=0.1,
-        beta_age=10.0 / avg_lifetime,
+        beta=10.0 / avg_lifetime,
         age_delay=avg_lifetime / 4,
         energy_delay=0.0,
     )
 
-    def produce(_sa, _sb, encount: Encount) -> bd.Oviparous:
+    def produce(sa: Status, sb: Status, encount: Encount) -> bd.Oviparous:
         return bd.Oviparous(
             parent=encount.a,
+            parental_status=(sa, sb),
             time_to_birth=5,
         )
 
     manager = bd.SexualReprManager(
-        initial_status_fn=partial(bd.Status, age=1, energy=0.0),
+        initial_status_fn=partial(Status, age=1, energy=0.0),
         hazard_fn=hazard_fn,
         birth_fn=birth_fn.sexual,
         produce_fn=produce,

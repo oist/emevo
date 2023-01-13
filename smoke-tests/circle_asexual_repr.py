@@ -12,6 +12,7 @@ from loguru import logger
 from numpy.random import PCG64
 from pymunk.vec2d import Vec2d
 
+from emevo import Status
 from emevo import birth_and_death as bd
 from emevo import make
 from emevo import visualizer as evis
@@ -69,7 +70,7 @@ def main(
     birth_fn = bd.birth.Logistic(
         scale=10.0 / avg_lifetime,
         alpha=0.1,
-        beta_age=10.0 / avg_lifetime,
+        beta=10.0 / avg_lifetime,
         age_delay=avg_lifetime / 4,
         energy_delay=0.0,
     )
@@ -81,11 +82,12 @@ def main(
     logger.info(f"Expected num. of children: {exp_n_children}")
 
     manager = bd.AsexualReprManager(
-        initial_status_fn=partial(bd.Status, age=1, energy=4.0),
+        initial_status_fn=partial(Status, age=1, energy=4.0),
         hazard_fn=hazard_fn,
         birth_fn=birth_fn.asexual,
-        produce_fn=lambda _, body: bd.Oviparous(
+        produce_fn=lambda status, body: bd.Oviparous(
             parent=body,
+            parental_status=status,
             time_to_birth=5,
         ),
     )

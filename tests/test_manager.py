@@ -5,7 +5,7 @@ from typing import Callable
 
 import pytest
 
-from emevo import Encount
+from emevo import Encount, Status
 from emevo import birth_and_death as bd
 from emevo._test_utils import FakeBody
 
@@ -14,7 +14,7 @@ DEFAULT_ENERGY_LEVEL: int = 10
 
 @pytest.fixture
 def status_fn():
-    return partial(bd.Status, age=1, energy=DEFAULT_ENERGY_LEVEL)
+    return partial(Status, age=1, energy=DEFAULT_ENERGY_LEVEL)
 
 
 @pytest.fixture
@@ -28,8 +28,8 @@ def _add_bodies(manager, n_bodies: int = 5) -> None:
 
 
 def test_asexual(
-    status_fn: Callable[[], bd.Status],
-    hazard_fn: Callable[[bd.Status], float],
+    status_fn: Callable[[], Status],
+    hazard_fn: Callable[[Status], float],
 ) -> None:
     """Test the most basic setting: Asexual reproduction + Oviparous birth"""
 
@@ -43,8 +43,9 @@ def test_asexual(
         birth_fn=lambda status: float(
             status.energy > DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH
         ),
-        produce_fn=lambda _status, body: bd.Oviparous(
+        produce_fn=lambda status, body: bd.Oviparous(
             parent=body,
+            parental_status=status,
             time_to_birth=STEPS_TO_BIRTH,
         ),
     )
@@ -91,8 +92,8 @@ def test_asexual(
 
 @pytest.mark.parametrize("newborn_cls", [bd.Oviparous, bd.Viviparous])
 def test_sexual(
-    status_fn: Callable[[], bd.Status],
-    hazard_fn: Callable[[bd.Status], float],
+    status_fn: Callable[[], Status],
+    hazard_fn: Callable[[Status], float],
     newborn_cls: type[bd.Newborn],
 ) -> None:
     """Test Sexual reproduction"""
@@ -101,16 +102,17 @@ def test_sexual(
     STEPS_TO_DEATH: int = 10
     STEPS_TO_BIRTH: int = 3
 
-    def success_prob(status_a: bd.Status, status_b: bd.Status) -> float:
+    def success_prob(status_a: Status, status_b: Status) -> float:
         threshold = float(DEFAULT_ENERGY_LEVEL + STEPS_TO_DEATH)
         if status_a.energy > threshold and status_b.energy > threshold:
             return 1.0
         else:
             return 0.0
 
-    def produce(_sa, _sb, encount: Encount) -> bd.Newborn:
+    def produce(sa: Status, sb: Status, encount: Encount) -> bd.Newborn:
         return newborn_cls(
             parent=encount.a,
+            parental_status=(sa, sb),
             time_to_birth=STEPS_TO_BIRTH,
         )
 
