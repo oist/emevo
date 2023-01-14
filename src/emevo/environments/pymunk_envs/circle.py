@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import partial
+from functools import cached_property, partial
 from typing import Any, Callable, Literal, NamedTuple
 
 import numpy as np
@@ -67,7 +67,8 @@ class CFBody(Body[Vec2d]):
         space: pymunk.Space,
         generation: int,
         birthtime: int,
-        max_abs_acts: list[float],
+        min_acts: list[float],
+        max_acts: list[float],
         max_abs_velocity: float,
         loc: Vec2d,
     ) -> None:
@@ -75,7 +76,6 @@ class CFBody(Body[Vec2d]):
         self._body.position = loc
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
-        act_high = np.array(max_abs_acts, dtype=np.float32)
         obs_space = NamedTupleSpace(
             CFObs,
             sensor=BoxSpace(low=0.0, high=1.0, shape=(n_sensors, 3)),
@@ -85,7 +85,10 @@ class CFBody(Body[Vec2d]):
             energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
         )
         super().__init__(
-            BoxSpace(low=-act_high, high=act_high),
+            BoxSpace(
+                low=np.array(min_acts, dtype=np.float32),
+                high=np.array(max_acts, dtype=np.float32),
+            ),
             obs_space,
             generation,
             birthtime,
@@ -95,8 +98,9 @@ class CFBody(Body[Vec2d]):
         return _CFBodyInfo(position=self._body.position, velocity=self._body.velocity)
 
     def _apply_action(self, action: NDArray) -> None:
-        action = self.act_space.clip(action)
-        self._body.apply_impulse_at_local_point(Vec2d(*action))
+        fy, impulse_angle = self.act_space.clip(action)
+        impulse = Vec2d(0, fy).rotated(impulse_angle)
+        self._body.apply_impulse_at_local_point(impulse)
 
     def _remove(self, space: pymunk.Space) -> None:
         space.remove(self._body, self._shape, *self._sensors)
@@ -113,11 +117,13 @@ class AngleCtrlCFBody(CFBody):
     def _apply_action(self, action: NDArray) -> None:
         action = self.act_space.clip(action)
         if len(action) == 2:
-            fx, fy, angle = 0.0, *action
+            fy, angle = action
+            impulse_angle = 0.0
         else:
-            fx, fy, angle = action
+            fy, impulse_angle, angle = action
         self._body.angle = (self._body.angle + angle) % self._TWO_PI
-        self._body.apply_impulse_at_local_point(Vec2d(fx, fy))
+        impulse = Vec2d(0, fy).rotated(impulse_angle)
+        self._body.apply_impulse_at_local_point(impulse)
 
 
 def _range(segment: tuple[float, float]) -> float:
@@ -512,31 +518,43 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
 
         self._place_n_foods(self._food_num_fn.initial)
 
-    def _make_body(self, generation: int, loc: Vec2d) -> CFBody:
-        body_with_sensors = self._make_pymunk_body()
-        body_with_sensors.shape.color = self._AGENT_COLOR
-        body_with_sensors.body.velocify_func = utils.limit_velocity(
-            self._max_abs_velocity
-        )
+    @cached_property
+    def _min_max_abs_acts(self) -> tuple[list[float], list[float]]:
         if self._max_abs_angle is None or self._max_abs_angle == 0.0:
-            max_abs_acts = [self._max_abs_impulse, self._max_abs_impulse]
-            cls = CFBody
+            return [0.0, -np.pi], [self._max_abs_impulse, np.pi]
         else:
             if self._oned_impulse:
-                max_abs_acts = [self._max_abs_impulse, self._max_abs_angle]
-            else:
-                max_abs_acts = [
-                    self._max_abs_impulse,
+                return [-self._max_abs_impulse, -self._max_abs_angle], [
                     self._max_abs_impulse,
                     self._max_abs_angle,
                 ]
+            else:
+                return [0.0, -np.pi, -self._max_abs_angle], [
+                    self._max_abs_impulse,
+                    np.pi,
+                    self._max_abs_angle,
+                ]
+
+    @cached_property
+    def _limit_velocity(self) -> callable:
+        return utils.limit_velocity(self._max_abs_velocity)
+
+    def _make_body(self, generation: int, loc: Vec2d) -> CFBody:
+        body_with_sensors = self._make_pymunk_body()
+        body_with_sensors.shape.color = self._AGENT_COLOR
+        body_with_sensors.body.velocify_func = self._limit_velocity
+        if self._max_abs_angle is None or self._max_abs_angle == 0.0:
+            cls = CFBody
+        else:
             cls = AngleCtrlCFBody
+        min_acts, max_acts = self._min_max_abs_acts
         fgbody = cls(
             body_with_sensors=body_with_sensors,
             space=self._space,
             generation=generation,
             birthtime=self._sim_steps,
-            max_abs_acts=max_abs_acts,
+            min_acts=min_acts,
+            max_acts=max_acts,
             max_abs_velocity=self._max_abs_velocity,
             loc=loc,
         )
