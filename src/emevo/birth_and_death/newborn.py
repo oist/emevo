@@ -3,6 +3,7 @@ from typing import Any, Generic
 
 from emevo.body import Body
 from emevo.env import LOC
+from emevo.status import Status
 
 
 class Newborn(abc.ABC, Generic[LOC]):
@@ -11,10 +12,12 @@ class Newborn(abc.ABC, Generic[LOC]):
     def __init__(
         self,
         parent: Body,
+        parental_status: Status | tuple[Status, Status],
         time_to_birth: int,
         info: Any = None,
     ) -> None:
         self.parent = parent
+        self.parental_status = parental_status
         self.info = info
         self.time_to_birth = time_to_birth
 
@@ -40,10 +43,11 @@ class Oviparous(Newborn[LOC]):
     def __init__(
         self,
         parent: Body,
+        parental_status: Status | tuple[Status, Status],
         time_to_birth: int,
         info: Any = None,
     ) -> None:
-        super().__init__(parent, time_to_birth, info=info)
+        super().__init__(parent, parental_status, time_to_birth, info=info)
         self._location = parent.location()
 
     def location(self) -> LOC:

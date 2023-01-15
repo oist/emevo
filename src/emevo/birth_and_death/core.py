@@ -9,8 +9,8 @@ import numpy as np
 from typing_extensions import ParamSpec
 
 from emevo.birth_and_death.newborn import Newborn
-from emevo.birth_and_death.status import Status
 from emevo.body import Body, Encount
+from emevo.status import Status
 
 
 @dataclasses.dataclass(frozen=True)

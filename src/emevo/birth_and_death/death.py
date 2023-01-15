@@ -5,7 +5,7 @@ from typing import Protocol
 
 import numpy as np
 
-from emevo.birth_and_death.core import Status
+from emevo.status import Status
 
 
 class HazardFunction(Protocol):
