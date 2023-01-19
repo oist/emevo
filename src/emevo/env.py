@@ -4,7 +4,7 @@ Abstract environment API.
 from __future__ import annotations
 
 import abc
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Iterable, Protocol, TypeVar
 
 from numpy.typing import NDArray
 
@@ -70,3 +70,14 @@ class Env(abc.ABC, Generic[ACT, LOC, OBS]):
     def visualizer(self, *args, **kwargs) -> Visualizer:
         """Create a visualizer for the environment"""
         pass
+
+    def try_give_birth(
+        self,
+        locations: Iterable[LOC],
+        generation: int,
+    ) -> Body[LOC] | None:
+        for loc in locations:
+            body = self.born(loc, generation)
+            if body is not None:
+                return body
+        return None
