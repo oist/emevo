@@ -72,22 +72,31 @@ class EnergyLogistic(BirthFunction):
 class EnergyLogisticMeta(BirthFunction):
     """Only energy is important to give birth."""
 
+    scale: float
+    alpha: float
+    energy_delay: float = 8.0
+
     def _exp_neg_energy(self, status: Status) -> float:
         assert status.metadata is not None
-        return np.exp(status.metadata["energy_delay"] - status.energy)
+        energy_delay = status.metadata.get("energy_delay", self.energy_delay)
+        return np.exp(energy_delay - status.energy)
 
     def asexual(self, status: Status) -> float:
         assert status.metadata is not None
         exp_neg_energy = self._exp_neg_energy(status)
-        return status.metadata["scale"] / (
-            1.0 + status.metadata["alpha"] * exp_neg_energy
-        )
+        scale = status.metadata.get("scale", self.scale)
+        alpha = status.metadata.get("alpha", self.alpha)
+        return scale / (1.0 + alpha * exp_neg_energy)
 
     def sexual(self, status_a: Status, status_b: Status) -> float:
         assert status_a.metadata is not None and status_b.metadata is not None
         exp_neg_energy_a = self._exp_neg_energy(status_a)
         exp_neg_energy_b = self._exp_neg_energy(status_b)
         sum_exp = exp_neg_energy_a + exp_neg_energy_b
-        scale = (status_a.metadata["scale"] + status_b.metadata["scale"]) / 2
-        alpha = (status_a.metadata["alpha"] + status_b.metadata["alpha"]) / 2
+        scale_a = status_a.metadata.get("scale", self.scale)
+        alpha_a = status_a.metadata.get("alpha", self.alpha)
+        scale_b = status_b.metadata.get("scale", self.scale)
+        alpha_b = status_b.metadata.get("alpha", self.alpha)
+        scale = (scale_a + scale_b) / 2
+        alpha = (alpha_a + alpha_b) / 2
         return scale / (1.0 + alpha * sum_exp)
