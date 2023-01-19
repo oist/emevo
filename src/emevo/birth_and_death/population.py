@@ -2,6 +2,8 @@
 """
 
 
+from typing import Any
+
 from scipy import integrate
 
 from emevo.birth_and_death.birth import BirthFunction
@@ -37,12 +39,12 @@ def expected_n_children(
     *,
     birth: BirthFunction,
     hazard: HazardFunction,
-    energy: float = 0.0,
     max_age: float = 1e6,
     asexual: bool = False,
+    **status_kwargs,
 ) -> float:
     def integrated(t: int) -> float:
-        status = Status(age=t, energy=energy)
+        status = Status(age=t, **status_kwargs)
         if asexual:
             b = birth.asexual(status)
         else:
