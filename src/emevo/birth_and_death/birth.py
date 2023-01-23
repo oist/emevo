@@ -52,10 +52,10 @@ class EnergyLogistic(BirthFunction):
 
     scale: float
     alpha: float
-    energy_delay: float = 8.0
+    delay: float = 8.0
 
     def _exp_neg_energy(self, energy: float) -> float:
-        return np.exp(self.energy_delay - energy)
+        return np.exp(self.delay - energy)
 
     def asexual(self, status: Status) -> float:
         exp_neg_energy = self._exp_neg_energy(status.energy)
@@ -74,11 +74,11 @@ class EnergyLogisticMeta(BirthFunction):
 
     scale: float
     alpha: float
-    energy_delay: float = 8.0
+    delay: float = 8.0
 
     def _exp_neg_energy(self, status: Status) -> float:
         assert status.metadata is not None
-        energy_delay = status.metadata.get("energy_delay", self.energy_delay)
+        energy_delay = status.metadata.get("delay", self.delay)
         return np.exp(energy_delay - status.energy)
 
     def asexual(self, status: Status) -> float:
