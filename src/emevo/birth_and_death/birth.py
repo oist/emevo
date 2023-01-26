@@ -70,7 +70,10 @@ class EnergyLogistic(BirthFunction):
 
 @dataclasses.dataclass
 class EnergyLogisticMeta(BirthFunction):
-    """Only energy is important to give birth."""
+    """
+    Only energy is important to give birth.
+    Note that all fields in metadata should have 'birth_' prefix.
+    """
 
     scale: float
     alpha: float
@@ -78,14 +81,14 @@ class EnergyLogisticMeta(BirthFunction):
 
     def _exp_neg_energy(self, status: Status) -> float:
         assert status.metadata is not None
-        energy_delay = status.metadata.get("delay", self.delay)
+        energy_delay = status.metadata.get("birth_delay", self.delay)
         return np.exp(energy_delay - status.energy)
 
     def asexual(self, status: Status) -> float:
         assert status.metadata is not None
         exp_neg_energy = self._exp_neg_energy(status)
-        scale = status.metadata.get("scale", self.scale)
-        alpha = status.metadata.get("alpha", self.alpha)
+        scale = status.metadata.get("birth_scale", self.scale)
+        alpha = status.metadata.get("birth_alpha", self.alpha)
         return scale / (1.0 + alpha * exp_neg_energy)
 
     def sexual(self, status_a: Status, status_b: Status) -> float:
@@ -93,10 +96,10 @@ class EnergyLogisticMeta(BirthFunction):
         exp_neg_energy_a = self._exp_neg_energy(status_a)
         exp_neg_energy_b = self._exp_neg_energy(status_b)
         sum_exp = exp_neg_energy_a + exp_neg_energy_b
-        scale_a = status_a.metadata.get("scale", self.scale)
-        alpha_a = status_a.metadata.get("alpha", self.alpha)
-        scale_b = status_b.metadata.get("scale", self.scale)
-        alpha_b = status_b.metadata.get("alpha", self.alpha)
+        scale_a = status_a.metadata.get("birth_scale", self.scale)
+        alpha_a = status_a.metadata.get("birth_alpha", self.alpha)
+        scale_b = status_b.metadata.get("birth_scale", self.scale)
+        alpha_b = status_b.metadata.get("birth_alpha", self.alpha)
         scale = (scale_a + scale_b) / 2
         alpha = (alpha_a + alpha_b) / 2
         return scale / (1.0 + alpha * sum_exp)
