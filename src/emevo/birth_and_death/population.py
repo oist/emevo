@@ -2,8 +2,6 @@
 """
 
 
-from typing import Any
-
 from scipy import integrate
 
 from emevo.birth_and_death.birth import BirthFunction
