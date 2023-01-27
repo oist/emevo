@@ -171,7 +171,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         body_elasticity: float = 0.4,
         oned_impulse: bool = False,
         nofriction: bool = False,
-        threaded: bool = False,
+        ignore_mating: bool = False,
         energy_fn: Callable[[CFBody], float] = _default_energy_function,
         seed: int | None = None,
     ) -> None:
@@ -190,6 +190,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._max_abs_velocity = max_abs_velocity
         self._oned_impulse = oned_impulse
         self._food_initial_force = food_initial_force
+        self._ignore_mating = ignore_mating
         self._energy_fn = energy_fn
 
         if env_shape == "square":
@@ -271,10 +272,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         # Variables
         self._sim_steps = 0
         self._n_foods = 0
-        # Make pymunk world and add bodies
-        self._space = pymunk.Space(threaded=threaded)
-        if threaded:
-            self._space.threads = 2
+        self._space = pymunk.Space()
         # Setup physical objects
         if isinstance(self._coordinate, SquareCoordinate):
             utils.add_static_square(
@@ -323,12 +321,13 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             self._food_handler,
         )
 
-        utils.add_pre_handler(
-            self._space,
-            utils.CollisionType.AGENT,
-            utils.CollisionType.AGENT,
-            self._mating_handler,
-        )
+        if not ignore_mating:
+            utils.add_pre_handler(
+                self._space,
+                utils.CollisionType.AGENT,
+                utils.CollisionType.AGENT,
+                self._mating_handler,
+            )
 
         utils.add_pre_handler(
             self._space,
@@ -409,7 +408,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._generator = Generator(PCG64(seed=seed))
         self._initialize_bodies_and_foods()
 
-    def born(self, location: Vec2d, generation: int) -> CFBody | None:
+    def locate_body(self, location: Vec2d, generation: int) -> CFBody | None:
         if self._can_place(location, self._agent_radius):
             body = self._make_body(generation=generation, loc=location)
             self._bodies.append(body)
@@ -418,10 +417,14 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             logger.warning(f"Failed to place the body at {location}")
             return None
 
-    def dead(self, body: CFBody) -> None:
-        body._remove(self._space)
-        self._bodies.remove(body)
-        del self._body_indices[body._body]
+    def remove_body(self, body: CFBody) -> bool:
+        if body._body in self._body_indices:
+            body._remove(self._space)
+            self._bodies.remove(body)
+            del self._body_indices[body._body]
+            return True
+        else:
+            return False
 
     def is_extinct(self) -> bool:
         return len(self._bodies) == 0
@@ -473,6 +476,8 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         return sensor_data
 
     def _all_encounts(self) -> list[Encount]:
+        if self._ignore_mating:
+            return []
         all_encounts = []
         for id_a, id_b in self._mating_handler.filter_pairs(self._encount_threshold):
             self._encounted_bodies.add(id_a)
@@ -492,11 +497,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     def _can_place(self, point: Vec2d, radius: float) -> bool:
         if not self._coordinate.contains_circle(point, radius):
             return False
-        nearest = self._space.point_query_nearest(
-            point,
-            radius,
-            self._all_shape,
-        )
+        nearest = self._space.point_query_nearest(point, radius, self._all_shape)
         return nearest is None
 
     def _find_body_by_id(self, index: int) -> CFBody:
@@ -536,7 +537,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
                 ]
 
     @cached_property
-    def _limit_velocity(self) -> callable:
+    def _limit_velocity(
+        self,
+    ) -> Callable[[pymunk.Body, tuple[float, float], float, float], None]:
         return utils.limit_velocity(self._max_abs_velocity)
 
     def _make_body(self, generation: int, loc: Vec2d) -> CFBody:

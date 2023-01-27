@@ -102,11 +102,11 @@ def test_birth(env: CircleForaging) -> None:
     assert len(env.bodies()) == 3
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
     place = body.info().position
-    assert env.born(place, 1) is None
-    assert env.born(place + Vec2d(6.5, -5.0), 1) is None
-    assert env.born(place + Vec2d(-16.0, 0.0), 1) is not None
-    env.dead(body)
-    assert env.born(place, 1) is not None
+    assert env.locate_body(place, 1) is None
+    assert env.locate_body(place + Vec2d(6.5, -5.0), 1) is None
+    assert env.locate_body(place + Vec2d(-16.0, 0.0), 1) is not None
+    env.remove_body(body)
+    assert env.locate_body(place, 1) is not None
 
 
 def test_death(env: CircleForaging) -> None:
@@ -118,7 +118,7 @@ def test_death(env: CircleForaging) -> None:
     """
     assert len(env.bodies()) == 3
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
-    env.dead(body)
+    env.remove_body(body)
     assert len(env.bodies()) == 2
 
 

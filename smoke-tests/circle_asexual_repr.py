@@ -126,7 +126,7 @@ def main(
 
         for dead in deads:
             logger.info(f"{dead.body} is dead with {dead.status}")
-            env.dead(dead.body)
+            env.remove_body(dead.body)
 
         for newborn in newborns:
             loc = sample_location(
@@ -135,7 +135,7 @@ def main(
                 radius_max=agent_radius * 3,
                 radius_min=agent_radius * 1.5,
             )
-            body = env.born(Vec2d(*loc), newborn.parent.generation + 1)
+            body = env.locate_body(Vec2d(*loc), newborn.parent.generation + 1)
             if body is not None:
                 logger.info(f"{body} was born")
                 manager.register(body)

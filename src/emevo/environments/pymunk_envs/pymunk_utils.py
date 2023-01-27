@@ -187,8 +187,7 @@ def limit_velocity(
         pymunk.Body.update_velocity(body, gravity, damping, dt)
         current_velocity = body.velocity.length
         if current_velocity > max_velocity:
-            scale = max_velocity / current_velocity
-            body.velocity = body.velocity * scale
+            body.velocity = body.velocity * max_velocity / current_velocity
 
     return velocity_callback
 

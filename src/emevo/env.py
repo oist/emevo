@@ -52,12 +52,12 @@ class Env(abc.ABC, Generic[ACT, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def born(self, location: LOC, generation: int) -> Body[LOC] | None:
+    def locate_body(self, location: LOC, generation: int) -> Body[LOC] | None:
         """Taken a location, generate and place a newborn in the environment."""
         pass
 
     @abc.abstractmethod
-    def dead(self, body: Body[LOC]) -> None:
+    def remove_body(self, body: Body[LOC]) -> bool:
         """Remove a dead body from the environment."""
         pass
 
@@ -71,13 +71,13 @@ class Env(abc.ABC, Generic[ACT, LOC, OBS]):
         """Create a visualizer for the environment"""
         pass
 
-    def try_give_birth(
+    def try_locate_body(
         self,
         locations: Iterable[LOC],
         generation: int,
     ) -> Body[LOC] | None:
         for loc in locations:
-            body = self.born(loc, generation)
+            body = self.locate_body(loc, generation)
             if body is not None:
                 return body
         return None
