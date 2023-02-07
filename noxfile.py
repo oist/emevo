@@ -18,9 +18,26 @@ def _sync(session: nox.Session, requirements: str) -> None:
 def compile(session: nox.Session) -> None:
     session.install("pip-tools")
     requirements_dir = pathlib.Path("requirements")
+
+    def _run_pip_compile(in_file: str, out_name: str) -> None:
+        # If -k {out_name} is given, skip compiling
+        if "-k" in session.posargs and out_name not in session.posargs:
+            return
+
+        out_file = f"requirements/{out_name}.txt"
+        args = [
+            "pip-compile",
+            in_file,
+            "--output-file",
+            out_file,
+            "--resolver=backtracking",
+        ]
+        if "--upgrade" in session.posargs:
+            args.append("--upgrade")
+        session.run(*args)
+
     for path in requirements_dir.glob("*.in"):
-        txt_file = f"requirements/{path.stem}.txt"
-        session.run("pip-compile", path.as_posix(), "--output-file", txt_file)
+        _run_pip_compile(path.as_posix(), path.stem)
 
 
 @nox.session(reuse_venv=True)
