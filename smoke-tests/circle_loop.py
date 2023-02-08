@@ -6,6 +6,7 @@ import enum
 import numpy as np
 import typer
 from numpy.random import PCG64
+from tqdm import tqdm
 
 from emevo import _test_utils as test_utils
 from emevo import make
@@ -21,6 +22,8 @@ def main(
     render: Rendering | None = None,
     food_initial_force: tuple[float, float] = (0.0, 0.0),
     seed: int = 1,
+    n_foods: int = 10,
+    n_foods_later: int = 10,
     debug: bool = False,
     forward_sensor: bool = False,
     use_test_env: bool = False,
@@ -46,7 +49,9 @@ def main(
         env_kwargs["max_abs_angle"] = np.pi / 40
 
     if logistic_foods:
-        env_kwargs["food_num_fn"] = ("logistic", 6, 1.1, 12)
+        env_kwargs["food_num_fn"] = "logistic", 6, 1.1, 12
+    else:
+        env_kwargs["food_num_fn"] = "constant", n_foods
 
     if use_test_env:
         env = test_utils.predefined_env(**env_kwargs)
@@ -65,7 +70,9 @@ def main(
     else:
         visualizer = None
 
-    for _ in range(steps):
+    change_foods = not logistic_foods and n_foods_later != n_foods
+
+    for i in tqdm(range(steps)):
         actions = {body: body.act_space.sample(gen) for body in bodies}
         # Samples for adding constant force for debugging
         # actions = {body: np.array([0.0, -1.0]) for body in bodies}
@@ -73,6 +80,9 @@ def main(
         if visualizer is not None:
             visualizer.render(env)
             visualizer.show()
+
+        if change_foods and steps // 2 <= i:
+            env.set_food_num_fn(("constant", n_foods_later))  # type: ignore
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property, partial
-from typing import Any, Callable, Literal, NamedTuple
+from typing import Any, Callable, Literal, NamedTuple, TypeVar
 
 import numpy as np
 import pymunk
@@ -22,6 +22,8 @@ from emevo.environments.utils.locating import (
     SquareCoordinate,
 )
 from emevo.spaces import BoxSpace, NamedTupleSpace
+
+FN = TypeVar("FN")
 
 
 class CFObs(NamedTuple):
@@ -134,6 +136,20 @@ def _default_energy_function(_body: CFBody) -> float:
     return 0.0
 
 
+def _get_num_or_loc_fn(
+    arg: str | tuple | FN,
+    enum_type: Callable[..., Callable[..., FN]],
+    default_args: dict[str, tuple[Any, ...]],
+) -> FN:
+    if isinstance(arg, str):
+        return enum_type(arg)(*default_args[arg])
+    elif isinstance(arg, tuple) or isinstance(arg, list):
+        name, *args = arg
+        return enum_type(name)(*args)
+    else:
+        return arg
+
+
 class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     _AGENT_COLOR = Color(2, 204, 254)
     _FOOD_COLOR = Color(254, 2, 162)
@@ -226,49 +242,12 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             body_type=pymunk.Body.STATIC,
         )
 
-        def _get_num_or_loc_fn(
-            arg: Any,
-            enum_type: type,
-            default_args: dict[str, tuple[Any, ...]],
-        ) -> Any:
-            if isinstance(arg, str):
-                return enum_type(arg)(*default_args[arg])
-            elif isinstance(arg, tuple) or isinstance(arg, list):
-                name, *args = arg
-                return enum_type(name)(*args)
-            else:
-                return arg
-
         # Customizable functions
-        self._food_num_fn = _get_num_or_loc_fn(
-            food_num_fn,
-            ReprNum,
-            {"constant": (10,), "logistic": (8, 1.2, 12)},
-        )
-        xlim, ylim = self._coordinate.bbox()
-        x_range, y_range = _range(xlim), _range(ylim)
-        self._food_loc_fn = _get_num_or_loc_fn(
-            food_loc_fn,
-            ReprLoc,
-            {
-                "gaussian": (
-                    (xlim[1] * 0.75, ylim[1] * 0.75),
-                    (x_range * 0.1, y_range * 0.1),
-                ),
-                "uniform": (self._coordinate,),
-            },
-        )
-        self._body_loc_fn = _get_num_or_loc_fn(
-            body_loc_fn,
-            InitLoc,
-            {
-                "gaussian": (
-                    (xlim[1] * 0.25, ylim[1] * 0.25),
-                    (x_range * 0.3, y_range * 0.3),
-                ),
-                "uniform": (self._coordinate,),
-            },
-        )
+        self._food_num_fn = self._make_food_num_fn(food_num_fn)
+        self._xlim, self._ylim = self._coordinate.bbox()
+        self._x_range, self._y_range = _range(xlim), _range(ylim)
+        self._food_loc_fn = self._make_food_loc_fn(food_loc_fn)
+        self._body_loc_fn = self._make_body_loc_fn(body_loc_fn)
         # Variables
         self._sim_steps = 0
         self._n_foods = 0
@@ -335,6 +314,49 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             utils.CollisionType.STATIC,
             self._static_handler,
         )
+
+    @staticmethod
+    def _make_food_num_fn(food_num_fn: str | tuple | ReprNumFn) -> ReprNumFn:
+        return _get_num_or_loc_fn(
+            food_num_fn,
+            ReprNum,
+            {"constant": (10,), "logistic": (8, 1.2, 12)},
+        )
+
+    def _make_food_loc_fn(self, food_loc_fn: str | tuple | ReprLocFn) -> ReprLocFn:
+        return _get_num_or_loc_fn(
+            food_loc_fn,
+            ReprLoc,
+            {
+                "gaussian": (
+                    (self._xlim[1] * 0.75, self._ylim[1] * 0.75),
+                    (self._x_range * 0.1, self._y_range * 0.1),
+                ),
+                "uniform": (self._coordinate,),
+            },
+        )
+
+    def _make_body_loc_fn(self, init_loc_fn: str | tuple | InitLocFn) -> InitLocFn:
+        return _get_num_or_loc_fn(
+            init_loc_fn,
+            InitLoc,
+            {
+                "gaussian": (
+                    (self._xlim[1] * 0.25, self._ylim[1] * 0.25),
+                    (self._x_range * 0.3, self._y_range * 0.3),
+                ),
+                "uniform": (self._coordinate,),
+            },
+        )
+
+    def set_food_num_fn(self, food_num_fn: str | tuple | ReprNumFn) -> None:
+        self._food_num_fn = self._make_food_num_fn(food_num_fn)
+
+    def set_food_loc_fn(self, food_loc_fn: str | tuple | ReprLocFn) -> None:
+        self._food_loc_fn = self._make_food_loc_fn(food_loc_fn)
+
+    def set_body_loc_fn(self, body_loc_fn: str | tuple | InitLocFn) -> None:
+        self._body_loc_fn = self._make_body_loc_fn(body_loc_fn)
 
     def set_energy_fn(self, energy_fn: Callable[[CFBody], float]) -> None:
         self._energy_fn = energy_fn
