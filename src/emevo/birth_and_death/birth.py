@@ -48,7 +48,10 @@ class Logistic(BirthFunction):
 
 @dataclasses.dataclass
 class EnergyLogistic(BirthFunction):
-    """Only energy is important to give birth."""
+    """
+    Only energy is important to give birth.
+    b(t) = scale / (1.0 + α x exp(delay - e(t)))
+    """
 
     scale: float
     alpha: float
