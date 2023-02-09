@@ -267,7 +267,7 @@ def add_static_square(
     xmax: float,
     ymin: float,
     ymax: float,
-    rounded_ratio: float = 0.1,
+    rounded_offset: float | None = None,
     **kwargs,
 ) -> list[pymunk.Segment]:
     p1 = xmin, ymin
@@ -275,13 +275,14 @@ def add_static_square(
     p3 = xmax, ymax
     p4 = xmax, ymin
     lines = []
-    if rounded_ratio > 0:
+    if rounded_offset is not None:
         for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
-            start_to_end = Vec2d(*end) - Vec2d(*start)
-            stop = end - start_to_end * rounded_ratio
+            s2end = Vec2d(*end) - Vec2d(*start)
+            offset = s2end.normalized() * rounded_offset
+            stop = end - offset
             line = add_static_line(
                 space,
-                start + start_to_end * rounded_ratio,
+                start + offset,
                 stop,
                 **kwargs,
             )

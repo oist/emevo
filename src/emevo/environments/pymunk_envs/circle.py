@@ -260,6 +260,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
                 *ylim,
                 friction=wall_friction,
                 radius=self._WALL_RADIUS,
+                rounded_offset=np.floor(food_radius * 2 / (np.sqrt(2) - 1.0)),
             )
         elif isinstance(self._coordinate, CircleCoordinate):
             utils.add_static_approximated_circle(
