@@ -48,7 +48,7 @@ def _raise_noenv_error(name: str) -> NoReturn:
     msg = f"Enviroment name {name} is not registered"
     candidate, _ = best
     if candidate is not None:
-        msg += f"\n Do you mean '{candidate}'?"
+        msg += f"\n Do you mean {candidate} instead?"
     raise ValueError(msg)
 
 
