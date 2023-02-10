@@ -187,7 +187,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         body_elasticity: float = 0.4,
         oned_impulse: bool = False,
         nofriction: bool = False,
-        ignore_mating: bool = False,
         energy_fn: Callable[[CFBody], float] = _default_energy_function,
         seed: int | None = None,
     ) -> None:
@@ -206,7 +205,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._max_abs_velocity = max_abs_velocity
         self._oned_impulse = oned_impulse
         self._food_initial_force = food_initial_force
-        self._ignore_mating = ignore_mating
         self._energy_fn = energy_fn
 
         if env_shape == "square":
@@ -301,13 +299,12 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             self._food_handler,
         )
 
-        if not ignore_mating:
-            utils.add_pre_handler(
-                self._space,
-                utils.CollisionType.AGENT,
-                utils.CollisionType.AGENT,
-                self._mating_handler,
-            )
+        utils.add_pre_handler(
+            self._space,
+            utils.CollisionType.AGENT,
+            utils.CollisionType.AGENT,
+            self._mating_handler,
+        )
 
         utils.add_pre_handler(
             self._space,
@@ -499,8 +496,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         return sensor_data
 
     def _all_encounts(self) -> list[Encount]:
-        if self._ignore_mating:
-            return []
         all_encounts = []
         for id_a, id_b in self._mating_handler.filter_pairs(self._encount_threshold):
             self._encounted_bodies.add(id_a)
