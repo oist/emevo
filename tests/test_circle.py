@@ -134,7 +134,7 @@ def test_eating(env: CircleForaging) -> None:
     handler = DebugLogHandler()
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
     food = next(iter(env._foods.keys()))
-    actions = {body: np.array([0.0, 1.0])}
+    actions = {body: np.array([0.1, 0.0])}
     already_ate = False
 
     while True:
@@ -185,7 +185,7 @@ def test_encounts(env: CircleForaging) -> None:
             body_lower = body
 
     assert body_higher is not None and body_lower is not None
-    actions = {body_higher: np.array([0.0, -1.0]), body_lower: np.array([0.0, 1.0])}
+    actions = {body_higher: np.array([0.1, -np.pi]), body_lower: np.array([0.1, 0.0])}
 
     while True:
         encounts = env.step(actions)
@@ -227,7 +227,7 @@ def test_static(env: CircleForaging) -> None:
     , and we push the lower right agent to right wall.
     """
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
-    actions = {body: np.array([0.0, -1.0])}
+    actions = {body: np.array([0.1, -np.pi])}
 
     while True:
         _ = env.step(actions)
