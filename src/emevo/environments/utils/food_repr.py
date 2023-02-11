@@ -14,6 +14,7 @@ from numpy.typing import ArrayLike, NDArray
 from emevo.environments.utils.locating import (
     InitLocFn,
     init_loc_gaussian,
+    init_loc_gaussian_mixture,
     init_loc_pre_defined,
     init_loc_uniform,
 )
@@ -73,12 +74,15 @@ class ReprLoc(str, enum.Enum):
     """Methods to determine the location of new foods or agents"""
 
     GAUSSIAN = "gaussian"
+    GAUSSIAN_MIXTURE = "gaussian-mixture"
     PRE_DIFINED = "pre-defined"
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> ReprLocFn:
         if self is ReprLoc.GAUSSIAN:
             return _wrap_initloc(init_loc_gaussian(*args, **kwargs))
+        elif self is ReprLoc.GAUSSIAN_MIXTURE:
+            return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs))
         elif self is ReprLoc.PRE_DIFINED:
             return _wrap_initloc(init_loc_pre_defined(*args, **kwargs))
         elif self is ReprLoc.UNIFORM:

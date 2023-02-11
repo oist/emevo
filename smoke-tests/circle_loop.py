@@ -30,6 +30,7 @@ def main(
     obstacles: bool = False,
     angle: bool = False,
     env_shape: str = "square",
+    food_loc_fn: str = "gaussian",
     logistic_foods: bool = False,
 ) -> None:
     if debug:
@@ -55,6 +56,7 @@ def main(
             env_kwargs["food_num_fn"] = "logistic", 6, 1.1, 12
         else:
             env_kwargs["food_num_fn"] = "constant", n_foods
+        env_kwargs["food_loc_fn"] = food_loc_fn
         env = make(
             "CircleForaging-v0",
             env_shape=env_shape,

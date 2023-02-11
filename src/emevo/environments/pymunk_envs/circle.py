@@ -330,6 +330,14 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
                     (self._xlim[1] * 0.75, self._ylim[1] * 0.75),
                     (self._x_range * 0.1, self._y_range * 0.1),
                 ),
+                "gaussian-mixture": (
+                    [0.5, 0.5],
+                    [
+                        (self._xlim[1] * 0.75, self._ylim[1] * 0.75),
+                        (self._xlim[1] * 0.25, self._ylim[1] * 0.75),
+                    ],
+                    [(self._x_range * 0.1, self._y_range * 0.1)] * 2,
+                ),
                 "uniform": (self._coordinate,),
             },
         )

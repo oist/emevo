@@ -97,6 +97,21 @@ def init_loc_gaussian(mean: ArrayLike, stddev: ArrayLike) -> InitLocFn:
     return lambda generator: generator.normal(loc=mean, scale=stddev)
 
 
+def init_loc_gaussian_mixture(
+    probs: ArrayLike,
+    mean_arr: ArrayLike,
+    stddev_arr: ArrayLike,
+) -> InitLocFn:
+    mean_a = np.array(mean_arr)
+    stddev_a = np.array(stddev_arr)
+
+    def sample(generator: Generator) -> NDArray:
+        i = generator.choice(len(probs), p=probs)
+        return generator.normal(loc=mean_a[i], scale=stddev_a[i])
+
+    return sample
+
+
 def init_loc_pre_defined(locations: Iterable[NDArray]) -> InitLocFn:
     location_iter = iter(locations)
     return lambda _generator: next(location_iter)
