@@ -329,7 +329,176 @@ def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
     return res
 
 
+class MglRenderer:
+    """Render pymunk environments to the given moderngl context."""
+
+    def __init__(
+        self,
+        context: mgl.Context,
+        screen_width: int,
+        screen_height: int,
+        x_range: float,
+        y_range: float,
+        env: PymunkEnv,
+        voffsets: tuple[int, ...] = (),
+        hoffsets: tuple[int, ...] = (),
+    ) -> None:
+        self._context = context
+
+        self._screen_x = _get_clip_ranges([screen_width, *hoffsets])
+        self._screen_y = _get_clip_ranges([screen_height, *voffsets])
+        self._x_range, self._y_range = x_range, y_range
+        self._range_min = min(x_range, y_range)
+        if x_range < y_range:
+            self._range_min = x_range
+            total_width = screen_width + int(sum(hoffsets))
+            self._size_scaling = total_width / x_range * 2
+        else:
+            self._range_min = y_range
+            total_height = screen_height + int(sum(voffsets))
+            self._size_scaling = total_height / y_range * 2
+
+        circle_program = self._make_gl_program(
+            vertex_shader=_CIRCLE_VERTEX_SHADER,
+            fragment_shader=_CIRCLE_FRAGMENT_SHADER,
+        )
+        shapes = env.get_space().shapes
+        points, scales, colors = _collect_circles(shapes, self._size_scaling)
+        self._circles = CircleVA(
+            ctx=context,
+            program=circle_program,
+            points=points,
+            scales=scales,
+            colors=colors,
+        )
+        segment_program = self._make_gl_program(
+            vertex_shader=_LINE_VERTEX_SHADER,
+            geometry_shader=_LINE_GEOMETRY_SHADER,
+            fragment_shader=_LINE_FRAGMENT_SHADER,
+            color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
+            width=np.array([0.002], dtype=np.float32),
+        )
+        self._sensors = SegmentVA(
+            ctx=context,
+            program=segment_program,
+            segments=_collect_sensors(shapes),
+        )
+        static_segment_program = self._make_gl_program(
+            vertex_shader=_LINE_VERTEX_SHADER,
+            geometry_shader=_LINE_GEOMETRY_SHADER,
+            fragment_shader=_LINE_FRAGMENT_SHADER,
+            color=np.array([0.0, 0.0, 0.0, 0.4], dtype=np.float32),
+            width=np.array([0.004], dtype=np.float32),
+        )
+        self._static_lines = SegmentVA(
+            ctx=context,
+            program=static_segment_program,
+            segments=_collect_static_lines(shapes),
+        )
+        head_program = self._make_gl_program(
+            vertex_shader=_LINE_VERTEX_SHADER,
+            geometry_shader=_LINE_GEOMETRY_SHADER,
+            fragment_shader=_LINE_FRAGMENT_SHADER,
+            color=np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32),
+            width=np.array([0.004], dtype=np.float32),
+        )
+        self._heads = SegmentVA(
+            ctx=context,
+            program=head_program,
+            segments=_collect_heads(shapes),
+        )
+        self._overlays = {}
+
+    def _make_gl_program(
+        self,
+        vertex_shader: str,
+        geometry_shader: str | None = None,
+        fragment_shader: str | None = None,
+        screen_idx: tuple[int, int] = (0, 0),
+        game_x: tuple[float, float] | None = None,
+        game_y: tuple[float, float] | None = None,
+        **kwargs: NDArray,
+    ) -> mgl.Program:
+        self._context.enable(mgl.PROGRAM_POINT_SIZE | mgl.BLEND)
+        self._context.blend_func = mgl.DEFAULT_BLENDING
+        prog = self._context.program(
+            vertex_shader=vertex_shader,
+            geometry_shader=geometry_shader,
+            fragment_shader=fragment_shader,
+        )
+        proj = _make_projection_matrix(
+            game_x=game_x or (0, self._x_range),
+            game_y=game_y or (0, self._y_range),
+            screen_x=self._screen_x[screen_idx[0]],
+            screen_y=self._screen_y[screen_idx[1]],
+        )
+        prog["proj"].write(proj)  # type: ignore
+        for key, value in kwargs.items():
+            prog[key].write(value)  # type: ignore
+        return prog
+
+    def _overlay(self, name: str, value: Any) -> Any:
+        """Render additional value as an overlay"""
+        key = name.lower()
+        if key == "arrow":
+            segments = _collect_policies(value, self._range_min * 0.1)
+            if "arrow" in self._overlays:
+                do_render = self._overlays["arrow"].update(segments)
+            else:
+                arrow_program = self._make_gl_program(
+                    vertex_shader=_LINE_VERTEX_SHADER,
+                    geometry_shader=_ARROW_GEOMETRY_SHADER,
+                    fragment_shader=_LINE_FRAGMENT_SHADER,
+                    color=np.array([0.98, 0.45, 0.45, 1.0], dtype=np.float32),
+                )
+                self._overlays["arrow"] = SegmentVA(
+                    ctx=self._context,
+                    program=arrow_program,
+                    segments=segments,
+                )
+                do_render = True
+            if do_render:
+                self._overlays["arrow"].render()
+        elif key.startswith("stack"):
+            xi, yi = map(int, key.split("-")[1:])
+            image = np.flipud(value)
+            h, w = image.shape[:2]
+            image_bytes = image.tobytes()
+            if key not in self._overlays:
+                texture = self._context.texture((w, h), 3, image_bytes)
+                texture.build_mipmaps()
+                program = self._make_gl_program(
+                    vertex_shader=_TEXTURE_VERTEX_SHADER,
+                    fragment_shader=_TEXTURE_FRAGMENT_SHADER,
+                    screen_idx=(xi, yi),
+                    game_x=(0.0, 1.0),
+                    game_y=(0.0, 1.0),
+                )
+                self._overlays[key] = TextureVA(self._context, program, texture)
+            self._overlays[key].update(image_bytes)
+            self._overlays[key].render()
+        else:
+            raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
+
+    def render(self, env: PymunkEnv) -> None:
+        shapes = env.get_space().shapes
+
+        if self._circles.update(*_collect_circles(shapes, self._size_scaling)):
+            self._circles.render()
+        if self._heads.update(_collect_heads(shapes)):
+            self._heads.render()
+        sensors = _collect_sensors(shapes)
+        if self._sensors.update(sensors):
+            self._sensors.render()
+        self._static_lines.render()
+
+
 class MglVisualizer:
+    """
+    Visualizer class that follows the `emevo.Visualizer` protocol.
+    Considered as a main interface to use this visualizer.
+    """
+
     def __init__(
         self,
         x_range: float,
@@ -348,16 +517,6 @@ class MglVisualizer:
             figsize = x_range * 3.0, y_range * 3.0
         w, h = int(figsize[0]), int(figsize[1])
         self._figsize = w + int(sum(hoffsets)), h + int(sum(voffsets))
-        self._screen_x = _get_clip_ranges([w, *hoffsets])
-        self._screen_y = _get_clip_ranges([h, *voffsets])
-        self._x_range, self._y_range = x_range, y_range
-        self._range_min = min(x_range, y_range)
-        if x_range < y_range:
-            self._range_min = x_range
-            self._size_scaling = figsize[0] / x_range * 2
-        else:
-            self._range_min = y_range
-            self._size_scaling = figsize[1] / y_range * 2
 
         self._window = _make_window(
             title=title,
@@ -365,56 +524,16 @@ class MglVisualizer:
             backend=backend,
             vsync=vsync,
         )
-        circle_program = self._make_gl_program(
-            vertex_shader=_CIRCLE_VERTEX_SHADER,
-            fragment_shader=_CIRCLE_FRAGMENT_SHADER,
+        self._renderer = MglRenderer(
+            context=self._window.ctx,
+            screen_width=w,
+            screen_height=h,
+            x_range=x_range,
+            y_range=y_range,
+            env=env,
+            voffsets=voffsets,
+            hoffsets=hoffsets,
         )
-        shapes = env.get_space().shapes
-        points, scales, colors = _collect_circles(shapes, self._size_scaling)
-        self._circles = CircleVA(
-            ctx=self._window.ctx,
-            program=circle_program,
-            points=points,
-            scales=scales,
-            colors=colors,
-        )
-        segment_program = self._make_gl_program(
-            vertex_shader=_LINE_VERTEX_SHADER,
-            geometry_shader=_LINE_GEOMETRY_SHADER,
-            fragment_shader=_LINE_FRAGMENT_SHADER,
-            color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
-            width=np.array([0.002], dtype=np.float32),
-        )
-        self._sensors = SegmentVA(
-            ctx=self._window.ctx,
-            program=segment_program,
-            segments=_collect_sensors(shapes),
-        )
-        static_segment_program = self._make_gl_program(
-            vertex_shader=_LINE_VERTEX_SHADER,
-            geometry_shader=_LINE_GEOMETRY_SHADER,
-            fragment_shader=_LINE_FRAGMENT_SHADER,
-            color=np.array([0.0, 0.0, 0.0, 0.4], dtype=np.float32),
-            width=np.array([0.004], dtype=np.float32),
-        )
-        self._static_lines = SegmentVA(
-            ctx=self._window.ctx,
-            program=static_segment_program,
-            segments=_collect_static_lines(shapes),
-        )
-        head_program = self._make_gl_program(
-            vertex_shader=_LINE_VERTEX_SHADER,
-            geometry_shader=_LINE_GEOMETRY_SHADER,
-            fragment_shader=_LINE_FRAGMENT_SHADER,
-            color=np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32),
-            width=np.array([0.004], dtype=np.float32),
-        )
-        self._heads = SegmentVA(
-            ctx=self._window.ctx,
-            program=head_program,
-            segments=_collect_heads(shapes),
-        )
-        self._overlays = {}
 
     def close(self) -> None:
         self._window.close()
@@ -427,90 +546,13 @@ class MglVisualizer:
         w, h = self._figsize
         return output.reshape(h, w, -1)[::-1]
 
+    def overlay(self, name: str, value: Any) -> None:
+        self._renderer._overlay(name, value)
+
     def render(self, env: PymunkEnv) -> None:
         self._window.clear(1.0, 1.0, 1.0)
         self._window.use()
-        shapes = env.get_space().shapes
-        if self._circles.update(*_collect_circles(shapes, self._size_scaling)):
-            self._circles.render()
-        if self._heads.update(_collect_heads(shapes)):
-            self._heads.render()
-        sensors = _collect_sensors(shapes)
-        if self._sensors.update(sensors):
-            self._sensors.render()
-        self._static_lines.render()
-
-    def overlay(self, name: str, value: Any) -> Any:
-        """Render additional value as an overlay"""
-        key = name.lower()
-        if key == "arrow":
-            segments = _collect_policies(value, self._range_min * 0.1)
-            if "arrow" in self._overlays:
-                do_render = self._overlays["arrow"].update(segments)
-            else:
-                arrow_program = self._make_gl_program(
-                    vertex_shader=_LINE_VERTEX_SHADER,
-                    geometry_shader=_ARROW_GEOMETRY_SHADER,
-                    fragment_shader=_LINE_FRAGMENT_SHADER,
-                    color=np.array([0.98, 0.45, 0.45, 1.0], dtype=np.float32),
-                )
-                self._overlays["arrow"] = SegmentVA(
-                    ctx=self._window.ctx,
-                    program=arrow_program,
-                    segments=segments,
-                )
-                do_render = True
-            if do_render:
-                self._overlays["arrow"].render()
-        elif key.startswith("stack"):
-            xi, yi = map(int, key.split("-")[1:])
-            image = np.flipud(value)
-            h, w = image.shape[:2]
-            image_bytes = image.tobytes()
-            if key not in self._overlays:
-                texture = self._window.ctx.texture((w, h), 3, image_bytes)
-                texture.build_mipmaps()
-                program = self._make_gl_program(
-                    vertex_shader=_TEXTURE_VERTEX_SHADER,
-                    fragment_shader=_TEXTURE_FRAGMENT_SHADER,
-                    screen_idx=(xi, yi),
-                    game_x=(0.0, 1.0),
-                    game_y=(0.0, 1.0),
-                )
-                self._overlays[key] = TextureVA(self._window.ctx, program, texture)
-            self._overlays[key].update(image_bytes)
-            self._overlays[key].render()
-        else:
-            raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
-
-    def _make_gl_program(
-        self,
-        vertex_shader: str,
-        geometry_shader: str | None = None,
-        fragment_shader: str | None = None,
-        screen_idx: tuple[int, int] = (0, 0),
-        game_x: tuple[float, float] | None = None,
-        game_y: tuple[float, float] | None = None,
-        **kwargs: NDArray,
-    ) -> mgl.Program:
-        ctx = self._window.ctx
-        ctx.enable(mgl.PROGRAM_POINT_SIZE | mgl.BLEND)
-        ctx.blend_func = mgl.DEFAULT_BLENDING
-        prog = ctx.program(
-            vertex_shader=vertex_shader,
-            geometry_shader=geometry_shader,
-            fragment_shader=fragment_shader,
-        )
-        proj = _make_projection_matrix(
-            game_x=game_x or (0, self._x_range),
-            game_y=game_y or (0, self._y_range),
-            screen_x=self._screen_x[screen_idx[0]],
-            screen_y=self._screen_y[screen_idx[1]],
-        )
-        prog["proj"].write(proj)  # type: ignore
-        for key, value in kwargs.items():
-            prog[key].write(value)  # type: ignore
-        return prog
+        self._renderer.render(env=env)
 
     def show(self) -> None:
         self._window.swap_buffers()
@@ -523,7 +565,7 @@ class _EglHeadlessWindow(headless.Window):
         """Create an standalone context and framebuffer"""
         self._ctx = mgl.create_standalone_context(
             require=self.gl_version_code,
-            backend="egl",
+            backend="egl",  # type: ignore
         )
         self._fbo = self.ctx.framebuffer(
             color_attachments=self.ctx.texture(self.size, 4, samples=self._samples),
