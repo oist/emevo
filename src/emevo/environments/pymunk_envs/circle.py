@@ -17,6 +17,7 @@ from emevo.environments.utils.color import Color
 from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
 from emevo.environments.utils.locating import (
     CircleCoordinate,
+    Coordinate,
     InitLoc,
     InitLocFn,
     SquareCoordinate,
@@ -369,6 +370,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
 
     def get_space(self) -> pymunk.Space:
         return self._space
+
+    def get_coordinate(self) -> Coordinate:
+        return self._coordinate
 
     def bodies(self) -> list[CFBody]:
         """Return the list of all bodies"""

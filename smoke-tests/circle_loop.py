@@ -50,7 +50,7 @@ def main(
         env_kwargs["max_abs_angle"] = np.pi / 40
 
     if use_test_env:
-        env = test_utils.predefined_env(**env_kwargs)
+        env = test_utils.predefined_env(**env_kwargs, seed=seed)
     else:
         if logistic_foods:
             env_kwargs["food_num_fn"] = "logistic", 6, 1.1, 12
@@ -61,6 +61,7 @@ def main(
             "CircleForaging-v0",
             env_shape=env_shape,
             food_initial_force=food_initial_force,
+            seed=seed,
             **env_kwargs,
         )
     bodies = env.bodies()

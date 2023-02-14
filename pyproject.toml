@@ -33,6 +33,7 @@ moderngl = [
     "moderngl-window >= 2.4"
 ]
 pygame = ["pygame >= 2.0"]
+pyside6 = ["PySide6 >= 6.4.1"]
 video = ["imageio-ffmpeg >= 0.4"]
 
 [project.readme]
