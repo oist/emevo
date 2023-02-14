@@ -65,7 +65,7 @@ class PymunkMglWidget(QOpenGLWidget):
 
     def paintGL(self) -> None:
         if not self._initialized:
-            self._ctx = moderngl.create_context(require=410)
+            self._ctx = moderngl.create_context(require=410, share=True, backend="egl")
             if self._ctx.error != "GL_NO_ERROR":
                 raise RuntimeError(f"The following error occured: {self._ctx.error}")
             self._fbo = self._ctx.detect_framebuffer()

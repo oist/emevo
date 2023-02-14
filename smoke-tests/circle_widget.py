@@ -40,6 +40,7 @@ def main(
 
     app = QtWidgets.QApplication([])
     widget = PymunkMglWidget(env, (640, 640), step_fn=step_fn)  # type: ignore
+    widget.setWindowTitle("Testing Qt widget")
     timer = QTimer(widget)
     timer.start(20)
     timer.timeout.connect(widget.update)  # type: ignore
