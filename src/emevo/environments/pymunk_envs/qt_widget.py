@@ -150,6 +150,8 @@ class PymunkMglWidget(QOpenGLWidget):
         self._fbo.use()
         self._ctx.clear(1.0, 1.0, 1.0)
         self._renderer.render(self._env)  # type: ignore
+        if overlay is not None:
+            self._renderer.overlay(*overlay)
         self._state.changed = False
 
     def _scale_position(self, position: QPointF) -> Vec2d:
