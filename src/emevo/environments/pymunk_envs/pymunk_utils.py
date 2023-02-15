@@ -24,6 +24,13 @@ class CollisionType(enum.IntEnum):
         return pymunk.ShapeFilter(categories=1 << self.value)
 
 
+def make_filter(*collision_types: CollisionType) -> pymunk.ShapeFilter:
+    mask = 0
+    for collision_type in collision_types:
+        mask |= 1 << collision_type.value
+    return pymunk.ShapeFilter(mask)
+
+
 def _select(
     shapes: tuple[pymunk.Shape, pymunk.Shape],
     target_type: CollisionType,

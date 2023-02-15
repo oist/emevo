@@ -251,14 +251,14 @@ class TextureVA(Renderable):
 
 def _collect_circles(
     shapes: list[pymunk.Shape],
-    size_scaling: float,
+    circle_scaling: float,
 ) -> tuple[NDArray, NDArray, NDArray]:
     points = []
     scales = []
     colors = []
     for circle in filter(lambda shape: isinstance(shape, pymunk.Circle), shapes):
         points.append(circle.body.position + circle.offset)
-        scales.append(circle.radius * size_scaling)
+        scales.append(circle.radius * circle_scaling)
         colors.append(circle.color)
     return (
         np.array(points, dtype=np.float32),
@@ -352,18 +352,18 @@ class MglRenderer:
         if x_range < y_range:
             self._range_min = x_range
             total_width = screen_width + int(sum(hoffsets))
-            self._size_scaling = total_width / x_range * 2
+            self._circle_scaling = total_width / x_range * 2
         else:
             self._range_min = y_range
             total_height = screen_height + int(sum(voffsets))
-            self._size_scaling = total_height / y_range * 2
+            self._circle_scaling = total_height / y_range * 2
 
         circle_program = self._make_gl_program(
             vertex_shader=_CIRCLE_VERTEX_SHADER,
             fragment_shader=_CIRCLE_FRAGMENT_SHADER,
         )
         shapes = env.get_space().shapes
-        points, scales, colors = _collect_circles(shapes, self._size_scaling)
+        points, scales, colors = _collect_circles(shapes, self._circle_scaling)
         self._circles = CircleVA(
             ctx=context,
             program=circle_program,
@@ -483,7 +483,7 @@ class MglRenderer:
     def render(self, env: PymunkEnv) -> None:
         shapes = env.get_space().shapes
 
-        if self._circles.update(*_collect_circles(shapes, self._size_scaling)):
+        if self._circles.update(*_collect_circles(shapes, self._circle_scaling)):
             self._circles.render()
         if self._heads.update(_collect_heads(shapes)):
             self._heads.render()

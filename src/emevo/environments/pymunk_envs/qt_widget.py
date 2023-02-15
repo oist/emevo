@@ -1,17 +1,22 @@
+"""Qt widget with moderngl visualizer for advanced visualization.
+"""
+
+
+import dataclasses
 from functools import partial
 from typing import Callable
 
 import moderngl
-from PySide6.QtGui import QGuiApplication, QSurfaceFormat
+import pymunk
+from pymunk.vec2d import Vec2d
+from PySide6.QtCore import QPointF, QTimer
+from PySide6.QtGui import QGuiApplication, QMouseEvent, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
 from emevo.environments.pymunk_envs.moderngl_vis import MglRenderer
 from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
-
-
-def _do_nothing(_env: PymunkEnv) -> None:
-    pass
+from emevo.environments.pymunk_envs.pymunk_utils import CollisionType, make_filter
 
 
 def _mgl_qsurface_fmt() -> QSurfaceFormat:
@@ -24,12 +29,61 @@ def _mgl_qsurface_fmt() -> QSurfaceFormat:
     return fmt
 
 
+@dataclasses.dataclass
+class PanTool:
+    """
+    Handle mouse drag. Based on moderngl example code:
+    https://github.com/moderngl/moderngl/blob/master/examples/renderer_example.py
+    """
+
+    body: pymunk.Body | None = None
+    point: Vec2d = dataclasses.field(default_factory=Vec2d.zero)
+
+    def start_drag(self, point: Vec2d, body: pymunk.Body) -> None:
+        self.body = body
+        self.point = point
+
+    def dragging(self, point: Vec2d) -> None:
+        if self.body is not None:
+            delta = point - self.point
+            self.point = point
+            print(self.body.position, delta)
+            self.body.position = self.body.position + delta
+            if self.body.space is not None:
+                self.body.space.reindex_shapes_for_body(self.body)
+
+    def stop_drag(self, point: Vec2d) -> None:
+        if self.body is not None:
+            self.dragging(point)
+            body = self.body
+            self.body = None
+
+    @property
+    def is_dragging(self) -> bool:
+        return self.body is not None
+
+
+@dataclasses.dataclass
+class AppState:
+    changed: bool = False
+    pantool: PanTool = dataclasses.field(default_factory=PanTool)
+    paused: bool = False
+    paused_before: bool = False
+
+
+def _do_nothing(_env: PymunkEnv, _app_state: AppState) -> None:
+    pass
+
+
 class PymunkMglWidget(QOpenGLWidget):
     def __init__(
         self,
+        *,
         env: PymunkEnv,
+        app_state: AppState | None = None,
+        fps: int = 20,
         figsize: tuple[float, float] | None = None,
-        step_fn: Callable[[PymunkEnv], None] = _do_nothing,
+        step_fn: Callable[[PymunkEnv, AppState], None] = _do_nothing,
         parent: QWidget | None = None,
     ) -> None:
         # Set default format
@@ -42,6 +96,7 @@ class PymunkMglWidget(QOpenGLWidget):
         if figsize is None:
             figsize = x_range * 3.0, y_range * 3.0
         self._figsize = int(figsize[0]), int(figsize[1])
+        self._scaling = x_range / figsize[0], y_range / figsize[1]
         self._make_renderer = partial(
             MglRenderer,
             screen_width=self._figsize[0],
@@ -52,8 +107,11 @@ class PymunkMglWidget(QOpenGLWidget):
         )
         self._step_fn = step_fn
         self._env = env
-        self._paused = False
+        self._state = AppState() if app_state is None else app_state
         self._initialized = False
+        self._timer = QTimer(self)
+        self._timer.start(fps)
+        self._timer.timeout.connect(self.update)  # type: ignore
 
         self.setFixedSize(*self._figsize)
         self.setMouseTracking(True)
@@ -80,7 +138,42 @@ class PymunkMglWidget(QOpenGLWidget):
         self.render()
 
     def render(self) -> None:
-        self._step_fn(self._env)
+        self._step_fn(self._env, self._state)
         self._fbo.use()
         self._ctx.clear(1.0, 1.0, 1.0)
-        self._renderer.render(self._env)
+        self._renderer.render(self._env)  # type: ignore
+        self._state.changed = False
+
+    def _scale_position(self, position: QPointF) -> Vec2d:
+        return Vec2d(
+            position.x() * self._scaling[0],
+            (self._figsize[1] - position.y()) * self._scaling[1],
+        )
+
+    def mousePressEvent(self, evt: QMouseEvent) -> None:
+        position = self._scale_position(evt.position())
+        query = self._env.get_space().point_query(
+            position,
+            0.0,
+            shape_filter=make_filter(CollisionType.AGENT, CollisionType.FOOD),
+        )
+        if len(query) == 1:
+            self._state.pantool.start_drag(
+                position,
+                query[0].shape.body,  # type: ignore
+            )
+            self._paused_before = self._state.paused
+            self._state.paused = True
+            self._timer.stop()
+            self.update()
+
+    def mouseMoveEvent(self, evt: QMouseEvent) -> None:
+        self._state.pantool.dragging(self._scale_position(evt.position()))
+        self.update()
+
+    def mouseReleaseEvent(self, evt: QMouseEvent) -> None:
+        if self._state.pantool.is_dragging:
+            self._state.pantool.stop_drag(self._scale_position(evt.position()))
+            self._state.paused = self._state.paused_before
+            self._timer.start()
+            self.update()
