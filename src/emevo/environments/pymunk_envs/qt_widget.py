@@ -4,7 +4,7 @@
 
 import dataclasses
 from functools import partial
-from typing import Callable
+from typing import Any, Callable
 
 import moderngl
 import pymunk
@@ -37,17 +37,19 @@ class PanTool:
     """
 
     body: pymunk.Body | None = None
+    shape: pymunk.Shape | None = None
     point: Vec2d = dataclasses.field(default_factory=Vec2d.zero)
 
-    def start_drag(self, point: Vec2d, body: pymunk.Body) -> None:
-        self.body = body
+    def start_drag(self, point: Vec2d, shape: pymunk.Shape) -> None:
+        shape.color = shape.color._replace(a=100)  # type: ignore
+        self.shape = shape
+        self.body = shape.body
         self.point = point
 
     def dragging(self, point: Vec2d) -> None:
         if self.body is not None:
             delta = point - self.point
             self.point = point
-            print(self.body.position, delta)
             self.body.position = self.body.position + delta
             if self.body.space is not None:
                 self.body.space.reindex_shapes_for_body(self.body)
@@ -55,8 +57,9 @@ class PanTool:
     def stop_drag(self, point: Vec2d) -> None:
         if self.body is not None:
             self.dragging(point)
-            body = self.body
+            self.shape.color = self.shape.color._replace(a=255)  # type: ignore
             self.body = None
+            self.shape = None
 
     @property
     def is_dragging(self) -> bool:
@@ -80,10 +83,14 @@ class PymunkMglWidget(QOpenGLWidget):
         self,
         *,
         env: PymunkEnv,
+        timer: QTimer,
         app_state: AppState | None = None,
-        fps: int = 20,
         figsize: tuple[float, float] | None = None,
         step_fn: Callable[[PymunkEnv, AppState], None] = _do_nothing,
+        overlay_fn: Callable[
+            [PymunkEnv, AppState],
+            tuple[str, Any] | None,
+        ] = _do_nothing,
         parent: QWidget | None = None,
     ) -> None:
         # Set default format
@@ -106,11 +113,11 @@ class PymunkMglWidget(QOpenGLWidget):
             env=env,
         )
         self._step_fn = step_fn
+        self._overlay_fn = overlay_fn
         self._env = env
         self._state = AppState() if app_state is None else app_state
         self._initialized = False
-        self._timer = QTimer(self)
-        self._timer.start(fps)
+        self._timer = timer
         self._timer.timeout.connect(self.update)  # type: ignore
 
         self.setFixedSize(*self._figsize)
@@ -139,6 +146,7 @@ class PymunkMglWidget(QOpenGLWidget):
 
     def render(self) -> None:
         self._step_fn(self._env, self._state)
+        overlay = self._overlay_fn(self._env, self._state)
         self._fbo.use()
         self._ctx.clear(1.0, 1.0, 1.0)
         self._renderer.render(self._env)  # type: ignore
@@ -158,10 +166,7 @@ class PymunkMglWidget(QOpenGLWidget):
             shape_filter=make_filter(CollisionType.AGENT, CollisionType.FOOD),
         )
         if len(query) == 1:
-            self._state.pantool.start_drag(
-                position,
-                query[0].shape.body,  # type: ignore
-            )
+            self._state.pantool.start_drag(position, query[0].shape)  # type: ignore
             self._paused_before = self._state.paused
             self._state.paused = True
             self._timer.stop()

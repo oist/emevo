@@ -437,7 +437,7 @@ class MglRenderer:
             prog[key].write(value)  # type: ignore
         return prog
 
-    def _overlay(self, name: str, value: Any) -> Any:
+    def overlay(self, name: str, value: Any) -> Any:
         """Render additional value as an overlay"""
         key = name.lower()
         if key == "arrow":
@@ -547,7 +547,7 @@ class MglVisualizer:
         return output.reshape(h, w, -1)[::-1]
 
     def overlay(self, name: str, value: Any) -> None:
-        self._renderer._overlay(name, value)
+        self._renderer.overlay(name, value)
 
     def render(self, env: PymunkEnv) -> None:
         self._window.clear(1.0, 1.0, 1.0)
