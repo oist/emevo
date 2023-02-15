@@ -2,7 +2,7 @@ from functools import partial
 from typing import Callable
 
 import moderngl
-from PySide6.QtGui import QSurfaceFormat
+from PySide6.QtGui import QGuiApplication, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
@@ -32,6 +32,8 @@ class PymunkMglWidget(QOpenGLWidget):
         step_fn: Callable[[PymunkEnv], None] = _do_nothing,
         parent: QWidget | None = None,
     ) -> None:
+        # Set default format
+        QSurfaceFormat.setDefaultFormat(_mgl_qsurface_fmt())
         super().__init__(parent)
         # init renderer
         xlim, ylim = env.get_coordinate().bbox()
@@ -62,8 +64,14 @@ class PymunkMglWidget(QOpenGLWidget):
 
     def paintGL(self) -> None:
         if not self._initialized:
-            self.context().setFormat(_mgl_qsurface_fmt())
-            self._ctx = moderngl.create_context(require=410, share=True, backend="egl")
+            if QGuiApplication.platformName() in ["eglfs", "wayland"]:
+                self._ctx = moderngl.create_context(
+                    require=410,
+                    share=True,
+                    backend="egl",  # type: ignore
+                )
+            else:
+                self._ctx = moderngl.create_context(require=410)
             if self._ctx.error != "GL_NO_ERROR":
                 raise RuntimeError(f"The following error occured: {self._ctx.error}")
             self._fbo = self._ctx.detect_framebuffer()
