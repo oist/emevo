@@ -39,9 +39,13 @@ def main(
         loguru.logger.enable("emevo")
 
     if forward_sensor:
-        env_kwargs = {"sensor_range": (-30, 30), "sensor_length": 100}
+        env_kwargs = {
+            "sensor_range": (-30, 30),
+            "sensor_length": 100,
+            "foodloc_interval": 20,
+        }
     else:
-        env_kwargs = {}
+        env_kwargs = {"foodloc_interval": 10}
 
     if obstacles:
         env_kwargs["obstacles"] = [(100, 50, 100, 200)]

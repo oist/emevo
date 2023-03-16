@@ -177,6 +177,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         food_mass: float = 0.25,
         food_friction: float = 0.1,
         food_initial_force: tuple[float, float] = (0.0, 0.0),
+        foodloc_interval: int = 1000,
         wall_friction: float = 0.05,
         max_abs_impulse: float = 0.2,
         max_abs_angle: float | None = None,
@@ -206,6 +207,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._max_abs_velocity = max_abs_velocity
         self._oned_impulse = oned_impulse
         self._food_initial_force = food_initial_force
+        self._foodloc_interval = foodloc_interval
         self._energy_fn = energy_fn
 
         if env_shape == "square":
@@ -338,6 +340,19 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
                         (self._xlim[1] * 0.25, self._ylim[1] * 0.75),
                     ],
                     [(self._x_range * 0.1, self._y_range * 0.1)] * 2,
+                ),
+                "switching": (
+                    self._foodloc_interval,
+                    (
+                        "gaussian",
+                        (self._xlim[1] * 0.75, self._ylim[1] * 0.75),
+                        (self._x_range * 0.1, self._y_range * 0.1),
+                    ),
+                    (
+                        "gaussian",
+                        (self._xlim[1] * 0.25, self._ylim[1] * 0.75),
+                        (self._x_range * 0.1, self._y_range * 0.1),
+                    ),
                 ),
                 "uniform": (self._coordinate,),
             },

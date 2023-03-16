@@ -5,7 +5,7 @@ Utility functions to write food reproduction code in foraging environments.
 
 import dataclasses
 import enum
-from typing import Any, Callable, Protocol, Sequence
+from typing import Any, Callable, Iterable, Protocol, Sequence
 
 import numpy as np
 from numpy.random import Generator
@@ -70,12 +70,39 @@ def _wrap_initloc(fn: InitLocFn) -> ReprLocFn:
     return lambda generator, _locations: fn(generator)
 
 
+class ReprLocSwitching:
+    def __init__(
+        self,
+        interval: int,
+        *reprloc_fns: tuple[tuple[str, ...] | ReprLocFn],
+    ) -> None:
+        locfn_list = []
+        for fn_or_base in reprloc_fns:
+            if callable(fn_or_base):
+                locfn_list.append(fn_or_base)
+            else:
+                name, *args = fn_or_base
+                print(fn_or_base, name)
+                locfn_list.append(ReprLoc(name)(*args))
+        self._locfn_list = locfn_list
+        self._interval = interval
+        self._count = 0
+        self._current = 0
+
+    def __call__(self, generator: Generator, loc: Sequence[_Location]) -> NDArray:
+        self._count += 1
+        if self._count % self._interval == 0:
+            self._current = (self._current + 1) % len(self._locfn_list)
+        return self._locfn_list[self._current](generator, loc)
+
+
 class ReprLoc(str, enum.Enum):
     """Methods to determine the location of new foods or agents"""
 
     GAUSSIAN = "gaussian"
     GAUSSIAN_MIXTURE = "gaussian-mixture"
     PRE_DIFINED = "pre-defined"
+    SWITCHING = "switching"
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> ReprLocFn:
@@ -85,6 +112,8 @@ class ReprLoc(str, enum.Enum):
             return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs))
         elif self is ReprLoc.PRE_DIFINED:
             return _wrap_initloc(init_loc_pre_defined(*args, **kwargs))
+        elif self is ReprLoc.SWITCHING:
+            return ReprLocSwitching(*args, **kwargs)
         elif self is ReprLoc.UNIFORM:
             return _wrap_initloc(init_loc_uniform(*args, **kwargs))
         else:
