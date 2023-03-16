@@ -1,11 +1,11 @@
 """
 Utility functions to write food reproduction code in foraging environments.
 """
-
+from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Any, Callable, Iterable, Protocol, Sequence
+from typing import Any, Callable, Protocol, Sequence
 
 import numpy as np
 from numpy.random import Generator
