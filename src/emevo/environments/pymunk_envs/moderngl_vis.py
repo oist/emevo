@@ -351,12 +351,10 @@ class MglRenderer:
         self._range_min = min(x_range, y_range)
         if x_range < y_range:
             self._range_min = x_range
-            total_width = screen_width + int(sum(hoffsets))
-            self._circle_scaling = total_width / x_range * 2
+            self._circle_scaling = screen_width / x_range * 2
         else:
             self._range_min = y_range
-            total_height = screen_height + int(sum(voffsets))
-            self._circle_scaling = total_height / y_range * 2
+            self._circle_scaling = screen_height / y_range * 2
 
         circle_program = self._make_gl_program(
             vertex_shader=_CIRCLE_VERTEX_SHADER,
