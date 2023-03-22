@@ -82,7 +82,6 @@ class ReprLocSwitching:
                 locfn_list.append(fn_or_base)
             else:
                 name, *args = fn_or_base
-                print(fn_or_base, name)
                 locfn_list.append(ReprLoc(name)(*args))
         self._locfn_list = locfn_list
         self._interval = interval
