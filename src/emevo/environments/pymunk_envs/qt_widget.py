@@ -18,10 +18,10 @@ from PySide6.QtCharts import (
     QChartView,
     QValueAxis,
 )
-from PySide6.QtCore import QPointF, Qt, QTimer
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QMouseEvent, QPainter, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QGridLayout, QWidget
 
 from emevo.environments.pymunk_envs.moderngl_vis import MglRenderer
 from emevo.environments.pymunk_envs.pymunk_env import PymunkEnv
@@ -87,6 +87,8 @@ def _do_nothing(_env: PymunkEnv, state: AppState) -> None:
 
 
 class PymunkMglWidget(QOpenGLWidget):
+    selectionChanged = Signal(int)
+
     def __init__(
         self,
         *,
@@ -195,20 +197,20 @@ class PymunkMglWidget(QOpenGLWidget):
 class BarChart(QWidget):
     def __init__(
         self,
+        initial_values: dict[str, Any],
         title: str = "Bar Chart",
         categories: list[str] | None = None,
-        *names: str,
     ) -> None:
         super().__init__()
 
-        self.barsets = []
-        for name in names:
+        self.barsets = {}
+        for name, value in initial_values.items():
             barset = QBarSet(name)
-            barset.append(0.0)
-            self.barsets.append(barset)
+            barset.append(value)
+            self.barsets[name] = barset
 
         self.series = QBarSeries()
-        for barset in self.barsets:
+        for barset in self.barsets.values():
             self.series.append(barset)
 
         self.chart = QChart()
@@ -235,4 +237,14 @@ class BarChart(QWidget):
         self._chart_view = QChartView(self.chart)
         self._chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        self._chart_view.chart().show()
         self._chart_view.chart().legend().show()
+        # create main layout
+        layout = QGridLayout(self)
+        layout.addWidget(self._chart_view, 1, 1)
+        self.setLayout(layout)
+
+    def update_values(self, values: dict[str, float], index: int = 0) -> None:
+        for name, value in values.items():
+            self.barsets[name].replace(index, value)
+        self.update()

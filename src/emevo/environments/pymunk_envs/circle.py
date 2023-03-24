@@ -320,14 +320,14 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     def _make_food_num_fn(food_num_fn: str | tuple | ReprNumFn) -> ReprNumFn:
         return _get_num_or_loc_fn(
             food_num_fn,
-            ReprNum,
+            ReprNum,  # type: ignore
             {"constant": (10,), "logistic": (8, 1.2, 12)},
         )
 
     def _make_food_loc_fn(self, food_loc_fn: str | tuple | ReprLocFn) -> ReprLocFn:
         return _get_num_or_loc_fn(
             food_loc_fn,
-            ReprLoc,
+            ReprLoc,  # type: ignore
             {
                 "gaussian": (
                     (self._xlim[1] * 0.75, self._ylim[1] * 0.75),
@@ -361,7 +361,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     def _make_body_loc_fn(self, init_loc_fn: str | tuple | InitLocFn) -> InitLocFn:
         return _get_num_or_loc_fn(
             init_loc_fn,
-            InitLoc,
+            InitLoc,  # type: ignore
             {
                 "gaussian": (
                     (self._xlim[1] * 0.25, self._ylim[1] * 0.25),
