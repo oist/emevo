@@ -3,14 +3,23 @@
 
 
 import dataclasses
+from collections.abc import Iterable
 from functools import partial
 from typing import Any, Callable
 
 import moderngl
 import pymunk
 from pymunk.vec2d import Vec2d
-from PySide6.QtCore import QPointF, QTimer
-from PySide6.QtGui import QGuiApplication, QMouseEvent, QSurfaceFormat
+from PySide6.QtCharts import (
+    QBarCategoryAxis,
+    QBarSeries,
+    QBarSet,
+    QChart,
+    QChartView,
+    QValueAxis,
+)
+from PySide6.QtCore import QPointF, Qt, QTimer
+from PySide6.QtGui import QGuiApplication, QMouseEvent, QPainter, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
@@ -68,13 +77,12 @@ class PanTool:
 
 @dataclasses.dataclass
 class AppState:
-    changed: bool = False
     pantool: PanTool = dataclasses.field(default_factory=PanTool)
     paused: bool = False
     paused_before: bool = False
 
 
-def _do_nothing(_env: PymunkEnv, _app_state: AppState) -> None:
+def _do_nothing(_env: PymunkEnv, state: AppState) -> None:
     pass
 
 
@@ -86,10 +94,9 @@ class PymunkMglWidget(QOpenGLWidget):
         timer: QTimer,
         app_state: AppState | None = None,
         figsize: tuple[float, float] | None = None,
-        step_fn: Callable[[PymunkEnv, AppState], None] = _do_nothing,
-        overlay_fn: Callable[
+        step_fn: Callable[
             [PymunkEnv, AppState],
-            tuple[str, Any] | None,
+            Iterable[tuple[str, Any]] | None,
         ] = _do_nothing,
         parent: QWidget | None = None,
     ) -> None:
@@ -113,12 +120,12 @@ class PymunkMglWidget(QOpenGLWidget):
             env=env,
         )
         self._step_fn = step_fn
-        self._overlay_fn = overlay_fn
         self._env = env
         self._state = AppState() if app_state is None else app_state
         self._initialized = False
         self._timer = timer
         self._timer.timeout.connect(self.update)  # type: ignore
+        self._overlay_fns = []
 
         self.setFixedSize(*self._figsize)
         self.setMouseTracking(True)
@@ -145,14 +152,13 @@ class PymunkMglWidget(QOpenGLWidget):
         self.render()
 
     def render(self) -> None:
-        self._step_fn(self._env, self._state)
-        overlay = self._overlay_fn(self._env, self._state)
+        overlays = self._step_fn(self._env, self._state)
         self._fbo.use()
         self._ctx.clear(1.0, 1.0, 1.0)
         self._renderer.render(self._env)  # type: ignore
-        if overlay is not None:
-            self._renderer.overlay(*overlay)
-        self._state.changed = False
+        if overlays is not None:
+            for overlay in overlays:
+                self._renderer.overlay(*overlay)
 
     def _scale_position(self, position: QPointF) -> Vec2d:
         return Vec2d(
@@ -184,3 +190,49 @@ class PymunkMglWidget(QOpenGLWidget):
             self._state.paused = self._state.paused_before
             self._timer.start()
             self.update()
+
+
+class BarChart(QWidget):
+    def __init__(
+        self,
+        title: str = "Bar Chart",
+        categories: list[str] | None = None,
+        *names: str,
+    ) -> None:
+        super().__init__()
+
+        self.barsets = []
+        for name in names:
+            barset = QBarSet(name)
+            barset.append(0.0)
+            self.barsets.append(barset)
+
+        self.series = QBarSeries()
+        for barset in self.barsets:
+            self.series.append(barset)
+
+        self.chart = QChart()
+        self.chart.addSeries(self.series)
+        self.chart.setTitle(title)
+        self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+
+        self.axis_x = QBarCategoryAxis()
+        if categories is None:
+            self.axis_x.append(title)
+        else:
+            self.axis_x.append(categories)
+        self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
+        self.series.attachAxis(self.axis_x)
+
+        self.axis_y = QValueAxis()
+        self.axis_y.setRange(0, 15)
+        self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
+        self.series.attachAxis(self.axis_y)
+
+        self.chart.legend().setVisible(True)
+        self.chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+
+        self._chart_view = QChartView(self.chart)
+        self._chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        self._chart_view.chart().legend().show()
