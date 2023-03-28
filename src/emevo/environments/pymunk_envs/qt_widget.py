@@ -1,6 +1,6 @@
 """Qt widget with moderngl visualizer for advanced visualization.
 """
-
+from __future__ import annotations
 
 import dataclasses
 from collections.abc import Iterable
@@ -8,6 +8,7 @@ from functools import partial
 from typing import Any, Callable
 
 import moderngl
+import numpy as np
 import pymunk
 from pymunk.vec2d import Vec2d
 from PySide6.QtCharts import (
@@ -18,7 +19,7 @@ from PySide6.QtCharts import (
     QChartView,
     QValueAxis,
 )
-from PySide6.QtCore import QPointF, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QMouseEvent, QPainter, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QGridLayout, QWidget
@@ -168,6 +169,12 @@ class PymunkMglWidget(QOpenGLWidget):
             (self._figsize[1] - position.y()) * self._scaling[1],
         )
 
+    def _emit_selected(self, index: int | None) -> None:
+        if index is None:
+            self.selectionChanged.emit(-1)
+        else:
+            self.selectionChanged.emit(index)
+
     def mousePressEvent(self, evt: QMouseEvent) -> None:
         position = self._scale_position(evt.position())
         query = self._env.get_space().point_query(
@@ -176,11 +183,14 @@ class PymunkMglWidget(QOpenGLWidget):
             shape_filter=make_filter(CollisionType.AGENT, CollisionType.FOOD),
         )
         if len(query) == 1:
-            self._state.pantool.start_drag(position, query[0].shape)  # type: ignore
-            self._paused_before = self._state.paused
-            self._state.paused = True
-            self._timer.stop()
-            self.update()
+            shape = query[0].shape
+            if shape is not None:
+                self._state.pantool.start_drag(position, shape)
+                self._emit_selected(self._env.get_body_index(shape.body))
+                self._paused_before = self._state.paused
+                self._state.paused = True
+                self._timer.stop()
+                self.update()
 
     def mouseMoveEvent(self, evt: QMouseEvent) -> None:
         self._state.pantool.dragging(self._scale_position(evt.position()))
@@ -189,6 +199,7 @@ class PymunkMglWidget(QOpenGLWidget):
     def mouseReleaseEvent(self, evt: QMouseEvent) -> None:
         if self._state.pantool.is_dragging:
             self._state.pantool.stop_drag(self._scale_position(evt.position()))
+            self._emit_selected(None)
             self._state.paused = self._state.paused_before
             self._timer.start()
             self.update()
@@ -197,20 +208,19 @@ class PymunkMglWidget(QOpenGLWidget):
 class BarChart(QWidget):
     def __init__(
         self,
-        initial_values: dict[str, Any],
+        initial_values: dict[str, float | list[float]],
+        categ: str = "Rewards",
         title: str = "Bar Chart",
-        categories: list[str] | None = None,
     ) -> None:
         super().__init__()
 
         self.barsets = {}
+        self.series = QBarSeries()
+
         for name, value in initial_values.items():
             barset = QBarSet(name)
             barset.append(value)
             self.barsets[name] = barset
-
-        self.series = QBarSeries()
-        for barset in self.barsets.values():
             self.series.append(barset)
 
         self.chart = QChart()
@@ -219,15 +229,12 @@ class BarChart(QWidget):
         self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
 
         self.axis_x = QBarCategoryAxis()
-        if categories is None:
-            self.axis_x.append(title)
-        else:
-            self.axis_x.append(categories)
+        self.axis_x.append([categ])
         self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
         self.series.attachAxis(self.axis_x)
 
         self.axis_y = QValueAxis()
-        self.axis_y.setRange(0, 15)
+        self._update_yrange(initial_values.values())
         self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
         self.series.attachAxis(self.axis_y)
 
@@ -244,7 +251,16 @@ class BarChart(QWidget):
         layout.addWidget(self._chart_view, 1, 1)
         self.setLayout(layout)
 
-    def update_values(self, values: dict[str, float], index: int = 0) -> None:
+    def _update_yrange(self, values: Iterable[float | list[float]]) -> None:
+        values_arr = np.array(list(values))
+        self.axis_y.setRange(np.min(values_arr), np.max(values_arr))
+
+    @Slot(dict)
+    def updateValues(self, values: dict[str, float | list[float]]) -> None:
         for name, value in values.items():
-            self.barsets[name].replace(index, value)
-        self.update()
+            if isinstance(value, float):
+                self.barsets[name].replace(0, value)
+            else:
+                for i, vi in enumerate(value):
+                    self.barsets[name].replace(i, vi)
+        self._update_yrange(values.values())

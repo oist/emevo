@@ -389,6 +389,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     def get_coordinate(self) -> Coordinate:
         return self._coordinate
 
+    def get_body_index(self, body: pymunk.Body) -> int | None:
+        return self._body_indices.get(body, None)
+
     def bodies(self) -> list[CFBody]:
         """Return the list of all bodies"""
         return self._bodies
