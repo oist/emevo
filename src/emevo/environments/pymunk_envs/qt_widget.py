@@ -56,13 +56,16 @@ class PanTool:
         self.body = shape.body
         self.point = point
 
-    def dragging(self, point: Vec2d) -> None:
+    def dragging(self, point: Vec2d) -> bool:
         if self.body is not None:
             delta = point - self.point
             self.point = point
             self.body.position = self.body.position + delta
             if self.body.space is not None:
                 self.body.space.reindex_shapes_for_body(self.body)
+            return True
+        else:
+            return False
 
     def stop_drag(self, point: Vec2d) -> None:
         if self.body is not None:
@@ -88,6 +91,7 @@ def _do_nothing(_env: PymunkEnv, state: AppState) -> None:
 
 
 class PymunkMglWidget(QOpenGLWidget):
+    positionsChanged = Signal()
     selectionChanged = Signal(int)
 
     def __init__(
@@ -193,7 +197,8 @@ class PymunkMglWidget(QOpenGLWidget):
                 self.update()
 
     def mouseMoveEvent(self, evt: QMouseEvent) -> None:
-        self._state.pantool.dragging(self._scale_position(evt.position()))
+        if self._state.pantool.dragging(self._scale_position(evt.position())):
+            self.positionsChanged.emit()
         self.update()
 
     def mouseReleaseEvent(self, evt: QMouseEvent) -> None:
