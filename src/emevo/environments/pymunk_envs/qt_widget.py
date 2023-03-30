@@ -86,7 +86,7 @@ class AppState:
     paused_before: bool = False
 
 
-def _do_nothing(_env: PymunkEnv, state: AppState) -> None:
+def _do_nothing(_state: AppState) -> None:
     pass
 
 
@@ -101,10 +101,7 @@ class PymunkMglWidget(QOpenGLWidget):
         timer: QTimer,
         app_state: AppState | None = None,
         figsize: tuple[float, float] | None = None,
-        step_fn: Callable[
-            [PymunkEnv, AppState],
-            Iterable[tuple[str, Any]] | None,
-        ] = _do_nothing,
+        step_fn: Callable[[AppState], Iterable[tuple[str, Any]] | None] = _do_nothing,
         parent: QWidget | None = None,
     ) -> None:
         # Set default format
@@ -159,7 +156,7 @@ class PymunkMglWidget(QOpenGLWidget):
         self.render()
 
     def render(self) -> None:
-        overlays = self._step_fn(self._env, self._state)
+        overlays = self._step_fn(self._state)
         self._fbo.use()
         self._ctx.clear(1.0, 1.0, 1.0)
         self._renderer.render(self._env)  # type: ignore
@@ -197,9 +194,11 @@ class PymunkMglWidget(QOpenGLWidget):
                 self.update()
 
     def mouseMoveEvent(self, evt: QMouseEvent) -> None:
-        if self._state.pantool.dragging(self._scale_position(evt.position())):
-            self.positionsChanged.emit()
-        self.update()
+        if self._state.pantool.shape is not None:
+            new_pos = self._scale_position(evt.position())
+            if self._state.pantool.dragging(new_pos):
+                self.positionsChanged.emit()
+                self.update()
 
     def mouseReleaseEvent(self, evt: QMouseEvent) -> None:
         if self._state.pantool.is_dragging:
@@ -208,6 +207,14 @@ class PymunkMglWidget(QOpenGLWidget):
             self._state.paused = self._state.paused_before
             self._timer.start()
             self.update()
+
+    @Slot()
+    def pause(self) -> None:
+        self._state.paused = True
+
+    @Slot()
+    def play(self) -> None:
+        self._state.paused = False
 
 
 class BarChart(QWidget):

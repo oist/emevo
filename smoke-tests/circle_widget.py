@@ -10,7 +10,7 @@ from PySide6 import QtWidgets
 from PySide6.QtCore import QTimer
 
 from emevo import make
-from emevo.environments.pymunk_envs.qt_widget import PymunkMglWidget
+from emevo.environments.pymunk_envs.qt_widget import AppState, PymunkMglWidget
 
 
 def main(
@@ -35,7 +35,7 @@ def main(
     bodies = env.bodies()
     gen = np.random.Generator(PCG64(seed=seed))
 
-    def step_fn(env, state):
+    def step_fn(state: AppState):
         if not state.paused:
             actions = {body: body.act_space.sample(gen) for body in bodies}
             env.step(actions)
