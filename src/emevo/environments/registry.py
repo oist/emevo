@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, NoReturn, Type
+from typing import Any, NoReturn
 
 import numpy as np
 
@@ -12,7 +12,7 @@ from emevo import Env
 
 @dataclasses.dataclass(frozen=True)
 class _EnvSpec:
-    cls: Type[Env]
+    cls: type[Env]
     description: str | None
     default_kwargs: dict[str, Any]
 
@@ -79,7 +79,7 @@ def make(
 
 def register(
     name: str,
-    env_class: Type[Env],
+    env_class: type[Env],
     description: str | None = None,
     default_kwargs: dict[str, Any] | None = None,
 ) -> None:

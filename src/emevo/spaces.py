@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Any, Generic, Iterable, NamedTuple, Sequence, Type, TypeVar
+from typing import Any, Generic, Iterable, NamedTuple, Sequence, TypeVar
 
 import numpy as np
 from numpy.random import Generator
@@ -250,7 +250,7 @@ class DiscreteSpace(Space[int]):
 class NamedTupleSpace(Space[NamedTuple], Iterable):
     """Space that returns namedtuple of other spaces"""
 
-    def __init__(self, cls: Type[tuple], **spaces_kwargs: Space) -> None:
+    def __init__(self, cls: type[tuple], **spaces_kwargs: Space) -> None:
         assert all(
             [isinstance(s, Space) for s in spaces_kwargs.values()]
         ), "All arguments of NamedTuple space should be a subclass of Space"
@@ -264,8 +264,10 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
             possibly_missing_keys.remove(key)
         if len(possibly_missing_keys):
             raise ValueError(f"Missing keys: {list(possibly_missing_keys)}")
-        spaces = [(field, spaces_kwargs[field].__class__) for field in fields]
-        self._space_cls = NamedTuple(name + "Space", spaces)
+        self._space_cls = NamedTuple(
+            name + "Space",
+            tuple((field, spaces_kwargs[field].__class__) for field in fields),
+        )
         self.spaces = self._space_cls(**spaces_kwargs)
         dtype = self.spaces[0].dtype
         for space in self.spaces:
