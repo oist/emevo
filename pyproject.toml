@@ -56,3 +56,10 @@ testpaths = ["tests"]
 
 [tool.isort]
 profile = "black"
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "B", "UP"]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]

@@ -56,7 +56,7 @@ def format(session: nox.Session) -> None:
 @nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10"])
 def lint(session: nox.Session) -> None:
     _sync(session, "requirements/lint.txt")
-    session.run("flake8", *SOURCES)
+    session.run("ruff", *SOURCES)
     session.run("black", *SOURCES, "--check")
     session.run("isort", *SOURCES, "--check")
 
