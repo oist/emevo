@@ -17,6 +17,7 @@ from PySide6.QtCharts import (
     QBarSet,
     QChart,
     QChartView,
+    QSplineSeries,
     QValueAxis,
 )
 from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
@@ -48,12 +49,14 @@ class PanTool:
 
     body: pymunk.Body | None = None
     shape: pymunk.Shape | None = None
+    body_index: int | None = None
     point: Vec2d = dataclasses.field(default_factory=Vec2d.zero)
 
-    def start_drag(self, point: Vec2d, shape: pymunk.Shape) -> None:
+    def start_drag(self, point: Vec2d, shape: pymunk.Shape, body_index: int) -> None:
         shape.color = shape.color._replace(a=100)  # type: ignore
         self.shape = shape
         self.body = shape.body
+        self.body_index = body_index
         self.point = point
 
     def dragging(self, point: Vec2d) -> bool:
@@ -91,7 +94,7 @@ def _do_nothing(_state: AppState) -> None:
 
 
 class PymunkMglWidget(QOpenGLWidget):
-    positionsChanged = Signal()
+    positionsChanged = Signal(int)
     selectionChanged = Signal(int)
 
     def __init__(
@@ -186,8 +189,10 @@ class PymunkMglWidget(QOpenGLWidget):
         if len(query) == 1:
             shape = query[0].shape
             if shape is not None:
-                self._state.pantool.start_drag(position, shape)
-                self._emit_selected(self._env.get_body_index(shape.body))
+                body_index = self._env.get_body_index(shape.body)
+                assert body_index is not None
+                self._state.pantool.start_drag(position, shape, body_index)
+                self._emit_selected(body_index)
                 self._paused_before = self._state.paused
                 self._state.paused = True
                 self._timer.stop()
@@ -197,7 +202,7 @@ class PymunkMglWidget(QOpenGLWidget):
         if self._state.pantool.shape is not None:
             new_pos = self._scale_position(evt.position())
             if self._state.pantool.dragging(new_pos):
-                self.positionsChanged.emit()
+                self.positionsChanged.emit(self._state.pantool.body_index)
                 self.update()
 
     def mouseReleaseEvent(self, evt: QMouseEvent) -> None:
@@ -276,3 +281,54 @@ class BarChart(QWidget):
                 for i, vi in enumerate(value):
                     self.barsets[name].replace(i, vi)
         self._update_yrange(values.values())
+
+
+class SplineChart(QChart):
+    def __init__(self, title: str) -> None:
+        super().__init__(
+            QChart.ChartType.ChartTypeCartesian,
+            None,  # type: ignore
+            Qt.WindowType.Widget,
+        )
+        self._series = QSplineSeries(self)
+        self._titles = []
+        self._axisX = QValueAxis()
+        self._axisY = QValueAxis()
+
+        self.addSeries(self._series)
+        self.addAxis(self._axisX, Qt.AlignmentFlag.AlignBottom)
+        self.addAxis(self._axisY, Qt.AlignmentFlag.AlignLeft)
+
+        self._series.attachAxis(self._axisX)
+        self._series.attachAxis(self._axisY)
+        self._x = 0
+        self._n_scrolled = 0
+        self._axisX.setRange(0, 100)
+        self._axisX.setTickCount(20)
+        self._ymin = -10
+        self._ymax = 10
+        self._axisY.setRange(self._ymin, self._ymax)
+        self.setTitle(title)
+        self.legend().hide()
+        self.setAnimationOptions(QChart.AnimationOption.AllAnimations)
+
+    @Slot(float)
+    def appendValue(self, value: float) -> None:
+        if value < self._ymin:
+            self._ymin = value * 2
+            self._axisY.setRange(self._ymin, self._ymax)
+        elif value > self._ymax:
+            self._ymax = value * 2
+            self._axisY.setRange(self._ymin, self._ymax)
+        self._series.append(self._x, value)
+        self._x += 1
+        if self._x >= 60 and (self._x % 20) == 0:
+            self.scroll(20, 0)
+            self._n_scrolled += 1
+
+    @Slot()
+    def reset(self) -> None:
+        self._series.clear()
+        self.scroll(-20 * self._n_scrolled, 0)
+        self._x = 0
+        self._n_scrolled = 0
