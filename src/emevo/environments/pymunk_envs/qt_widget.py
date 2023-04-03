@@ -284,7 +284,7 @@ class BarChart(QWidget):
 
 
 class SplineChart(QChart):
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str, ymin: float = -10, ymax: float = 10) -> None:
         super().__init__(
             QChart.ChartType.ChartTypeCartesian,
             None,  # type: ignore
@@ -292,38 +292,41 @@ class SplineChart(QChart):
         )
         self._series = QSplineSeries(self)
         self._titles = []
-        self._axisX = QValueAxis()
-        self._axisY = QValueAxis()
+        self._axis_x = QValueAxis()
+        self._axis_y = QValueAxis()
 
         self.addSeries(self._series)
-        self.addAxis(self._axisX, Qt.AlignmentFlag.AlignBottom)
-        self.addAxis(self._axisY, Qt.AlignmentFlag.AlignLeft)
+        self.addAxis(self._axis_x, Qt.AlignmentFlag.AlignBottom)
+        self.addAxis(self._axis_y, Qt.AlignmentFlag.AlignLeft)
 
-        self._series.attachAxis(self._axisX)
-        self._series.attachAxis(self._axisY)
+        self._series.attachAxis(self._axis_x)
+        self._series.attachAxis(self._axis_y)
         self._x = 0
         self._n_scrolled = 0
-        self._axisX.setRange(0, 100)
-        self._axisX.setTickCount(20)
+        self._axis_x.setRange(0, 100)
+        self._axis_x.setTickCount(20)
         self._ymin = -10
         self._ymax = 10
-        self._axisY.setRange(self._ymin, self._ymax)
+        self._axis_y.setRange(self._ymin, self._ymax)
         self.setTitle(title)
         self.legend().hide()
+        self._axis_x.setVisible(True)
+        self._axis_y.setVisible(True)
         self.setAnimationOptions(QChart.AnimationOption.AllAnimations)
 
     @Slot(float)
     def appendValue(self, value: float) -> None:
         if value < self._ymin:
             self._ymin = value * 2
-            self._axisY.setRange(self._ymin, self._ymax)
+            self._axis_y.setRange(self._ymin, self._ymax)
         elif value > self._ymax:
             self._ymax = value * 2
-            self._axisY.setRange(self._ymin, self._ymax)
+            self._axis_y.setRange(self._ymin, self._ymax)
         self._series.append(self._x, value)
         self._x += 1
         if self._x >= 60 and (self._x % 20) == 0:
             self.scroll(20, 0)
+            self._x += 20
             self._n_scrolled += 1
 
     @Slot()
