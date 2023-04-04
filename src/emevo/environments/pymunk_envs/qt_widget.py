@@ -190,13 +190,13 @@ class PymunkMglWidget(QOpenGLWidget):
             shape = query[0].shape
             if shape is not None:
                 body_index = self._env.get_body_index(shape.body)
-                assert body_index is not None
-                self._state.pantool.start_drag(position, shape, body_index)
-                self._emit_selected(body_index)
-                self._paused_before = self._state.paused
-                self._state.paused = True
-                self._timer.stop()
-                self.update()
+                if body_index is not None:
+                    self._state.pantool.start_drag(position, shape, body_index)
+                    self._emit_selected(body_index)
+                    self._paused_before = self._state.paused
+                    self._state.paused = True
+                    self._timer.stop()
+                    self.update()
 
     def mouseMoveEvent(self, evt: QMouseEvent) -> None:
         if self._state.pantool.shape is not None:
@@ -310,7 +310,8 @@ class SplineChart(QChart):
         self._axis_y.setRange(self._ymin, self._ymax)
         self.setTitle(title)
         self.legend().hide()
-        self.setAnimationOptions(QChart.AnimationOption.AllAnimations)
+        self.setAnimationOptions(QChart.AnimationOption.GridAxisAnimations)
+        self.setAnimationDuration(100)
         self._initial_plot_area = None
 
     @Slot(float)
