@@ -284,11 +284,11 @@ class BarChart(QWidget):
 
 
 class SplineChart(QChart):
-    def __init__(self, title: str, ymin: float = -10, ymax: float = 10) -> None:
+    def __init__(self, title: str) -> None:
         super().__init__(
             QChart.ChartType.ChartTypeCartesian,
             None,  # type: ignore
-            Qt.WindowType.Widget,
+            Qt.WindowFlags(),  # type: ignore
         )
         self._series = QSplineSeries(self)
         self._titles = []
@@ -304,34 +304,35 @@ class SplineChart(QChart):
         self._x = 0
         self._n_scrolled = 0
         self._axis_x.setRange(0, 100)
-        self._axis_x.setTickCount(20)
-        self._ymin = -10
-        self._ymax = 10
+        self._axis_x.setTickCount(6)
+        self._ymin = -1
+        self._ymax = 1
         self._axis_y.setRange(self._ymin, self._ymax)
         self.setTitle(title)
         self.legend().hide()
-        self._axis_x.setVisible(True)
-        self._axis_y.setVisible(True)
         self.setAnimationOptions(QChart.AnimationOption.AllAnimations)
+        self._initial_plot_area = None
 
     @Slot(float)
     def appendValue(self, value: float) -> None:
+        if self._initial_plot_area is None:
+            self._initial_plot_area = self.plotArea()
         if value < self._ymin:
-            self._ymin = value * 2
+            self._ymin = value * 1.5
             self._axis_y.setRange(self._ymin, self._ymax)
         elif value > self._ymax:
-            self._ymax = value * 2
+            self._ymax = value * 1.5
             self._axis_y.setRange(self._ymin, self._ymax)
         self._series.append(self._x, value)
         self._x += 1
-        if self._x >= 60 and (self._x % 20) == 0:
-            self.scroll(20, 0)
-            self._x += 20
+        if self._x >= 90 and (self._x % 20) == 0:
+            w = int(self._initial_plot_area.width() * 20 / 100)
+            self.scroll(w, 0)
             self._n_scrolled += 1
 
     @Slot()
     def reset(self) -> None:
         self._series.clear()
-        self.scroll(-20 * self._n_scrolled, 0)
+        self._axis_x.setRange(0, 100)
         self._x = 0
         self._n_scrolled = 0
