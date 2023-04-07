@@ -231,7 +231,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._foodloc_interval = foodloc_interval
         self._energy_fn = energy_fn
         self._damping = damping
-        if two_motors and max_abs_angle is not None:
+        if two_motors and self._max_abs_angle not in [None, 0.0]:
             raise ValueError("You cannot use both two_motors and max_abs_angle")
         if two_motors and oned_impulse:
             raise ValueError("You cannot use both two_motors and oned_impulse")
