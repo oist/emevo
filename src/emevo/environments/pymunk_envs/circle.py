@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property, partial
+from sys import setdlopenflags
 from typing import Any, Callable, Literal, NamedTuple, TypeVar
 
 import numpy as np
@@ -129,6 +130,23 @@ class AngleCtrlCFBody(CFBody):
         self._body.apply_impulse_at_local_point(impulse)
 
 
+class TwoMotorCFBody(CFBody):
+    """Agent body that has a different action space (forward force and angle)."""
+
+    _TWO_PI = np.pi * 2
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        radius = self._shape.radius
+        self._p1 = Vec2d(0, radius).rotated(np.pi / 4)
+        self._p2 = Vec2d(0, radius).rotated(-np.pi / 4)
+
+    def _apply_action(self, action: NDArray) -> None:
+        f1, f2 = self.act_space.clip(action)
+        self._body.apply_impulse_at_local_point(Vec2d(0, f1), self._p1)
+        self._body.apply_impulse_at_local_point(Vec2d(0, f2), self._p2)
+
+
 def _range(segment: tuple[float, float]) -> float:
     return segment[1] - segment[0]
 
@@ -183,11 +201,13 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         max_abs_angle: float | None = None,
         max_abs_velocity: float = 1.0,
         dt: float = 0.05,
+        damping: float = 1.0,
         encount_threshold: int = 2,
         n_physics_steps: int = 5,
         max_place_attempts: int = 10,
         body_elasticity: float = 0.4,
         oned_impulse: bool = False,
+        two_motors: bool = False,
         nofriction: bool = False,
         energy_fn: Callable[[CFBody], float] = _default_energy_function,
         seed: int | None = None,
@@ -206,9 +226,15 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._max_abs_angle = max_abs_angle
         self._max_abs_velocity = max_abs_velocity
         self._oned_impulse = oned_impulse
+        self._two_motors = two_motors
         self._food_initial_force = food_initial_force
         self._foodloc_interval = foodloc_interval
         self._energy_fn = energy_fn
+        self._damping = damping
+        if two_motors and max_abs_angle is not None:
+            raise ValueError("You cannot use both two_motors and max_abs_angle")
+        if two_motors and oned_impulse:
+            raise ValueError("You cannot use both two_motors and oned_impulse")
 
         if env_shape == "square":
             self._coordinate = SquareCoordinate(xlim, ylim, self._WALL_RADIUS)
@@ -253,6 +279,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._sim_steps = 0
         self._n_foods = 0
         self._space = pymunk.Space()
+        self._space.damping = damping
         # Setup physical objects
         if isinstance(self._coordinate, SquareCoordinate):
             utils.add_static_square(
@@ -569,7 +596,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
 
     @cached_property
     def _min_max_abs_acts(self) -> tuple[list[float], list[float]]:
-        if self._max_abs_angle is None or self._max_abs_angle == 0.0:
+        if self._two_motors:
+            return [0, 0], [self._max_abs_impulse, self._max_abs_impulse]
+        elif self._max_abs_angle is None or self._max_abs_angle == 0.0:
             return [0.0, -np.pi], [self._max_abs_impulse, np.pi]
         else:
             if self._oned_impulse:
@@ -594,7 +623,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         body_with_sensors = self._make_pymunk_body()
         body_with_sensors.shape.color = self._AGENT_COLOR
         body_with_sensors.body.velocify_func = self._limit_velocity
-        if self._max_abs_angle is None or self._max_abs_angle == 0.0:
+        if self._two_motors:
+            cls = TwoMotorCFBody
+        elif self._max_abs_angle is None or self._max_abs_angle == 0.0:
             cls = CFBody
         else:
             cls = AngleCtrlCFBody

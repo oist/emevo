@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import enum
+from typing import Any
 
 import numpy as np
 import typer
@@ -29,6 +30,7 @@ def main(
     use_test_env: bool = False,
     obstacles: bool = False,
     angle: bool = False,
+    two_motors: bool = False,
     env_shape: str = "square",
     food_loc_fn: str = "gaussian",
     logistic_foods: bool = False,
@@ -39,7 +41,7 @@ def main(
         loguru.logger.enable("emevo")
 
     if forward_sensor:
-        env_kwargs = {
+        env_kwargs: dict[str, Any] = {
             "sensor_range": (-30, 30),
             "sensor_length": 100,
             "foodloc_interval": 20,
@@ -52,6 +54,10 @@ def main(
 
     if angle:
         env_kwargs["max_abs_angle"] = np.pi / 40
+
+    if two_motors:
+        env_kwargs["damping"] = 0.8
+        env_kwargs["two_motors"] = True
 
     if use_test_env:
         env = test_utils.predefined_env(**env_kwargs, seed=seed)
