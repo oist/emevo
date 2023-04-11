@@ -304,16 +304,36 @@ def _collect_heads(shapes: list[pymunk.Shape]) -> NDArray:
 def _collect_policies(
     bodies_and_policies: Iterable[tuple[pymunk.Body, NDArray]],
     max_arrow_length: float,
+    two_motors: bool,
 ) -> NDArray:
-    max_f = max(map(lambda bp: bp[1][0], bodies_and_policies))
+    if two_motors:
+        max_f = max(map(lambda bp: bp[1].max(), bodies_and_policies))
+    else:
+        max_f = max(map(lambda bp: bp[1][0], bodies_and_policies))
     policy_scaling = max_arrow_length / max_f
     points = []
+    radius = None
     for body, policy in bodies_and_policies:
         a = body.position
-        f, angle = policy[:2]
-        policy = pymunk.Vec2d(0, f * policy_scaling).rotated(angle + body.angle)
-        points.append(a)
-        points.append(a + policy)
+        if two_motors:
+            if radius is None:
+                radius = next(
+                    filter(lambda shape: isinstance(shape, pymunk.Circle), body.shapes)
+                ).radius
+            f1, f2 = policy
+            from1 = a + pymunk.Vec2d(0, radius).rotated(body.angle + np.pi * 0.75)
+            to1 = from1 + pymunk.Vec2d(0, -f1 * policy_scaling).rotated(body.angle)
+            from2 = a + pymunk.Vec2d(0, radius).rotated(body.angle - np.pi * 0.75)
+            to2 = from2 + pymunk.Vec2d(0, -f2 * policy_scaling).rotated(body.angle)
+            points.append(from1)
+            points.append(to1)
+            points.append(from2)
+            points.append(to2)
+        else:
+            f, angle = policy[:2]
+            policy_vec = pymunk.Vec2d(0, f * policy_scaling).rotated(angle + body.angle)
+            points.append(a)
+            points.append(a + policy_vec)
     return np.array(points, dtype=np.float32)
 
 
@@ -407,6 +427,9 @@ class MglRenderer:
         )
         self._overlays = {}
 
+        # Configurations
+        self._two_motors = getattr(env, "_two_motors", False)
+
     def _make_gl_program(
         self,
         vertex_shader: str,
@@ -439,7 +462,7 @@ class MglRenderer:
         """Render additional value as an overlay"""
         key = name.lower()
         if key == "arrow":
-            segments = _collect_policies(value, self._range_min * 0.1)
+            segments = _collect_policies(value, self._range_min * 0.1, self._two_motors)
             if "arrow" in self._overlays:
                 do_render = self._overlays["arrow"].update(segments)
             else:

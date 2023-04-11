@@ -138,8 +138,8 @@ class TwoMotorCFBody(CFBody):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         radius = self._shape.radius
-        self._p1 = Vec2d(0, radius).rotated(np.pi / 4)
-        self._p2 = Vec2d(0, radius).rotated(-np.pi / 4)
+        self._p1 = Vec2d(0, radius).rotated(np.pi * 0.75)
+        self._p2 = Vec2d(0, radius).rotated(-np.pi * 0.75)
 
     def _apply_action(self, action: NDArray) -> None:
         f1, f2 = self.act_space.clip(action)
