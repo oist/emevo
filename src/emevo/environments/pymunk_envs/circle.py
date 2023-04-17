@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from functools import cached_property, partial
-from sys import setdlopenflags
 from typing import Any, Callable, Literal, NamedTuple, TypeVar
 
 import numpy as np
