@@ -34,6 +34,7 @@ class CFObs(NamedTuple):
     collision: NDArray
     velocity: NDArray
     angle: float
+    angular_velocity: float
     energy: float
 
     def __array__(self) -> NDArray:
@@ -42,7 +43,7 @@ class CFObs(NamedTuple):
                 self.sensor.reshape(-1),
                 self.collision,
                 self.velocity,
-                [self.angle, self.energy],
+                [self.angle, self.angular_velocity, self.energy],
             )
         )
 
@@ -63,6 +64,8 @@ class _CFBodyInfo(NamedTuple):
 class CFBody(Body[Vec2d]):
     """Body of an agent."""
 
+    _TWO_PI = np.pi * 2
+
     def __init__(
         self,
         *,
@@ -77,6 +80,9 @@ class CFBody(Body[Vec2d]):
     ) -> None:
         self._body, self._shape, self._sensors = body_with_sensors
         self._body.position = loc
+        radius = self._shape.radius
+        self._p1 = Vec2d(0, radius).rotated(np.pi * 0.75)
+        self._p2 = Vec2d(0, radius).rotated(-np.pi * 0.75)
         space.add(self._body, self._shape, *self._sensors)
         n_sensors = len(self._sensors)
         obs_space = NamedTupleSpace(
@@ -85,6 +91,7 @@ class CFBody(Body[Vec2d]):
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
             velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
             angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
+            angular_velocity=BoxSpace(low=0.0, high=1.0, shape=(1,)),
             energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
         )
         super().__init__(
@@ -101,49 +108,15 @@ class CFBody(Body[Vec2d]):
         return _CFBodyInfo(position=self._body.position, velocity=self._body.velocity)
 
     def _apply_action(self, action: NDArray) -> None:
-        fy, impulse_angle = self.act_space.clip(action)
-        impulse = Vec2d(0, fy).rotated(impulse_angle)
-        self._body.apply_impulse_at_local_point(impulse)
+        f1, f2 = self.act_space.clip(action)
+        self._body.apply_impulse_at_local_point(Vec2d(0, f1), self._p1)
+        self._body.apply_impulse_at_local_point(Vec2d(0, f2), self._p2)
 
     def _remove(self, space: pymunk.Space) -> None:
         space.remove(self._body, self._shape, *self._sensors)
 
     def location(self) -> pymunk.vec2d.Vec2d:
         return self._body.position
-
-
-class AngleCtrlCFBody(CFBody):
-    """Agent body that has a different action space (forward force and angle)."""
-
-    _TWO_PI = np.pi * 2
-
-    def _apply_action(self, action: NDArray) -> None:
-        action = self.act_space.clip(action)
-        if len(action) == 2:
-            fy, angle = action
-            impulse_angle = 0.0
-        else:
-            fy, impulse_angle, angle = action
-        self._body.angle = (self._body.angle + angle) % self._TWO_PI
-        impulse = Vec2d(0, fy).rotated(impulse_angle)
-        self._body.apply_impulse_at_local_point(impulse)
-
-
-class TwoMotorCFBody(CFBody):
-    """Agent body that has a different action space (forward force and angle)."""
-
-    _TWO_PI = np.pi * 2
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        radius = self._shape.radius
-        self._p1 = Vec2d(0, radius).rotated(np.pi * 0.75)
-        self._p2 = Vec2d(0, radius).rotated(-np.pi * 0.75)
-
-    def _apply_action(self, action: NDArray) -> None:
-        f1, f2 = self.act_space.clip(action)
-        self._body.apply_impulse_at_local_point(Vec2d(0, f1), self._p1)
-        self._body.apply_impulse_at_local_point(Vec2d(0, f2), self._p2)
 
 
 def _range(segment: tuple[float, float]) -> float:
@@ -197,7 +170,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         foodloc_interval: int = 1000,
         wall_friction: float = 0.05,
         max_abs_impulse: float = 0.2,
-        max_abs_angle: float | None = None,
         max_abs_velocity: float = 1.0,
         dt: float = 0.05,
         damping: float = 1.0,
@@ -205,8 +177,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         n_physics_steps: int = 5,
         max_place_attempts: int = 10,
         body_elasticity: float = 0.4,
-        oned_impulse: bool = False,
-        two_motors: bool = False,
         nofriction: bool = False,
         energy_fn: Callable[[CFBody], float] = _default_energy_function,
         seed: int | None = None,
@@ -222,18 +192,11 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._n_sensors = n_agent_sensors
         self._sensor_length = sensor_length
         self._max_abs_impulse = max_abs_impulse
-        self._max_abs_angle = max_abs_angle
         self._max_abs_velocity = max_abs_velocity
-        self._oned_impulse = oned_impulse
-        self._two_motors = two_motors
         self._food_initial_force = food_initial_force
         self._foodloc_interval = foodloc_interval
         self._energy_fn = energy_fn
         self._damping = damping
-        if two_motors and self._max_abs_angle not in [None, 0.0]:
-            raise ValueError("You cannot use both two_motors and max_abs_angle")
-        if two_motors and oned_impulse:
-            raise ValueError("You cannot use both two_motors and oned_impulse")
 
         if env_shape == "square":
             self._coordinate = SquareCoordinate(xlim, ylim, self._WALL_RADIUS)
@@ -467,6 +430,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             collision=collision_data,
             velocity=body._body.velocity,
             angle=body._body.angle % (2.0 * np.pi),
+            angular_velocity=body._body.angular_velocity,
             energy=self._energy_fn(body),
         )
 
@@ -595,22 +559,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
 
     @cached_property
     def _min_max_abs_acts(self) -> tuple[list[float], list[float]]:
-        if self._two_motors:
-            return [0, 0], [self._max_abs_impulse, self._max_abs_impulse]
-        elif self._max_abs_angle is None or self._max_abs_angle == 0.0:
-            return [0.0, -np.pi], [self._max_abs_impulse, np.pi]
-        else:
-            if self._oned_impulse:
-                return [-self._max_abs_impulse, -self._max_abs_angle], [
-                    self._max_abs_impulse,
-                    self._max_abs_angle,
-                ]
-            else:
-                return [0.0, -np.pi, -self._max_abs_angle], [
-                    self._max_abs_impulse,
-                    np.pi,
-                    self._max_abs_angle,
-                ]
+        return [0, 0], [self._max_abs_impulse, self._max_abs_impulse]
 
     @cached_property
     def _limit_velocity(
@@ -622,14 +571,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         body_with_sensors = self._make_pymunk_body()
         body_with_sensors.shape.color = self._AGENT_COLOR
         body_with_sensors.body.velocify_func = self._limit_velocity
-        if self._two_motors:
-            cls = TwoMotorCFBody
-        elif self._max_abs_angle is None or self._max_abs_angle == 0.0:
-            cls = CFBody
-        else:
-            cls = AngleCtrlCFBody
+        body_with_sensors.body.angle = self._generator.uniform(0.0, 2 * np.pi)
         min_acts, max_acts = self._min_max_abs_acts
-        fgbody = cls(
+        fgbody = CFBody(
             body_with_sensors=body_with_sensors,
             space=self._space,
             generation=generation,
