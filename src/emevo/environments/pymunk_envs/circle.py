@@ -91,7 +91,7 @@ class CFBody(Body[Vec2d]):
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
             velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
             angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
-            angular_velocity=BoxSpace(low=0.0, high=1.0, shape=(1,)),
+            angular_velocity=BoxSpace(low=-1.0, high=1.0, shape=(1,)),
             energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
         )
         super().__init__(
