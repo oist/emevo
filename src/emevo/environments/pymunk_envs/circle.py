@@ -75,8 +75,8 @@ class CFBody(Body[Vec2d]):
         birthtime: int,
         min_acts: list[float],
         max_acts: list[float],
-        max_abs_velocity: float,
         loc: Vec2d,
+        max_abs_velocity: float,
     ) -> None:
         self._body, self._shape, self._sensors = body_with_sensors
         self._body.position = loc
@@ -90,8 +90,8 @@ class CFBody(Body[Vec2d]):
             sensor=BoxSpace(low=0.0, high=1.0, shape=(n_sensors, 3)),
             collision=BoxSpace(low=0.0, high=1.0, shape=(3,)),
             velocity=BoxSpace(low=-max_abs_velocity, high=max_abs_velocity, shape=(2,)),
-            angle=BoxSpace(low=0.0, high=2 * np.pi, shape=(1,)),
-            angular_velocity=BoxSpace(low=-1.0, high=1.0, shape=(1,)),
+            angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=(1,)),
+            angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=(1,)),
             energy=BoxSpace(low=0.0, high=50.0, shape=(1,)),
         )
         super().__init__(
@@ -170,7 +170,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         foodloc_interval: int = 1000,
         wall_friction: float = 0.05,
         max_abs_impulse: float = 0.2,
-        max_abs_velocity: float = 1.0,
         dt: float = 0.05,
         damping: float = 1.0,
         encount_threshold: int = 2,
@@ -192,11 +191,13 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         self._n_sensors = n_agent_sensors
         self._sensor_length = sensor_length
         self._max_abs_impulse = max_abs_impulse
-        self._max_abs_velocity = max_abs_velocity
         self._food_initial_force = food_initial_force
         self._foodloc_interval = foodloc_interval
         self._energy_fn = energy_fn
         self._damping = damping
+        self._max_abs_velocity = 2 * np.ceil(  # Hack
+            np.sum([max_abs_impulse * 2 * (damping**i) for i in range(100)])
+        )
 
         if env_shape == "square":
             self._coordinate = SquareCoordinate(xlim, ylim, self._WALL_RADIUS)
@@ -424,7 +425,6 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         collision_data[0] = body.index in self._encounted_bodies
         collision_data[1] = self._food_handler.n_ate_foods[body.index]
         collision_data[2] = body.index in self._static_handler.collided_bodies
-
         return CFObs(
             sensor=sensor_data,
             collision=collision_data,
@@ -561,16 +561,9 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
     def _min_max_abs_acts(self) -> tuple[list[float], list[float]]:
         return [0, 0], [self._max_abs_impulse, self._max_abs_impulse]
 
-    @cached_property
-    def _limit_velocity(
-        self,
-    ) -> Callable[[pymunk.Body, tuple[float, float], float, float], None]:
-        return utils.limit_velocity(self._max_abs_velocity)
-
     def _make_body(self, generation: int, loc: Vec2d) -> CFBody:
         body_with_sensors = self._make_pymunk_body()
         body_with_sensors.shape.color = self._AGENT_COLOR
-        body_with_sensors.body.velocify_func = self._limit_velocity
         body_with_sensors.body.angle = self._generator.uniform(0.0, 2 * np.pi)
         min_acts, max_acts = self._min_max_abs_acts
         fgbody = CFBody(
@@ -580,8 +573,8 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
             birthtime=self._sim_steps,
             min_acts=min_acts,
             max_acts=max_acts,
-            max_abs_velocity=self._max_abs_velocity,
             loc=loc,
+            max_abs_velocity=self._max_abs_velocity,
         )
         self._body_indices[body_with_sensors.body] = fgbody.index
         return fgbody
