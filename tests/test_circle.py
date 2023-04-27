@@ -49,7 +49,6 @@ logger.enable("emevo")
 AGENT_RADIUS: float = 8.0
 DT: float = 0.05
 FOOD_RADIUS: float = 4.0
-MAX_ABS_VELOCITY: float = 1.0
 N_SENSORS: int = 4
 SENSOR_LENGTH: float = 10.0
 YLIM: tuple[float, float] = 0.0, 200
@@ -62,7 +61,6 @@ def env() -> CircleForaging:
         sensor_length=SENSOR_LENGTH,
         n_agent_sensors=N_SENSORS,
         n_physics_steps=1,
-        max_abs_velocity=MAX_ABS_VELOCITY,
         energy_fn=lambda body: float(body.index),
         ylim=YLIM,
         dt=DT,
@@ -133,8 +131,9 @@ def test_eating(env: CircleForaging) -> None:
     """
     handler = DebugLogHandler()
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
+    body._body.angle = 0.0
     food = next(iter(env._foods.keys()))
-    actions = {body: np.array([0.1, 0.0])}
+    actions = {body: np.array([0.1, 0.1])}
     already_ate = False
 
     while True:
@@ -185,7 +184,9 @@ def test_encounts(env: CircleForaging) -> None:
             body_lower = body
 
     assert body_higher is not None and body_lower is not None
-    actions = {body_higher: np.array([0.1, -np.pi]), body_lower: np.array([0.1, 0.0])}
+    body_higher._body.angle = np.pi
+    body_lower._body.angle = np.pi
+    actions = {body_higher: np.array([0.1, 0.1]), body_lower: np.array([0.1, 0.1])}
 
     while True:
         encounts = env.step(actions)
@@ -224,10 +225,12 @@ def test_static(env: CircleForaging) -> None:
     A  F
 
     A  A
-    , and we push the lower right agent to right wall.
+    , and we push the lower right agent to the lower wall.
     """
     body = next(filter(lambda body: body.info().position.x > 100.0, env.bodies()))
-    actions = {body: np.array([0.1, -np.pi])}
+    # Go right
+    body._body.angle = np.pi
+    actions = {body: np.array([0.1, 0.1])}
 
     while True:
         _ = env.step(actions)
@@ -241,7 +244,8 @@ def test_static(env: CircleForaging) -> None:
             assert_either_a_or_b(observation.sensor[2], 1.0 - alpha, 0.0)
 
         # Collision
-        if distance_to_wall < MAX_ABS_VELOCITY * DT:
+        abs_v = body._body.velocity.length
+        if distance_to_wall < abs_v * DT:
             if np.abs(1.0 - observation.collision[2]) < 1e-6:
                 break
         else:
@@ -256,7 +260,7 @@ def test_observe(env: CircleForaging) -> None:
 
     _ = env.step({body: np.array([0.0, -1.0])})
     observation = env.observe(body)
-    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 2,)
+    assert np.asarray(observation).shape == (3 * N_SENSORS + 3 + 2 + 3,)
 
 
 def test_can_place(env: CircleForaging) -> None:
