@@ -305,10 +305,7 @@ def _collect_policies(
     bodies_and_policies: Iterable[tuple[pymunk.Body, NDArray]],
     max_arrow_length: float,
 ) -> NDArray:
-    if two_motors:
-        max_f = max(map(lambda bp: bp[1].max(), bodies_and_policies))
-    else:
-        max_f = max(map(lambda bp: bp[1][0], bodies_and_policies))
+    max_f = max(map(lambda bp: bp[1].max(), bodies_and_policies))
     policy_scaling = max_arrow_length / max_f
     points = []
     radius = None
