@@ -21,7 +21,7 @@ class BirthFunction(Protocol):
 @dataclasses.dataclass
 class Logistic(BirthFunction):
     scale: float
-    alpha: float
+    alpha: float = 1.0
     beta: float = 0.001
     age_delay: float = 1000.0
     energy_delay: float = 8.0
@@ -54,7 +54,7 @@ class EnergyLogistic(BirthFunction):
     """
 
     scale: float
-    alpha: float
+    alpha: float = 1.0
     delay: float = 8.0
 
     def _exp_neg_energy(self, energy: float) -> float:
@@ -79,7 +79,7 @@ class EnergyLogisticMeta(BirthFunction):
     """
 
     scale: float
-    alpha: float
+    alpha: float = 1.0
     delay: float = 8.0
 
     def _exp_neg_energy(self, status: Status) -> float:

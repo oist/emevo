@@ -86,7 +86,7 @@ class EnergyLogistic(HazardFunction):
     h(e) = h_max (1 - 1 / (1 + αexp(e0 - e))
     """
 
-    alpha: float = 0.1
+    alpha: float = 1.0
     hmax: float = 0.1
     e0: float = 3.0
 
