@@ -236,7 +236,11 @@ class BarChart(QWidget):
 
         for name, value in initial_values.items():
             barset = QBarSet(name)
-            barset.append(value)
+            if isinstance(value, float):
+                barset.append(value)
+            else:
+                for v in value:
+                    barset.append(v)
             self.barsets[name] = barset
             self.series.append(barset)
 
@@ -275,11 +279,24 @@ class BarChart(QWidget):
     @Slot(dict)
     def updateValues(self, values: dict[str, float | list[float]]) -> None:
         for name, value in values.items():
-            if isinstance(value, float):
+            if name not in self.barsets:
+                barset = QBarSet(name)
+                if isinstance(value, float):
+                    barset.append(value)
+                else:
+                    for v in value:
+                        barset.append(v)
+                self.barsets[name] = barset
+                self.series.append(barset)
+            elif isinstance(value, float):
                 self.barsets[name].replace(0, value)
             else:
                 for i, vi in enumerate(value):
                     self.barsets[name].replace(i, vi)
+
+        for name in list(self.barsets.keys()):
+            if name not in values:
+                self.series.remove(self.barsets.pop(name))
         self._update_yrange(values.values())
 
 
@@ -308,6 +325,8 @@ class SplineChart(QChart):
         self._ymin = -1
         self._ymax = 1
         self._axis_y.setRange(self._ymin, self._ymax)
+        self._prev_index = None
+        self._title = title
         self.setTitle(title)
         self.legend().hide()
         self.setAnimationOptions(QChart.AnimationOption.GridAxisAnimations)
@@ -331,9 +350,12 @@ class SplineChart(QChart):
             self.scroll(w, 0)
             self._n_scrolled += 1
 
-    @Slot()
-    def reset(self) -> None:
+    @Slot(int)
+    def reset(self, index: int) -> None:
         self._series.clear()
         self._axis_x.setRange(0, 100)
         self._x = 0
         self._n_scrolled = 0
+        if self._prev_index != index and index != -1:
+            self.setTitle(f"{self._title} of {index}")
+            self._prev_index = index
