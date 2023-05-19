@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections import deque
 from collections.abc import Iterable
 from functools import partial
 from typing import Any, Callable
@@ -228,21 +229,16 @@ class BarChart(QWidget):
         initial_values: dict[str, float | list[float]],
         categ: str = "Rewards",
         title: str = "Bar Chart",
+        yrange_min: float | None = None,
     ) -> None:
         super().__init__()
+        self._yrange_min = yrange_min
 
         self.barsets = {}
         self.series = QBarSeries()
 
         for name, value in initial_values.items():
-            barset = QBarSet(name)
-            if isinstance(value, float):
-                barset.append(value)
-            else:
-                for v in value:
-                    barset.append(v)
-            self.barsets[name] = barset
-            self.series.append(barset)
+            self._make_barset(name, value)
 
         self.chart = QChart()
         self.chart.addSeries(self.series)
@@ -271,23 +267,34 @@ class BarChart(QWidget):
         layout = QGridLayout(self)
         layout.addWidget(self._chart_view, 1, 1)
         self.setLayout(layout)
+        self.setVisible(True)
+
+    def _make_barset(self, name: str, value: float | list[float]) -> QBarSet:
+        barset = QBarSet(name)
+        if isinstance(value, float):
+            barset.append(value)
+        else:
+            for v in value:
+                barset.append(v)
+        self.barsets[name] = barset
+        self.series.append(barset)
+        return barset
 
     def _update_yrange(self, values: Iterable[float | list[float]]) -> None:
         values_arr = np.array(list(values))
-        self.axis_y.setRange(np.min(values_arr), np.max(values_arr))
+        if self._yrange_min is None:
+            yrange_min = np.min(values_arr)
+        else:
+            yrange_min = min(self._yrange_min, np.min(values_arr))
+        self.axis_y.setRange(yrange_min, np.max(values_arr))
 
     @Slot(dict)
     def updateValues(self, values: dict[str, float | list[float]]) -> None:
+        new_barsets = deque()
         for name, value in values.items():
             if name not in self.barsets:
-                barset = QBarSet(name)
-                if isinstance(value, float):
-                    barset.append(value)
-                else:
-                    for v in value:
-                        barset.append(v)
-                self.barsets[name] = barset
-                self.series.append(barset)
+                barset = self._make_barset(name, value)
+                new_barsets.append(barset)
             elif isinstance(value, float):
                 self.barsets[name].replace(0, value)
             else:
@@ -296,7 +303,9 @@ class BarChart(QWidget):
 
         for name in list(self.barsets.keys()):
             if name not in values:
-                self.series.remove(self.barsets.pop(name))
+                old_bs = self.barsets.pop(name)
+                new_barsets.popleft().setColor(old_bs.color())
+                self.series.remove(old_bs)
         self._update_yrange(values.values())
 
 
