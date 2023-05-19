@@ -230,6 +230,7 @@ class BarChart(QWidget):
         categ: str = "Rewards",
         title: str = "Bar Chart",
         yrange_min: float | None = None,
+        animation: bool = True,
     ) -> None:
         super().__init__()
         self._yrange_min = yrange_min
@@ -243,7 +244,10 @@ class BarChart(QWidget):
         self.chart = QChart()
         self.chart.addSeries(self.series)
         self.chart.setTitle(title)
-        self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+        if animation:
+            self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+        else:
+            self.chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
 
         self.axis_x = QBarCategoryAxis()
         self.axis_x.append([categ])
