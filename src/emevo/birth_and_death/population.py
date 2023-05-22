@@ -9,6 +9,21 @@ from emevo.birth_and_death.death import HazardFunction
 from emevo.status import Status
 
 
+def cumulative_hazard(
+    hazard: HazardFunction,
+    *,
+    energy: float = 0.0,
+    max_age: float = 1e6,
+) -> float:
+    result = integrate.quad(
+        lambda t: hazard(Status(age=t, energy=energy)),
+        0.0,
+        max_age,
+        limit=10000,
+    )
+    return result[0]
+
+
 def cumulative_survival(
     hazard: HazardFunction,
     *,

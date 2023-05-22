@@ -72,8 +72,7 @@ class Constant(HazardFunction):
         return self._alpha(status)
 
     def cumulative(self, status: Status) -> float:
-        alpha = self(status)
-        return alpha * status.age
+        return self(status) * status.age
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
@@ -87,7 +86,7 @@ class EnergyLogistic(HazardFunction):
     """
 
     alpha: float = 1.0
-    hmax: float = 0.1
+    hmax: float = 1.0
     e0: float = 3.0
 
     def _energy_death_rate(self, energy: float) -> float:
@@ -111,7 +110,7 @@ class Gompertz(Constant):
     α = α_const + α_energy * exp(-γenergy)
     h(t) = α exp(βt)
     H(t) = α/β exp(βt)
-    S(t) = exp(-α/β exp(βt))
+    S(t) = exp(-H(t))
     """
 
     beta: float = 1e-5
@@ -120,7 +119,10 @@ class Gompertz(Constant):
         return self._alpha(status) * np.exp(self.beta * status.age)
 
     def cumulative(self, status: Status) -> float:
-        return self._alpha(status) / self.beta * np.exp(self.beta * status.age)
+        alpha = self._alpha(status)
+        ht = alpha / self.beta * np.exp(self.beta * status.age)
+        h0 = alpha / self.beta
+        return ht - h0
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
@@ -132,8 +134,8 @@ class SeparatedGompertz(EnergyLogistic):
     Hazard with exponentially increasing death rate.
     h(e) = -scale / (1 + αexp(d - e))
     h(t) = αexp(βt) + h(e)
-    H(t) = h(e) α/β exp(βt)
-    S(t) = exp(-h(e) α/β exp(βt))
+    H(t) = α/β exp(βt) + h(e)t
+    S(t) = exp(-H(t))
     """
 
     alpha_age: float = 1e-6
@@ -146,28 +148,42 @@ class SeparatedGompertz(EnergyLogistic):
 
     def cumulative(self, status: Status) -> float:
         energy = self._energy_death_rate(status.energy) * status.age
-        return energy + self.alpha_age / self.beta * np.exp(self.beta * status.age)
+        ht = energy + self.alpha_age / self.beta * np.exp(self.beta * status.age)
+        h0 = self.alpha_age / self.beta
+        return ht - h0
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
 
 
 @dataclasses.dataclass
-class BEGompertz(HazardFunction):
-    """Another parametrization of Gompertz. Not used now."""
+class SimplifiedGompertz(HazardFunction):
+    """
+    Similar to SeparatedGompertz, but with less parameters.
+    h(e) = αexp(-βe)
+    h(t) = αexp(βt) + h(e)
+    H(t) = α/β exp(βt) + h(e)t
+    S(t) = exp(-H(t))
+    """
 
-    alpha: float = 2e-5
-    beta_age: float = 1e-5
-    beta_energy: float = 1e-5
+    alpha_e: float = 0.01
+    alpha_t: float = 1e-4
+    beta_e: float = 0.8
+    beta_t: float = 1e-5
 
-    def _beta_sum(self, status: Status) -> float:
-        return self.beta_age * status.age - self.beta_energy * status.energy
+    def _he(self, energy: float) -> float:
+        return self.alpha_e * np.exp(-self.beta_e * energy)
 
     def __call__(self, status: Status) -> float:
-        return self.alpha * np.exp(self._beta_sum(status))
+        age = self.alpha_t * np.exp(self.beta_t * status.age)
+        energy = self._he(status.energy)
+        return age + energy
 
     def cumulative(self, status: Status) -> float:
-        return self.alpha / self.beta_age * np.exp(self._beta_sum(status))
+        energy = self._he(status.energy) * status.age
+        ht = energy + self.alpha_t / self.beta_t * np.exp(self.beta_t * status.age)
+        h0 = self.alpha_t / self.beta_t
+        return ht - h0
 
     def survival(self, status: Status) -> float:
         return np.exp(-self.cumulative(status))
