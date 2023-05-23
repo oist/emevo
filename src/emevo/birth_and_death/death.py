@@ -132,7 +132,7 @@ class Gompertz(Constant):
 class SeparatedGompertz(EnergyLogistic):
     """
     Hazard with exponentially increasing death rate.
-    h(e) = -scale / (1 + αexp(d - e))
+    h(e) = h_max (1 - 1 / (1 + αexp(e0 - e))
     h(t) = αexp(βt) + h(e)
     H(t) = α/β exp(βt) + h(e)t
     S(t) = exp(-H(t))
