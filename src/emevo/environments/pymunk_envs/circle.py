@@ -115,6 +115,9 @@ class CFBody(Body[Vec2d]):
     def _remove(self, space: pymunk.Space) -> None:
         space.remove(self._body, self._shape, *self._sensors)
 
+    def angle(self) -> float:
+        return self._body.angle
+
     def location(self) -> pymunk.vec2d.Vec2d:
         return self._body.position
 
