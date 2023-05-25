@@ -37,6 +37,19 @@ class ReprNumConstant:
         return max(0, self.initial - current_num)
 
 
+@dataclasses.dataclass
+class ReprNumLinear:
+    initial: int
+    max_dt: float
+    internal: float | None = dataclasses.field(default=None, init=False)
+
+    def __call__(self, current_num: int) -> int:
+        if self.internal is None:
+            self.internal = float(current_num)
+        self.internal = min(self.internal + self.max_dt, float(self.initial))
+        return max(0, int(self.internal) - current_num)
+
+
 @dataclasses.dataclass(frozen=True)
 class ReprNumLogistic:
     initial: int
@@ -52,11 +65,14 @@ class ReprNum(str, enum.Enum):
     """Methods to determine the number of foods reproduced."""
 
     CONSTANT = "constant"
+    LINEAR = "linear"
     LOGISTIC = "logistic"
 
     def __call__(self, *args: Any, **kwargs: Any) -> ReprNumFn:
         if self is ReprNum.CONSTANT:
             return ReprNumConstant(*args, **kwargs)
+        elif self is ReprNum.LINEAR:
+            return ReprNumLinear(*args, **kwargs)
         elif self is ReprNum.LOGISTIC:
             return ReprNumLogistic(*args, **kwargs)
         else:

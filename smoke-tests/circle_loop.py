@@ -1,8 +1,8 @@
 """Example of using circle foraging environment"""
-from __future__ import annotations
+
 
 import enum
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import numpy as np
 import typer
@@ -18,10 +18,16 @@ class Rendering(str, enum.Enum):
     MODERNGL = "moderngl"
 
 
+class FoodNum(str, enum.Enum):
+    CONSTANT = "constant"
+    LINEAR = "linear"
+    LOGISTIC = "logistic"
+
+
 def main(
     steps: int = 100,
-    render: Rendering | None = None,
-    food_initial_force: tuple[float, float] = (0.0, 0.0),
+    render: Optional[Rendering] = None,
+    food_initial_force: Tuple[float, float] = (0.0, 0.0),
     seed: int = 1,
     n_foods: int = 10,
     n_foods_later: int = 10,
@@ -30,10 +36,9 @@ def main(
     use_test_env: bool = False,
     obstacles: bool = False,
     angle: bool = False,
-    two_motors: bool = False,
     env_shape: str = "square",
     food_loc_fn: str = "gaussian",
-    logistic_foods: bool = False,
+    food_num: FoodNum = FoodNum.CONSTANT,
 ) -> None:
     if debug:
         import loguru
@@ -47,7 +52,7 @@ def main(
             "foodloc_interval": 20,
         }
     else:
-        env_kwargs = {"foodloc_interval": 10}
+        env_kwargs = {"foodloc_interval": 20}
 
     if obstacles:
         env_kwargs["obstacles"] = [(100, 50, 100, 200)]
@@ -55,17 +60,12 @@ def main(
     if angle:
         env_kwargs["max_abs_angle"] = np.pi / 40
 
-    if two_motors:
-        env_kwargs["damping"] = 0.8
-        env_kwargs["two_motors"] = True
+    env_kwargs["damping"] = 0.8
 
     if use_test_env:
         env = test_utils.predefined_env(**env_kwargs, seed=seed)
     else:
-        if logistic_foods:
-            env_kwargs["food_num_fn"] = "logistic", 6, 1.1, 12
-        else:
-            env_kwargs["food_num_fn"] = "constant", n_foods
+        env_kwargs["food_num_fn"] = food_num.value
         env_kwargs["food_loc_fn"] = food_loc_fn
         env = make(
             "CircleForaging-v0",
@@ -82,7 +82,7 @@ def main(
     else:
         visualizer = None
 
-    change_foods = not logistic_foods and n_foods_later != n_foods
+    change_foods = food_num is FoodNum.CONSTANT and n_foods_later != n_foods
 
     for i in tqdm(range(steps)):
         actions = {body: body.act_space.sample(gen) for body in bodies}

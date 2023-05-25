@@ -311,7 +311,7 @@ class CircleForaging(Env[NDArray, Vec2d, CFObs]):
         return _get_num_or_loc_fn(
             food_num_fn,
             ReprNum,  # type: ignore
-            {"constant": (10,), "logistic": (8, 1.2, 12)},
+            {"constant": (10,), "linear": (10, 0.01), "logistic": (8, 1.2, 12)},
         )
 
     def _make_food_loc_fn(self, food_loc_fn: str | tuple | ReprLocFn) -> ReprLocFn:
