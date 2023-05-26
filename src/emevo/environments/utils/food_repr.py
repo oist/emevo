@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import math
 from typing import Any, Callable, Protocol, Sequence
 
 import numpy as np
@@ -40,25 +41,34 @@ class ReprNumConstant:
 @dataclasses.dataclass
 class ReprNumLinear:
     initial: int
-    max_dt: float
-    internal: float | None = dataclasses.field(default=None, init=False)
+    dn_dt: float
+    internal: float = dataclasses.field(default=1e9, init=False)
 
     def __call__(self, current_num: int) -> int:
-        if self.internal is None:
-            self.internal = float(current_num)
-        self.internal = min(self.internal + self.max_dt, float(self.initial))
+        # If some foods are eaten, reflect it to the internal number
+        frac, integ = math.modf(self.internal)
+        if current_num < int(integ):
+            self.internal = float(current_num) + frac
+        # Increase the number of foods by dn_dt
+        self.internal = min(self.internal + self.dn_dt, float(self.initial))
         return max(0, int(self.internal) - current_num)
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class ReprNumLogistic:
     initial: int
     growth_rate: float
     capacity: float
+    internal: float = dataclasses.field(default=1e9, init=False)
 
     def __call__(self, current_num: int) -> int:
-        dn_dt = self.growth_rate * current_num * (1 - current_num / self.capacity)
-        return int(np.rint(dn_dt))
+        # If some foods are eaten, reflect it to the internal number
+        frac, integ = math.modf(self.internal)
+        if current_num < int(integ):
+            self.internal = float(current_num) + frac
+        dn_dt = self.growth_rate * self.internal * (1 - self.internal / self.capacity)
+        self.internal = self.internal + dn_dt
+        return max(0, int(self.internal) - current_num)
 
 
 class ReprNum(str, enum.Enum):
