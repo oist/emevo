@@ -18,7 +18,6 @@ from PySide6.QtCharts import (
     QBarSet,
     QChart,
     QChartView,
-    QSplineSeries,
     QValueAxis,
 )
 from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
@@ -95,7 +94,6 @@ def _do_nothing(_state: AppState) -> None:
 
 
 class PymunkMglWidget(QOpenGLWidget):
-    positionsChanged = Signal(int)
     selectionChanged = Signal(int)
 
     def __init__(
@@ -203,7 +201,6 @@ class PymunkMglWidget(QOpenGLWidget):
         if self._state.pantool.shape is not None:
             new_pos = self._scale_position(evt.position())
             if self._state.pantool.dragging(new_pos):
-                self.positionsChanged.emit(self._state.pantool.body_index)
                 self.update()
 
     def mouseReleaseEvent(self, evt: QMouseEvent) -> None:
@@ -311,64 +308,3 @@ class BarChart(QWidget):
                 new_barsets.popleft().setColor(old_bs.color())
                 self.series.remove(old_bs)
         self._update_yrange(values.values())
-
-
-class SplineChart(QChart):
-    def __init__(self, title: str) -> None:
-        super().__init__(
-            QChart.ChartType.ChartTypeCartesian,
-            None,  # type: ignore
-            Qt.WindowFlags(),  # type: ignore
-        )
-        self._series = QSplineSeries(self)
-        self._titles = []
-        self._axis_x = QValueAxis()
-        self._axis_y = QValueAxis()
-
-        self.addSeries(self._series)
-        self.addAxis(self._axis_x, Qt.AlignmentFlag.AlignBottom)
-        self.addAxis(self._axis_y, Qt.AlignmentFlag.AlignLeft)
-
-        self._series.attachAxis(self._axis_x)
-        self._series.attachAxis(self._axis_y)
-        self._x = 0
-        self._n_scrolled = 0
-        self._axis_x.setRange(0, 100)
-        self._axis_x.setTickCount(6)
-        self._ymin = -1
-        self._ymax = 1
-        self._axis_y.setRange(self._ymin, self._ymax)
-        self._prev_index = None
-        self._title = title
-        self.setTitle(title)
-        self.legend().hide()
-        self.setAnimationOptions(QChart.AnimationOption.GridAxisAnimations)
-        self.setAnimationDuration(100)
-        self._initial_plot_area = None
-
-    @Slot(float)
-    def appendValue(self, value: float) -> None:
-        if self._initial_plot_area is None:
-            self._initial_plot_area = self.plotArea()
-        if value < self._ymin:
-            self._ymin = value * 1.5
-            self._axis_y.setRange(self._ymin, self._ymax)
-        elif value > self._ymax:
-            self._ymax = value * 1.5
-            self._axis_y.setRange(self._ymin, self._ymax)
-        self._series.append(self._x, value)
-        self._x += 1
-        if self._x >= 90 and (self._x % 20) == 0:
-            w = int(self._initial_plot_area.width() * 20 / 100)
-            self.scroll(w, 0)
-            self._n_scrolled += 1
-
-    @Slot(int)
-    def reset(self, index: int) -> None:
-        self._series.clear()
-        self._axis_x.setRange(0, 100)
-        self._x = 0
-        self._n_scrolled = 0
-        if self._prev_index != index and index != -1:
-            self.setTitle(f"{self._title} of {index}")
-            self._prev_index = index
