@@ -1,0 +1,9 @@
+-r format.in
+-e .
+ipympl
+ipywidgets
+jupyterlab
+jupyterlab_code_formatter
+jupyterlab-lsp
+matplotlib
+seaborn

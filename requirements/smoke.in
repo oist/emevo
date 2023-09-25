@@ -1,3 +1,3 @@
--e .[moderngl,video,pygame,pyside6]
+-e .[moderngl,video,pyside6]
 tqdm
 typer

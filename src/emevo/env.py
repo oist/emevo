@@ -1,27 +1,47 @@
 """
-Abstract environment API.
+Abstract environment API inspired by jumanji
 """
 from __future__ import annotations
 
 import abc
-from typing import Generic, Iterable, Protocol, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
-from numpy.typing import NDArray
+import chex
+import jax
+from jax.typing import ArrayLike
 
-from emevo.body import LOC, Body, Encount
+from emevo.types import Index, PyTree
 from emevo.visualizer import Visualizer
 
 
-class Observation(Protocol):
-    def __array__(self) -> NDArray:
-        ...
+@chex.dataclass
+class Profile:
+    """Agent profile."""
+
+    birthtime: jax.Array
+    generation: jax.Array
+    index: jax.Array
 
 
-ACT = TypeVar("ACT")
-OBS = TypeVar("OBS", bound=Observation)
+class StateProtocol(Protocol):
+    """Each state should have PRNG key"""
+
+    key: chex.PRNGKey
 
 
-class Env(abc.ABC, Generic[ACT, LOC, OBS]):
+STATE = TypeVar("STATE", bound="StateProtocol")
+
+OBS = TypeVar("OBS")
+
+
+@chex.dataclass
+class TimeStep:
+    encount: jax.Array | None
+    obs: PyTree
+    info: dict[str, Any]
+
+
+class Env(abc.ABC, Generic[STATE, OBS]):
     """Abstract API for emevo environments"""
 
     def __init__(self, *args, **kwargs) -> None:
@@ -29,12 +49,17 @@ class Env(abc.ABC, Generic[ACT, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def bodies(self) -> list[Body[LOC]]:
-        """Returns all 'alive' bodies in the environment"""
+    def reset(self, key: chex.PRNGKey) -> STATE:
+        """Initialize environmental state."""
         pass
 
     @abc.abstractmethod
-    def step(self, actions: dict[Body[LOC], ACT]) -> list[Encount]:
+    def profile(self) -> Profile:
+        """Returns profile of all 'alive' agents in the! environment"""
+        pass
+
+    @abc.abstractmethod
+    def step(self, state: STATE, action: ArrayLike) -> tuple[STATE, TimeStep]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
         Returns the next state and all encounts.
@@ -42,27 +67,22 @@ class Env(abc.ABC, Generic[ACT, LOC, OBS]):
         pass
 
     @abc.abstractmethod
-    def observe(self, body: Body[LOC]) -> OBS:
-        """Construct the observation from the state"""
+    def activate(self, state: STATE, index: Index) -> STATE:
+        """Mark an agent or some agents active."""
         pass
 
     @abc.abstractmethod
-    def reset(self, seed: int | None = None) -> None:
-        """Do some initialization"""
+    def deactivate(self, state: STATE, index: Index) -> STATE:
+        """
+        Deactivate an agent or some agents. The shape of observations should remain the
+        same so that `Env.step` is compiled onle once. So, to represent that an agent is
+        dead, it is recommended to mark that body is not active and reuse it after a new
+        agent is born.
+        """
         pass
 
     @abc.abstractmethod
-    def locate_body(self, location: LOC, generation: int) -> Body[LOC] | None:
-        """Taken a location, generate and place a newborn in the environment."""
-        pass
-
-    @abc.abstractmethod
-    def remove_body(self, body: Body[LOC]) -> bool:
-        """Remove a dead body from the environment."""
-        pass
-
-    @abc.abstractmethod
-    def is_extinct(self) -> bool:
+    def is_extinct(self, state: STATE) -> bool:
         """Return if agents are extinct"""
         pass
 
@@ -70,14 +90,3 @@ class Env(abc.ABC, Generic[ACT, LOC, OBS]):
     def visualizer(self, *args, **kwargs) -> Visualizer:
         """Create a visualizer for the environment"""
         pass
-
-    def try_locate_body(
-        self,
-        locations: Iterable[LOC],
-        generation: int,
-    ) -> Body[LOC] | None:
-        for loc in locations:
-            body = self.locate_body(loc, generation)
-            if body is not None:
-                return body
-        return None
