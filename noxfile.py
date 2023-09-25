@@ -53,7 +53,7 @@ def format(session: nox.Session) -> None:
     session.run("isort", *SOURCES)
 
 
-@nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10", "3.11"])
+@nox.session(reuse_venv=True, python=["3.9", "3.10", "3.11"])
 def lint(session: nox.Session) -> None:
     _sync(session, "requirements/lint.txt")
     session.run("ruff", *SOURCES)
@@ -72,7 +72,7 @@ def smoke(session: nox.Session) -> None:
         session.run("python", DEFAULT, *session.posargs)
 
 
-@nox.session(reuse_venv=True, python=["3.8", "3.9", "3.10", "3.11"])
+@nox.session(reuse_venv=True, python=["3.9", "3.10", "3.11"])
 def tests(session: nox.Session) -> None:
     _sync(session, "requirements/tests.txt")
     session.run("pytest", "tests", *session.posargs)

@@ -23,7 +23,6 @@ jobs:
           - {name: Mac, python: '3.10', os: macos-latest, nox: "tests"}
           - {name: Py310, python: '3.10', os: ubuntu-latest, nox: "tests"}
           - {name: Py39, python: '3.9', os: ubuntu-latest, nox: "tests"}
-          - {name: Py38, python: '3.8', os: ubuntu-latest, nox: "tests"}
           - {name: Lint, python: '3.11', os: ubuntu-latest, nox: "lint"}
     steps:
       - uses: actions/checkout@v3
