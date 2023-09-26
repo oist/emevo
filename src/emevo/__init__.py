@@ -4,8 +4,7 @@ This package contains API definitions and some environment implementations.
 """
 
 
-from emevo.body import Body, Encount, Profile
-from emevo.env import Env
+from emevo.env import Profile, Env
 from emevo.environments import make, register
 from emevo.status import Status
 

@@ -1,4 +1,5 @@
-from typing import Any, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 import jax
 

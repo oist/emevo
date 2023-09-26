@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import abc
-from typing import Any, Generic, Iterable, NamedTuple, Sequence, TypeVar
+from collections.abc import Iterable, Sequence
+from typing import Any, Generic, NamedTuple, TypeVar
 
 import chex
 import jax
@@ -67,9 +68,9 @@ class BoxSpace(Space[jax.Array]):
         self.shape = shape
 
         # Capture the boundedness information before replacing jnp.inf with get_inf
-        _low = jnp.full(shape, low, dtype=float) if jnp.isscalar(low) else low
+        _low = jnp.full(shape, low, dtype=jnp.float32) if jnp.isscalar(low) else low
         self.bounded_below = -jnp.inf < _low  # type: ignore
-        _high = jnp.full(shape, high, dtype=float) if jnp.isscalar(high) else high
+        _high = jnp.full(shape, high, dtype=jnp.float32) if jnp.isscalar(high) else high
         self.bounded_above = jnp.inf > _high  # type: ignore
 
         low = _broadcast(low, dtype, shape, inf_sign="-")  # type: ignore
@@ -87,8 +88,8 @@ class BoxSpace(Space[jax.Array]):
         self.high_repr = _short_repr(self.high)
 
     def is_bounded(self, manner: str = "both") -> bool:
-        below = bool(jnp.all(self.bounded_below))
-        above = bool(jnp.all(self.bounded_above))
+        below = jnp.all(self.bounded_below).item()
+        above = jnp.all(self.bounded_above).item()
         if manner == "both":
             return below and above
         elif manner == "below":
@@ -105,41 +106,42 @@ class BoxSpace(Space[jax.Array]):
         return bool(
             jnp.can_cast(x.dtype, self.dtype)
             and x.shape == self.shape
-            and jnp.all(x >= self.low)
-            and jnp.all(x <= self.high)
+            and jnp.all(x >= self.low).item()
+            and jnp.all(x <= self.high).item()
         )
 
     def flatten(self) -> BoxSpace:
         return BoxSpace(low=self.low.flatten(), high=self.high.flatten())
 
-    def sample(self, generator: Generator) -> jax.Array:
-        high = self.high if self.dtype.kind == "f" else self.high.astype("int64") + 1
-        sample = jnp.empty(self.shape)
-
-        # Masking arrays which classify the coordinates according to interval
-        # type
-        unbounded = ~self.bounded_below & ~self.bounded_above
-        upp_bounded = ~self.bounded_below & self.bounded_above
-        low_bounded = self.bounded_below & ~self.bounded_above
-        bounded = self.bounded_below & self.bounded_above
-
-        # Vectorized sampling by interval type
-        sample[unbounded] = generator.normal(size=unbounded[unbounded].shape)
-
-        sample[low_bounded] = (
-            generator.exponential(size=low_bounded[low_bounded].shape)
-            + self.low[low_bounded]
+    def sample(self, key: chex.PRNGKey) -> jax.Array:
+        low = self.low.astype(jnp.float32)
+        if self.dtype.kind == "f":
+            high = self.high
+        else:
+            high = self.high.astype(jnp.float32) + 1.0
+        key1, key2, key3, key4 = jax.random.split(key, 4)
+        sample = jnp.where(
+            # Bounded
+            jnp.logical_and(self.bounded_below, self.bounded_above),
+            jax.random.uniform(key1, minval=low, maxval=high, shape=self.shape),
+            jnp.where(
+                self.bounded_below,
+                # Low bounded
+                low + jax.random.exponential(key2, shape=self.shape),
+                jnp.where(
+                    self.bounded_above,
+                    # High bounded
+                    high - jax.random.exponential(key3, shape=self.shape),
+                    # Unbounded
+                    jax.random.normal(key4, shape=self.shape),
+                ),
+            ),
         )
-        sample[upp_bounded] = (
-            -generator.exponential(size=upp_bounded[upp_bounded].shape)
-            + self.high[upp_bounded]
-        )
-        sample[bounded] = generator.uniform(
-            low=self.low[bounded], high=high[bounded], size=bounded[bounded].shape
-        )
+
         if self.dtype.kind == "i":
-            sample = jnp.floor(sample)
-        return sample.astype(self.dtype)
+            return jnp.floor(sample).astype(self.dtype)
+        else:
+            return sample.astype(self.dtype)
 
     def normalize(self, normalized: jax.Array) -> jax.Array:
         range_ = self.high - self.low  # type: ignore
@@ -193,7 +195,7 @@ def _broadcast(
         value = get_inf(dtype, inf_sign) if jnp.isinf(value) else value  # type: ignore
         value = jnp.full(shape, value, dtype=dtype)
     else:
-        assert isinstance(value, jnp.ndarray)
+        assert isinstance(value, jax.Array)
         if jnp.any(jnp.isinf(value)):
             # create new array with dtype, but maintain old one to preserve jnp.inf
             temp = value.astype(dtype)
@@ -210,8 +212,8 @@ class DiscreteSpace(Space[int]):
         assert isinstance(start, (int, jnp.integer))
         self.dtype = jnp.dtype(int)
         self.shape = ()
-        self.n = int(n)
-        self.start = int(start)
+        self.n = n
+        self.start = start
 
     def clip(self, x: int) -> int:
         return min(max(0, x), self.n - 1)
@@ -231,8 +233,8 @@ class DiscreteSpace(Space[int]):
     def flatten(self) -> BoxSpace:
         return BoxSpace(low=jnp.zeros(self.n), high=jnp.ones(self.n))
 
-    def sample(self, generator: Generator) -> int:
-        return int(self.start + generator.integers(self.n))
+    def sample(self, key: chex.PRNGKey) -> int:
+        return jax.random.randint(key, shape=(self.n,)) + self.start
 
     def __repr__(self) -> str:
         """Gives a string representation of this space."""
@@ -296,8 +298,9 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         high = jnp.concatenate([space.high for space in spaces])
         return BoxSpace(low=low, high=high)
 
-    def sample(self, generator: Generator) -> Any:
-        samples = [space.sample(generator) for space in self.spaces]
+    def sample(self, key: chex.PRNGKey) -> int:
+        keys = jax.random.split(key, len(self.spaces))
+        samples = [space.sample(key) for space, key in zip(self.spaces, keys)]
         return self._cls(*samples)
 
     def __getitem__(self, key: str) -> Space:
