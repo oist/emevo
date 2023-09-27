@@ -10,6 +10,13 @@ Axis = Sequence[int] | int
 Self = Any
 
 
+def unwrap_or(x: Any, f: Callable[[Any], Any]) -> Any:
+    if x is None:
+        return x
+    else:
+        return f(x)
+
+
 def safe_norm(x: jax.Array, axis: Axis | None = None) -> jax.Array:
     is_zero = jnp.allclose(x, 0.0)
     x = jnp.where(is_zero, jnp.ones_like(x), x)
@@ -123,7 +130,7 @@ class _PositionLike(Protocol):
     angle: jax.Array  # Angular velocity (N,)
     xy: jax.Array  # (N, 2)
 
-    def __init__(self, angle: jax.Array, xy: jax.Array) -> Self:
+    def __init__(self, angle: jax.Array, xy: jax.Array) -> None:
         ...
 
     def batch_size(self) -> int:
@@ -217,6 +224,15 @@ class State(PyTreeOps):
     v: Velocity
     f: Force
     is_active: jax.Array
+
+    @staticmethod
+    def zeros(n: int) -> Self:
+        return State(
+            p=Position.zeros(n),
+            v=Velocity.zeros(n),
+            f=Force.zeros(n),
+            is_active=jnp.zeros(n),
+        )
 
 
 @chex.dataclass
@@ -416,17 +432,6 @@ def _capsule_to_circle_impl(
 
 
 @chex.dataclass
-class ShapeDict:
-    circle: Circle | None = None
-    segment: Segment | None = None
-    capsule: Capsule | None = None
-
-    def concat(self) -> Shape:
-        shapes = [s.to_shape() for s in self.values() if s is not None]
-        return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *shapes)
-
-
-@chex.dataclass
 class StateDict:
     circle: State | None = None
     segment: State | None = None
@@ -458,6 +463,23 @@ class StateDict:
         segment = self._get("segment", statec)
         capsule = self._get("capsule", statec)
         return self.__class__(circle=circle, segment=segment, capsule=capsule)
+
+
+@chex.dataclass
+class ShapeDict:
+    circle: Circle | None = None
+    segment: Segment | None = None
+    capsule: Capsule | None = None
+
+    def concat(self) -> Shape:
+        shapes = [s.to_shape() for s in self.values() if s is not None]
+        return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *shapes)
+
+    def zeros_state(self) -> StateDict:
+        circle = unwrap_or(self.circle, lambda s: State.zeros(len(s.mass)))
+        segment = unwrap_or(self.segment, lambda s: State.zeros(len(s.mass)))
+        capsule = unwrap_or(self.capsule, lambda s: State.zeros(len(s.mass)))
+        return StateDict(circle=circle, segment=segment, capsule=capsule)
 
 
 def _circle_to_circle(
@@ -561,15 +583,15 @@ class ContactWithMetadata:
 class Space:
     gravity: jax.Array
     shaped: ShapeDict
-    dt: jax.Array | float = 0.1
-    linear_damping: jax.Array | float = 0.95
-    angular_damping: jax.Array | float = 0.95
-    bias_factor: jax.Array | float = 0.2
-    n_velocity_iter: int = 8
+    dt: float = 0.1
+    linear_damping: float = 0.95
+    angular_damping: float = 0.95
+    bias_factor: float = 0.2
+    n_velocity_iter: int = 6
     n_position_iter: int = 2
-    linear_slop: jax.Array | float = 0.005
-    max_linear_correction: jax.Array | float = 0.2
-    allowed_penetration: jax.Array | float = 0.005
+    linear_slop: float = 0.005
+    max_linear_correction: float = 0.2
+    allowed_penetration: float = 0.005
     bounce_threshold: float = 1.0
 
     def check_contacts(self, stated: StateDict) -> ContactWithMetadata:
