@@ -4,7 +4,14 @@ from typing import Any, NamedTuple
 import jax
 import jax.numpy as jnp
 
-from emevo.environments.phyjax2d import Capsule, Circle, Segment, ShapeDict, Space
+from emevo.environments.phyjax2d import (
+    Capsule,
+    Circle,
+    Segment,
+    Shape,
+    ShapeDict,
+    Space,
+)
 
 Self = Any
 
@@ -25,6 +32,37 @@ class Color(NamedTuple):
 
 
 _BLACK = Color.black()
+
+
+def _mass_and_moment(
+    mass: float = 1.0,
+    moment: float = 1.0,
+    is_static: bool = False,
+) -> tuple[jax.Array, jax.Array]:
+    if is_static:
+        return jnp.array([jnp.inf]), jnp.array([jnp.inf])
+    else:
+        return mass, moment
+
+
+def _circle_mass(radius: float, density: float) -> tuple[jax.Array, jax.Array]:
+    rr = radius**2
+    mass = density * jnp.pi * rr
+    moment = 0.5 * mass * rr
+    return jnp.array([mass]), jax.array([moment])
+
+
+def _capsule_mass(
+    radius: float,
+    length: float,
+    density: float,
+) -> tuple[jax.Array, jax.Array]:
+    rr, ll = radius**2, length**2
+    mass = density * (jnp.pi * radius + 2.0 * length) * radius
+    circle_moment = 0.5 * (rr + ll)
+    box_moment = (4 * rr + ll) / 12
+    moment = mass * (circle_moment + box_moment)
+    return jnp.array([mass]), jax.array([moment])
 
 
 @dataclasses.dataclass
@@ -53,16 +91,19 @@ class SpaceBuilder:
         self,
         *,
         radius: float,
-        mass: float,
-        moment: float,
-        elasticity: float,
+        density: float = 1.0,
+        is_static: bool = False,
+        friction: float = 0.8,
+        elasticity: float = 0.8,
         rgba: Color = _BLACK,
     ) -> None:
+        mass, moment = _mass_and_moment(*_circle_mass(radius, density), is_static)
         circle = Circle(
             radius=jnp.array([radius]),
-            mass=jnp.array([mass]),
-            moment=jnp.array([moment]),
+            mass=mass,
+            moment=moment,
             elasticity=jnp.array([elasticity]),
+            friction=jnp.array([friction]),
             rgba=jnp.array(rgba).reshape(1, 4),
         )
         self.circles.append(circle)
@@ -70,19 +111,25 @@ class SpaceBuilder:
     def add_capsule(
         self,
         *,
-        length: float,
         radius: float,
-        mass: float,
-        moment: float,
-        elasticity: float,
+        length: float,
+        density: float = 1.0,
+        is_static: bool = False,
+        friction: float = 0.8,
+        elasticity: float = 0.8,
         rgba: Color = _BLACK,
     ) -> None:
+        mass, moment = _mass_and_moment(
+            *_capsule_mass(radius, length, density),
+            is_static,
+        )
         capsule = Capsule(
             length=jnp.array([length]),
             radius=jnp.array([radius]),
-            mass=jnp.array([mass]),
-            moment=jnp.array([moment]),
+            mass=mass,
+            moment=moment,
             elasticity=jnp.array([elasticity]),
+            friction=jnp.array([friction]),
             rgba=jnp.array(rgba).reshape(1, 4),
         )
         self.capsules.append(capsule)
@@ -91,42 +138,36 @@ class SpaceBuilder:
         self,
         *,
         length: float,
-        mass: float,
-        moment: float,
-        elasticity: float,
+        friction: float = 0.8,
+        elasticity: float = 0.8,
         rgba: Color = _BLACK,
     ) -> None:
+        mass, moment = _mass_and_moment(is_static=True)
         segment = Segment(
             length=jnp.array([length]),
-            mass=jnp.array([mass]),
-            moment=jnp.array([moment]),
+            mass=mass,
+            moment=moment,
             elasticity=jnp.array([elasticity]),
+            friction=jnp.array([friction]),
             rgba=jnp.array(rgba).reshape(1, 4),
         )
         self.segments.append(segment)
 
     def build(self) -> Space:
-        if len(self.circles) > 0:
-            circle = jax.tree_map(lambda *args: jnp.stack(args), *self.circles)
-        else:
-            circle = None
-        if len(self.capsules) > 0:
-            capsule = jax.tree_map(lambda *args: jnp.stack(args), *self.capsules)
-        else:
-            capsule = None
-        if len(self.segments) > 0:
-            segment = jax.tree_map(lambda *args: jnp.stack(args), *self.segments)
-        else:
-            segment = None
+        def stack_or(sl: list[Shape]) -> Shape | None:
+            if len(sl) > 0:
+                return jax.tree_map(lambda *args: jnp.stack(args), *sl)
+            else:
+                return None
 
         shaped = ShapeDict(
-            circle=circle,
-            segment=segment,
-            capsule=capsule,
+            circle=stack_or(self.circles),
+            segment=stack_or(self.segments),
+            capsule=stack_or(self.capsules),
         )
         dt = self.dt
-        linear_damping = jnp.exp(-dt * self.linear_damping)
-        angular_damping = jnp.exp(-dt * self.angular_damping)
+        linear_damping = jnp.exp(-dt * self.linear_damping).item()
+        angular_damping = jnp.exp(-dt * self.angular_damping).item()
         return Space(
             gravity=jnp.array(self.gravity),
             shaped=shaped,

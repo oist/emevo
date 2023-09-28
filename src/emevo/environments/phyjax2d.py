@@ -10,7 +10,7 @@ Axis = Sequence[int] | int
 Self = Any
 
 
-def unwrap_or(x: Any, f: Callable[[Any], Any]) -> Any:
+def then(x: Any, f: Callable[[Any], Any]) -> Any:
     if x is None:
         return x
     else:
@@ -476,9 +476,9 @@ class ShapeDict:
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *shapes)
 
     def zeros_state(self) -> StateDict:
-        circle = unwrap_or(self.circle, lambda s: State.zeros(len(s.mass)))
-        segment = unwrap_or(self.segment, lambda s: State.zeros(len(s.mass)))
-        capsule = unwrap_or(self.capsule, lambda s: State.zeros(len(s.mass)))
+        circle = then(self.circle, lambda s: State.zeros(len(s.mass)))
+        segment = then(self.segment, lambda s: State.zeros(len(s.mass)))
+        capsule = then(self.capsule, lambda s: State.zeros(len(s.mass)))
         return StateDict(circle=circle, segment=segment, capsule=capsule)
 
 
