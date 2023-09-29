@@ -1,4 +1,5 @@
 import dataclasses
+import warnings
 from typing import Any, NamedTuple
 
 import jax
@@ -49,7 +50,7 @@ def _circle_mass(radius: float, density: float) -> tuple[jax.Array, jax.Array]:
     rr = radius**2
     mass = density * jnp.pi * rr
     moment = 0.5 * mass * rr
-    return jnp.array([mass]), jax.array([moment])
+    return jnp.array([mass]), jnp.array([moment])
 
 
 def _capsule_mass(
@@ -62,7 +63,17 @@ def _capsule_mass(
     circle_moment = 0.5 * (rr + ll)
     box_moment = (4 * rr + ll) / 12
     moment = mass * (circle_moment + box_moment)
-    return jnp.array([mass]), jax.array([moment])
+    return jnp.array([mass]), jnp.array([moment])
+
+
+def _check_params_positive(friction: float, **kwargs) -> None:
+    if friction > 1.0:
+        warnings.warn(
+            f"friction larger than 1 can lead instable simulation (value: {friction})",
+            stacklevel=2,
+        )
+    for key, value in kwargs.items():
+        assert value > 0.0, f"Invalid value for {key}: {value}"
 
 
 @dataclasses.dataclass
@@ -97,6 +108,12 @@ class SpaceBuilder:
         elasticity: float = 0.8,
         rgba: Color = _BLACK,
     ) -> None:
+        _check_params_positive(
+            friction=friction,
+            radius=radius,
+            density=density,
+            elasticity=elasticity,
+        )
         mass, moment = _mass_and_moment(*_circle_mass(radius, density), is_static)
         circle = Circle(
             radius=jnp.array([radius]),
@@ -119,6 +136,13 @@ class SpaceBuilder:
         elasticity: float = 0.8,
         rgba: Color = _BLACK,
     ) -> None:
+        _check_params_positive(
+            friction=friction,
+            radius=radius,
+            length=length,
+            density=density,
+            elasticity=elasticity,
+        )
         mass, moment = _mass_and_moment(
             *_capsule_mass(radius, length, density),
             is_static,
@@ -142,6 +166,11 @@ class SpaceBuilder:
         elasticity: float = 0.8,
         rgba: Color = _BLACK,
     ) -> None:
+        _check_params_positive(
+            friction=friction,
+            length=length,
+            elasticity=elasticity,
+        )
         mass, moment = _mass_and_moment(is_static=True)
         segment = Segment(
             length=jnp.array([length]),
