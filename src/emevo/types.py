@@ -14,5 +14,4 @@ class SupportsDType(Protocol):
 
 DTypeLike = DType | SupportsDType
 PyTree = Any
-Self = Any
 Index = int | jax.Array | Sequence[int]
