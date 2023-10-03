@@ -8,13 +8,10 @@ import jax.numpy as jnp
 from emevo.environments.phyjax2d import (
     Capsule,
     Circle,
-    Contact,
-    Position,
     Segment,
     Shape,
     ShapeDict,
     Space,
-    _capsule_to_circle_impl,
 )
 
 Self = Any

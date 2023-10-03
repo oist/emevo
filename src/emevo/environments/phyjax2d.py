@@ -965,3 +965,76 @@ def step(space: Space, stated: StateDict, solver: VelocitySolver) -> StateDict:
     )
     statec = update_position(space, state.replace(v=v, p=p))
     return stated.update(statec)
+
+
+@chex.dataclass
+class Raycast:
+    fraction: jax.Array
+    normal: jax.Array
+    hit: jax.Array
+
+
+def circle_raycast(
+    radius: float | jax.Array,
+    max_fraction: float | jax.Array,
+    p1: jax.Array,
+    p2: jax.Array,
+    circle: Circle,
+    p: Position,
+) -> Raycast:
+    s = p1 - p.xy
+    d, length = normalize(p2 - p1)
+    t = -jnp.dot(s, d)
+    c = s + t * d
+    cc = jnp.dot(c, c)
+    rr = (radius + circle.radius) ** 2
+    fraction = t - jnp.sqrt(rr - cc)
+    hitpoint = s + fraction * d
+    normal, _ = normalize(hitpoint)
+    return Raycast(
+        fraction=fraction / length,
+        normal=normal,
+        hit=jnp.logical_and(
+            cc <= rr,
+            jnp.logical_and(
+                fraction >= 0.0,
+                max_fraction * length >= fraction,
+            ),
+        ),
+    )
+
+
+def segment_raycast(
+    max_fraction: float | jax.Array,
+    p1: jax.Array,
+    p2: jax.Array,
+    segment: Segment,
+    p: Position,
+) -> Raycast:
+    d = p2 - p1
+    v1, v2 = _length_to_points(segment.length)
+    v1, v2 = p.transform(v1), p.transform(v2)
+    e = v2 - v1
+    eunit, length = normalize(e)
+    normal = _sv_cross(jnp.ones_like(length) * -1, eunit)
+    numerator = jnp.dot(normal, v1 - p1)
+    denominator = jnp.dot(normal, d)
+    t = numerator / denominator
+    p = p1 + t * d
+    s = jnp.dot(p - v1, eunit)
+    normal = jnp.where(
+        numerator > 0.0,
+        -normal,
+        normal,
+    )
+    return Raycast(
+        fraction=t,
+        normal=normal,
+        hit=jnp.logical_and(
+            denominator != 0.0,
+            jnp.logical_and(
+                jnp.logical_and(t >= 0.0, max_fraction * length >= t),
+                jnp.logical_and(s >= 0.0, length >= s),
+            ),
+        ),
+    )
