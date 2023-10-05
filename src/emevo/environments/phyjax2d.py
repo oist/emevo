@@ -986,7 +986,7 @@ def circle_raycast(
     d, length = normalize(p2 - p1)
     t = -jnp.dot(s, d)
     c = s + t * d
-    cc = jnp.dot(c, c)
+    cc = jnp.linalg.norm(c)
     rr = (radius + circle.radius) ** 2
     fraction = t - jnp.sqrt(rr - cc)
     hitpoint = s + fraction * d

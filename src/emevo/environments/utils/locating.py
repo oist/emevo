@@ -4,19 +4,20 @@ import dataclasses
 import enum
 from typing import Any, Callable, Iterable, Protocol
 
-import numpy as np
-from numpy.random import Generator
-from numpy.typing import ArrayLike, NDArray
+import chex
+import jax
+import jax.numpy as jnp
+from jax.typing import ArrayLike
 
 
 class Coordinate(Protocol):
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
         ...
 
-    def contains_circle(self, center: ArrayLike, radius: float) -> bool:
+    def contains_circle(self, center: jax.Array, radius: jax.Array) -> bool:
         ...
 
-    def uniform(self, generator: Generator) -> NDArray:
+    def uniform(self, key: chex.PRNGKey) -> jax.Array:
         ...
 
 
@@ -30,18 +31,23 @@ class CircleCoordinate(Coordinate):
         r = self.radius
         return (cx - r, cx + r), (cy - r, cy + r)
 
-    def contains_circle(self, center: ArrayLike, radius: float) -> bool:
-        a2b = np.array(center) - np.array(self.center)  # type: ignore
-        distance = np.linalg.norm(a2b, ord=2) - radius
-        return bool(distance <= self.radius)
+    def contains_circle(self, center: jax.Array, radius: jax.Array) -> bool:
+        a2b = center - jnp.array(self.center)
+        distance = jnp.linalg.norm(a2b, ord=2) - radius
+        return distance <= self.radius
 
-    def uniform(self, generator: Generator) -> NDArray:
-        low = [0.0, 0.0]
-        high = [1.0, 2.0 * np.pi]
-        squared_norm, angle = generator.uniform(low=low, high=high)
-        radius = self.radius * np.sqrt(squared_norm)
+    def uniform(self, key: chex.PRNGKey) -> jax.Array:
+        low = jnp.array([0.0, 0.0])
+        high = jnp.array([1.0, 2.0 * jnp.pi])
+        squared_norm, angle = jax.random.uniform(
+            key,
+            shape=(2,),
+            minval=low,
+            maxval=high,
+        )
+        radius = self.radius * jnp.sqrt(squared_norm)
         cx, cy = self.center
-        return np.array([radius * np.cos(angle) + cx, radius * np.sin(angle) + cy])
+        return jnp.array([radius * jnp.cos(angle) + cx, radius * jnp.sin(angle) + cy])
 
 
 @dataclasses.dataclass
@@ -53,24 +59,24 @@ class SquareCoordinate(Coordinate):
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
         return self.xlim, self.ylim
 
-    def contains_circle(self, center: ArrayLike, radius: float) -> bool:
+    def contains_circle(self, center: jax.Array, radius: float) -> bool:
         xmin, xmax = self.xlim
         ymin, ymax = self.ylim
-        x, y = np.array(center)
+        x, y = center
         offset = self.offset + radius
         x_in = xmin + offset <= x and x <= xmax - offset
         y_in = ymin + offset <= y and y <= ymax - offset
         return x_in and y_in
 
-    def uniform(self, generator: Generator) -> NDArray:
+    def uniform(self, key: chex.PRNGKey) -> jax.Array:
         xmin, xmax = self.xlim
         ymin, ymax = self.ylim
-        low = np.array([xmin + self.offset, ymin + self.offset])
-        high = np.array([xmax - self.offset, ymax - self.offset])
-        return generator.uniform(low=low, high=high)
+        low = jnp.array([xmin + self.offset, ymin + self.offset])
+        high = jnp.array([xmax - self.offset, ymax - self.offset])
+        return jax.random.uniform(key, shape=(2,), minval=low, maxval=high)
 
 
-InitLocFn = Callable[[Generator], NDArray]
+InitLocFn = Callable[[chex.PRNGKey], jax.Array]
 
 
 class InitLoc(str, enum.Enum):
@@ -92,9 +98,10 @@ class InitLoc(str, enum.Enum):
 
 
 def init_loc_gaussian(mean: ArrayLike, stddev: ArrayLike) -> InitLocFn:
-    mean = np.array(mean)
-    stddev = np.array(stddev)
-    return lambda generator: generator.normal(loc=mean, scale=stddev)
+    mean_a = jnp.array(mean)
+    std_a = jnp.array(stddev)
+    shape = mean_a.shape
+    return lambda key: jax.random.normal(key, shape=shape) * std_a + mean_a
 
 
 def init_loc_gaussian_mixture(
@@ -102,20 +109,24 @@ def init_loc_gaussian_mixture(
     mean_arr: ArrayLike,
     stddev_arr: ArrayLike,
 ) -> InitLocFn:
-    mean_a = np.array(mean_arr)
-    stddev_a = np.array(stddev_arr)
+    mean_a = jnp.array(mean_arr)
+    stddev_a = jnp.array(stddev_arr)
+    probs_a = jnp.array(probs)
+    n = probs_a.shape[0]
 
-    def sample(generator: Generator) -> NDArray:
-        i = generator.choice(len(probs), p=probs)
-        return generator.normal(loc=mean_a[i], scale=stddev_a[i])
+    def sample(key: chex.PRNGKey) -> jax.Array:
+        k1, k2 = jax.random.split(key)
+        i = jax.random.choice(k1, n, p=probs)
+        mi, si = mean_a[i], stddev_a[i]
+        return jax.random.normal(k2, shape=mean_a.shape[1:]) * si + mi
 
     return sample
 
 
-def init_loc_pre_defined(locations: Iterable[NDArray]) -> InitLocFn:
+def init_loc_pre_defined(locations: Iterable[jax.Array]) -> InitLocFn:
     location_iter = iter(locations)
-    return lambda _generator: next(location_iter)
+    return lambda _key: next(location_iter)
 
 
 def init_loc_uniform(coordinate: Coordinate) -> InitLocFn:
-    return lambda generator: coordinate.uniform(generator)
+    return lambda key: coordinate.uniform(key)
