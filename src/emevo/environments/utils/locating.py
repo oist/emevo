@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Any, Callable, Iterable, Protocol
+from collections.abc import Iterable
+from typing import Any, Callable, Protocol
 
 import chex
 import jax
@@ -14,7 +15,7 @@ class Coordinate(Protocol):
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
         ...
 
-    def contains_circle(self, center: jax.Array, radius: jax.Array) -> bool:
+    def contains_circle(self, center: jax.Array, radius: jax.Array) -> jax.Array:
         ...
 
     def uniform(self, key: chex.PRNGKey) -> jax.Array:
@@ -31,10 +32,10 @@ class CircleCoordinate(Coordinate):
         r = self.radius
         return (cx - r, cx + r), (cy - r, cy + r)
 
-    def contains_circle(self, center: jax.Array, radius: jax.Array) -> bool:
+    def contains_circle(self, center: jax.Array, radius: jax.Array) -> jax.Array:
         a2b = center - jnp.array(self.center)
-        distance = jnp.linalg.norm(a2b, ord=2) - radius
-        return distance <= self.radius
+        distance = jnp.linalg.norm(a2b, ord=2)
+        return distance + radius <= self.radius
 
     def uniform(self, key: chex.PRNGKey) -> jax.Array:
         low = jnp.array([0.0, 0.0])
@@ -54,25 +55,22 @@ class CircleCoordinate(Coordinate):
 class SquareCoordinate(Coordinate):
     xlim: tuple[float, float]
     ylim: tuple[float, float]
-    offset: float
 
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
         return self.xlim, self.ylim
 
-    def contains_circle(self, center: jax.Array, radius: float) -> bool:
+    def contains_circle(self, center: jax.Array, radius: jax.Array) -> bool:
         xmin, xmax = self.xlim
         ymin, ymax = self.ylim
-        x, y = center
-        offset = self.offset + radius
-        x_in = xmin + offset <= x and x <= xmax - offset
-        y_in = ymin + offset <= y and y <= ymax - offset
-        return x_in and y_in
+        low = jnp.array([xmin, ymin]) + radius
+        high = jnp.array([xmax, ymax]) - radius
+        return jnp.logical_and(low <= center, center <= high)
 
     def uniform(self, key: chex.PRNGKey) -> jax.Array:
         xmin, xmax = self.xlim
         ymin, ymax = self.ylim
-        low = jnp.array([xmin + self.offset, ymin + self.offset])
-        high = jnp.array([xmax - self.offset, ymax - self.offset])
+        low = jnp.array([xmin, ymin])
+        high = jnp.array([xmax, ymax])
         return jax.random.uniform(key, shape=(2,), minval=low, maxval=high)
 
 

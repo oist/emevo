@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-import math
-from typing import Any, Callable, Protocol, Sequence
+from typing import Any, Callable, Protocol
 
-import numpy as np
-from numpy.random import Generator
-from numpy.typing import ArrayLike, NDArray
+import chex
+import jax
+import jax.numpy as jnp
+from numpy.typing import ArrayLike
 
 from emevo.environments.utils.locating import (
     InitLocFn,
@@ -20,13 +20,32 @@ from emevo.environments.utils.locating import (
     init_loc_uniform,
 )
 
+Self = Any
 _Location = ArrayLike
+
+
+@chex.dataclass
+class FoodNumState:
+    current: jax.Array
+    internal: jax.Array
+
+    def appears(self) -> jax.Array:
+        return (self.internal - self.current) >= 1.0
+
+    def eaten(self, n: jax.Array) -> Self:
+        return self.replace(current=self.current - n, internal=self.internal - n)
+
+    def fail(self, n: jax.Array) -> Self:
+        return self.replace(internal=self.internal - n)
+
+    def recover(self, n: jax.Array) -> Self:
+        return self.replace(current=self.current + n)
 
 
 class ReprNumFn(Protocol):
     initial: int
 
-    def __call__(self, current_num: int) -> int:
+    def __call__(self, state: FoodNumState) -> FoodNumState:
         ...
 
 
@@ -34,24 +53,21 @@ class ReprNumFn(Protocol):
 class ReprNumConstant:
     initial: int
 
-    def __call__(self, current_num: int) -> int:
-        return max(0, self.initial - current_num)
+    def __call__(self, state: FoodNumState) -> FoodNumState:
+        diff = jnp.clip(self.initial - state.current, a_min=0)
+        state = state.replace(internal=state.internal + diff)
+        return state
 
 
 @dataclasses.dataclass
 class ReprNumLinear:
     initial: int
     dn_dt: float
-    internal: float = dataclasses.field(default=1e9, init=False)
 
-    def __call__(self, current_num: int) -> int:
-        # If some foods are eaten, reflect it to the internal number
-        frac, integ = math.modf(self.internal)
-        if current_num < int(integ):
-            self.internal = float(current_num) + frac
+    def __call__(self, state: FoodNumState) -> FoodNumState:
         # Increase the number of foods by dn_dt
-        self.internal = min(self.internal + self.dn_dt, float(self.initial))
-        return max(0, int(self.internal) - current_num)
+        internal = jnp.clip(state.internal + self.dn_dt, a_max=float(self.initial))
+        return state.replace(internal=internal)
 
 
 @dataclasses.dataclass
@@ -59,16 +75,10 @@ class ReprNumLogistic:
     initial: int
     growth_rate: float
     capacity: float
-    internal: float = dataclasses.field(default=1e9, init=False)
 
-    def __call__(self, current_num: int) -> int:
-        # If some foods are eaten, reflect it to the internal number
-        frac, integ = math.modf(self.internal)
-        if current_num < int(integ):
-            self.internal = float(current_num) + frac
-        dn_dt = self.growth_rate * self.internal * (1 - self.internal / self.capacity)
-        self.internal = self.internal + dn_dt
-        return max(0, int(self.internal) - current_num)
+    def __call__(self, state: FoodNumState) -> FoodNumState:
+        dn_dt = self.growth_rate * state.internal * (1 - state.internal / self.capacity)
+        return state.replace(internal=state.internal + dn_dt)
 
 
 class ReprNum(str, enum.Enum):
@@ -89,11 +99,16 @@ class ReprNum(str, enum.Enum):
             raise AssertionError("Unreachable")
 
 
-ReprLocFn = Callable[[Generator, Sequence[_Location]], NDArray]
+@chex.dataclass
+class SwitchingState:
+    count: jax.Array
+
+
+ReprLocFn = Callable[[chex.PRNGKey, Any], tuple[jax.Array, Any]]
 
 
 def _wrap_initloc(fn: InitLocFn) -> ReprLocFn:
-    return lambda generator, _locations: fn(generator)
+    return lambda key, _locations: tuple(fn(key), None)
 
 
 class ReprLocSwitching:
@@ -111,14 +126,18 @@ class ReprLocSwitching:
                 locfn_list.append(ReprLoc(name)(*args))
         self._locfn_list = locfn_list
         self._interval = interval
-        self._count = 0
-        self._current = 0
+        self._n = len(locfn_list)
 
-    def __call__(self, generator: Generator, loc: Sequence[_Location]) -> NDArray:
-        self._count += 1
-        if self._count % self._interval == 0:
-            self._current = (self._current + 1) % len(self._locfn_list)
-        return self._locfn_list[self._current](generator, loc)
+    def __call__(self, key: chex.PRNGKey, state: SwitchingState) -> jax.Array:
+        count = state.count + 1
+        index = (count // self._interval) % self._n
+        result, _ = jax.lax.switch(
+            index,
+            self._locfn_list,
+            key,
+            None,  # Assume that each fn takes no state
+        )
+        return result, state.replace(count=self.count, current=self.current)
 
 
 class ReprLoc(str, enum.Enum):
@@ -130,15 +149,16 @@ class ReprLoc(str, enum.Enum):
     SWITCHING = "switching"
     UNIFORM = "uniform"
 
-    def __call__(self, *args: Any, **kwargs: Any) -> ReprLocFn:
+    def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprLocFn, Any]:
         if self is ReprLoc.GAUSSIAN:
-            return _wrap_initloc(init_loc_gaussian(*args, **kwargs))
+            return _wrap_initloc(init_loc_gaussian(*args, **kwargs)), None
         elif self is ReprLoc.GAUSSIAN_MIXTURE:
-            return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs))
+            return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs)), None
         elif self is ReprLoc.PRE_DIFINED:
-            return _wrap_initloc(init_loc_pre_defined(*args, **kwargs))
+            return _wrap_initloc(init_loc_pre_defined(*args, **kwargs)), None
         elif self is ReprLoc.SWITCHING:
-            return ReprLocSwitching(*args, **kwargs)
+            state = SwitchingState(jnp.zeros(1), jnp.zeros(1))
+            return ReprLocSwitching(*args, **kwargs), state
         elif self is ReprLoc.UNIFORM:
             return _wrap_initloc(init_loc_uniform(*args, **kwargs))
         else:
