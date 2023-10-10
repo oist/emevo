@@ -81,6 +81,7 @@ class InitLoc(str, enum.Enum):
     """Methods to determine the location of new foods or agents"""
 
     GAUSSIAN = "gaussian"
+    GAUSSIAN_MIXTURE = "gaussian_mixture"
     PRE_DIFINED = "pre-defined"
     UNIFORM = "uniform"
 
@@ -91,6 +92,8 @@ class InitLoc(str, enum.Enum):
             return init_loc_pre_defined(*args, **kwargs)
         elif self is InitLoc.UNIFORM:
             return init_loc_uniform(*args, **kwargs)
+        elif self is InitLoc.GAUSSIAN_MIXTURE:
+            return init_loc_gaussian_mixture(*args, **kwargs)
         else:
             raise AssertionError("Unreachable")
 
@@ -114,7 +117,7 @@ def init_loc_gaussian_mixture(
 
     def sample(key: chex.PRNGKey) -> jax.Array:
         k1, k2 = jax.random.split(key)
-        i = jax.random.choice(k1, n, p=probs)
+        i = jax.random.choice(k1, n, p=probs_a)
         mi, si = mean_a[i], stddev_a[i]
         return jax.random.normal(k2, shape=mean_a.shape[1:]) * si + mi
 

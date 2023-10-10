@@ -5,12 +5,11 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 import chex
 import jax
 import jax.numpy as jnp
-from numpy.typing import ArrayLike
 
 from emevo.environments.utils.locating import (
     InitLocFn,
@@ -21,7 +20,6 @@ from emevo.environments.utils.locating import (
 )
 
 Self = Any
-_Location = ArrayLike
 
 
 @chex.dataclass
@@ -115,7 +113,7 @@ class ReprLocSwitching:
     def __init__(
         self,
         interval: int,
-        *reprloc_fns: tuple[tuple[str, ...] | ReprLocFn],
+        *reprloc_fns: Iterable[tuple[str, ...] | ReprLocFn],
     ) -> None:
         locfn_list = []
         for fn_or_base in reprloc_fns:
