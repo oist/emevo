@@ -26,8 +26,8 @@ Self = Any
 
 @chex.dataclass
 class FoodNumState:
-    current: jax.Array
-    internal: jax.Array
+    current: int
+    internal: float
 
     def appears(self) -> jax.Array:
         return (self.internal - self.current) >= 1.0
@@ -59,7 +59,7 @@ class ReprNumConstant:
         return state
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class ReprNumLinear:
     initial: int
     dn_dt: float
@@ -70,7 +70,7 @@ class ReprNumLinear:
         return state.replace(internal=internal)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class ReprNumLogistic:
     initial: int
     growth_rate: float
@@ -88,15 +88,23 @@ class ReprNum(str, enum.Enum):
     LINEAR = "linear"
     LOGISTIC = "logistic"
 
-    def __call__(self, *args: Any, **kwargs: Any) -> ReprNumFn:
+    def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprNumFn,]:
+        if len(args) > 0:
+            initial = args[0]
+        elif "initial" in kwargs:
+            initial = kwargs["initial"]
+        else:
+            raise ValueError("'initial' is required for all ReprNum functions")
+        state = FoodNumState(int(initial), float(initial))
         if self is ReprNum.CONSTANT:
-            return ReprNumConstant(*args, **kwargs)
+            fn = ReprNumConstant(**kwargs)
         elif self is ReprNum.LINEAR:
-            return ReprNumLinear(*args, **kwargs)
+            fn = ReprNumLinear(**kwargs)
         elif self is ReprNum.LOGISTIC:
-            return ReprNumLogistic(*args, **kwargs)
+            fn = ReprNumLogistic(**kwargs)
         else:
             raise AssertionError("Unreachable")
+        return fn, state
 
 
 @chex.dataclass

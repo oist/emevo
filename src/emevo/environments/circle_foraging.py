@@ -1,5 +1,13 @@
 from emevo.env import Env
 from typing import Literal, Callable
+from emevo.environments.utils.food_repr import ReprLoc, ReprLocFn, ReprNum, ReprNumFn
+from emevo.environments.utils.locating import (
+    CircleCoordinate,
+    Coordinate,
+    InitLoc,
+    InitLocFn,
+    SquareCoordinate,
+)
 
 
 class CircleForaging(Env):
