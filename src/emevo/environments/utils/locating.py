@@ -80,20 +80,20 @@ InitLocFn = Callable[[chex.PRNGKey], jax.Array]
 class InitLoc(str, enum.Enum):
     """Methods to determine the location of new foods or agents"""
 
+    CHOICE = "choice"
     GAUSSIAN = "gaussian"
-    GAUSSIAN_MIXTURE = "gaussian_mixture"
-    PRE_DIFINED = "pre-defined"
+    GAUSSIAN_MIXTURE = "gaussian-mixture"
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> InitLocFn:
-        if self is InitLoc.GAUSSIAN:
+        if self is InitLoc.CHOICE:
+            return init_loc_choice(*args, **kwargs)
+        elif self is InitLoc.GAUSSIAN:
             return init_loc_gaussian(*args, **kwargs)
-        elif self is InitLoc.PRE_DIFINED:
-            return init_loc_pre_defined(*args, **kwargs)
-        elif self is InitLoc.UNIFORM:
-            return init_loc_uniform(*args, **kwargs)
         elif self is InitLoc.GAUSSIAN_MIXTURE:
             return init_loc_gaussian_mixture(*args, **kwargs)
+        elif self is InitLoc.UNIFORM:
+            return init_loc_uniform(*args, **kwargs)
         else:
             raise AssertionError("Unreachable")
 
@@ -119,14 +119,20 @@ def init_loc_gaussian_mixture(
         k1, k2 = jax.random.split(key)
         i = jax.random.choice(k1, n, p=probs_a)
         mi, si = mean_a[i], stddev_a[i]
-        return jax.random.normal(k2, shape=mean_a.shape[1:]) * si + mi
+        return jax.random.norm al(k2, shape=mean_a.shape[1:]) * si + mi
 
     return sample
 
 
-def init_loc_pre_defined(locations: Iterable[jax.Array]) -> InitLocFn:
-    location_iter = iter(locations)
-    return lambda _key: next(location_iter)
+def init_loc_choice(locations: Iterable[jax.Array]) -> InitLocFn:
+    loc_a = jnp.array(list(locations))
+    n = loc_a.shape[0]
+
+    def sample(key: chex.PRNGKey) -> jax.Array:
+        i = jax.random.choice(key, n)
+        return loc_a[i]
+
+    return sample
 
 
 def init_loc_uniform(coordinate: Coordinate) -> InitLocFn:

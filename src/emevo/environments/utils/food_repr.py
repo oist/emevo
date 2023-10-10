@@ -5,13 +5,15 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Any, Callable, Iterable, Protocol
+from collections.abc import Iterable
+from typing import Any, Callable, Protocol
 
 import chex
 import jax
 import jax.numpy as jnp
 
 from emevo.environments.utils.locating import (
+    InitLoc,
     InitLocFn,
     init_loc_gaussian,
     init_loc_gaussian_mixture,
@@ -99,29 +101,29 @@ class ReprNum(str, enum.Enum):
 
 @chex.dataclass
 class SwitchingState:
-    count: jax.Array
+    count: int
 
 
 ReprLocFn = Callable[[chex.PRNGKey, Any], tuple[jax.Array, Any]]
 
 
 def _wrap_initloc(fn: InitLocFn) -> ReprLocFn:
-    return lambda key, _locations: tuple(fn(key), None)
+    return lambda key, _state: (fn(key), _state)
 
 
 class ReprLocSwitching:
     def __init__(
         self,
         interval: int,
-        *reprloc_fns: Iterable[tuple[str, ...] | ReprLocFn],
+        *initloc_fns: Iterable[tuple[str, ...] | InitLocFn],
     ) -> None:
         locfn_list = []
-        for fn_or_base in reprloc_fns:
+        for fn_or_base in initloc_fns:
             if callable(fn_or_base):
                 locfn_list.append(fn_or_base)
             else:
                 name, *args = fn_or_base
-                locfn_list.append(ReprLoc(name)(*args))
+                locfn_list.append(InitLoc(name)(*args))
         self._locfn_list = locfn_list
         self._interval = interval
         self._n = len(locfn_list)
@@ -129,13 +131,8 @@ class ReprLocSwitching:
     def __call__(self, key: chex.PRNGKey, state: SwitchingState) -> jax.Array:
         count = state.count + 1
         index = (count // self._interval) % self._n
-        result, _ = jax.lax.switch(
-            index,
-            self._locfn_list,
-            key,
-            None,  # Assume that each fn takes no state
-        )
-        return result, state.replace(count=self.count, current=self.current)
+        result = jax.lax.switch(index, self._locfn_list, key)
+        return result, state.replace(count=count)
 
 
 class ReprLoc(str, enum.Enum):
@@ -155,9 +152,9 @@ class ReprLoc(str, enum.Enum):
         elif self is ReprLoc.PRE_DIFINED:
             return _wrap_initloc(init_loc_pre_defined(*args, **kwargs)), None
         elif self is ReprLoc.SWITCHING:
-            state = SwitchingState(jnp.zeros(1), jnp.zeros(1))
+            state = SwitchingState(count=0)
             return ReprLocSwitching(*args, **kwargs), state
         elif self is ReprLoc.UNIFORM:
-            return _wrap_initloc(init_loc_uniform(*args, **kwargs))
+            return _wrap_initloc(init_loc_uniform(*args, **kwargs)), None
         else:
             raise AssertionError("Unreachable")
