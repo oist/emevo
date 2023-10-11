@@ -35,10 +35,10 @@ class FoodNumState:
     def eaten(self, n: jax.Array) -> Self:
         return self.replace(current=self.current - n, internal=self.internal - n)
 
-    def fail(self, n: jax.Array) -> Self:
+    def fail(self, n: int = 1) -> Self:
         return self.replace(internal=self.internal - n)
 
-    def recover(self, n: jax.Array) -> Self:
+    def recover(self, n: int = 1) -> Self:
         return self.replace(current=self.current + n)
 
 
