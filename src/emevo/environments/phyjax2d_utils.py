@@ -4,7 +4,9 @@ from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
+from emevo import Vec2d, Vec2dLike
 from emevo.environments.phyjax2d import (
     Capsule,
     Circle,
@@ -83,7 +85,7 @@ class SpaceBuilder:
     Not expected to used with `jax.jit`.
     """
 
-    gravity: tuple[float, float] = dataclasses.field(default=(0.0, -9.8))
+    gravity: Vec2dLike = dataclasses.field(default=(0.0, -9.8))
     circles: list[Circle] = dataclasses.field(default_factory=list)
     capsules: list[Capsule] = dataclasses.field(default_factory=list)
     segments: list[Segment] = dataclasses.field(default_factory=list)
@@ -210,3 +212,48 @@ class SpaceBuilder:
             allowed_penetration=self.allowed_penetration,
             bounce_threshold=self.bounce_threshold,
         )
+
+
+def make_approx_circle(
+    center: Vec2dLike,
+    radius: float,
+    n_lines: int = 32,
+) -> list[tuple[Vec2d, Vec2d]]:
+    unit = np.pi * 2 / n_lines
+    lines = []
+    t0 = Vec2d(radius, 0.0)
+    for i in range(n_lines):
+        start = center + t0.rotated(unit * i)
+        end = center + t0.rotated(unit * (i + 1))
+        lines.append((start, end))
+    return lines
+
+
+def make_square(
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    rounded_offset: float | None = None,
+) -> list[tuple[Vec2d, Vec2d]]:
+    p1 = Vec2d(xmin, ymin)
+    p2 = Vec2d(xmin, ymax)
+    p3 = Vec2d(xmax, ymax)
+    p4 = Vec2d(xmax, ymin)
+    lines = []
+    if rounded_offset is not None:
+        for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
+            s2end = Vec2d(*end) - Vec2d(*start)
+            offset = s2end.normalized() * rounded_offset
+            stop = end - offset
+            lines.append((start + offset, stop))
+            stop2end = end - stop
+            center = stop + stop2end.rotated(-np.pi / 2)
+            for i in range(4):
+                start = center + stop2end.rotated(np.pi / 8 * i)
+                end = center + stop2end.rotated(np.pi / 8 * (i + 1))
+                lines.append((start, end))
+    else:
+        for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
+            lines.append((start, end))
+    return lines

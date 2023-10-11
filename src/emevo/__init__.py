@@ -7,6 +7,7 @@ This package contains API definitions and some environment implementations.
 from emevo.env import Profile, Env
 from emevo.environments import make, register
 from emevo.status import Status
+from emevo.vec2d import Vec2d
 
 
 def __disable_loguru() -> None:

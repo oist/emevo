@@ -119,7 +119,7 @@ def init_loc_gaussian_mixture(
         k1, k2 = jax.random.split(key)
         i = jax.random.choice(k1, n, p=probs_a)
         mi, si = mean_a[i], stddev_a[i]
-        return jax.random.norm al(k2, shape=mean_a.shape[1:]) * si + mi
+        return jax.random.normal(k2, shape=mean_a.shape[1:]) * si + mi
 
     return sample
 
