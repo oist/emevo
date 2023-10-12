@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from emevo.env import Env
-from emevo.environments.phyjax2d import Space
+from emevo.environments.phyjax2d import Space, Position, State
 from emevo.environments.phyjax2d_utils import (
     SpaceBuilder,
     make_approx_circle,
@@ -49,8 +49,11 @@ def _make_space(
     angular_damping: float = 0.9,
     n_velocity_iter: int = 6,
     n_position_iter: int = 2,
+    n_max_agents: int = 40,
+    n_max_foods: int = 20,
+    agent_radius: float = 10.0,
     food_radius: float = 4.0,
-) -> Space:
+) -> tuple[Space, State]:
     builder = SpaceBuilder(
         gravity=(0.0, 0.0),  # No gravity
         dt=dt,
@@ -59,6 +62,7 @@ def _make_space(
         n_velocity_iter=n_velocity_iter,
         n_position_iter=n_position_iter,
     )
+    # Set walls
     if isinstance(coordinate, CircleCoordinate):
         outer_walls = make_approx_circle(coordinate.center, coordinate.radius)
     else:
@@ -67,12 +71,23 @@ def _make_space(
             *coordinate.ylim,
             rounded_offset=np.floor(food_radius * 2 / (np.sqrt(2) - 1.0)),
         )
+    segments = []
     for wall in outer_walls:
         a2b = wall[1] - wall[0]
-        angle = a2b.angle
-        builder.add_segment(
-            length=a2b.length,
-        )
+        angle = jnp.array(a2b.angle)
+        xy = jnp.array(wall[0] + wall[1]) / 2
+        position = Position(angle=angle, xy=xy)
+        segments.append(position)
+        builder.add_segment(length=a2b.length, friction=0.1, elasticity=0.2)
+    seg_position = jax.tree_map(lambda *args: jnp.stack(args), *segments)
+    seg_state = State.from_position(seg_position)
+    for _ in range(n_max_agents):
+        # Use the default density for now
+        builder.add_circle(radius=agent_radius, friction=0.1, elasticity=0.2)
+    for _ in range(n_max_foods):
+        builder.add_circle(radius=food_radius, friction=0.0, elasticity=0.0)
+    space = builder.build()
+    return space, seg_state
 
 
 class CircleForaging(Env):
@@ -98,7 +113,6 @@ class CircleForaging(Env):
         food_friction: float = 0.0,
         foodloc_interval: int = 1000,
         max_abs_impulse: float = 0.2,
-        wall_friction: float = 0.1,
         dt: float = 0.05,
         damping: float = 1.0,
         n_physics_steps: int = 5,

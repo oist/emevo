@@ -226,12 +226,17 @@ class State(PyTreeOps):
     is_active: jax.Array
 
     @staticmethod
+    def from_position(p: Position) -> Self:
+        n = p.batch_size()
+        return State(p=p, v=Velocity.zeros(n), f=Force.zeros(n), is_active=jnp.ones(n))
+
+    @staticmethod
     def zeros(n: int) -> Self:
         return State(
             p=Position.zeros(n),
             v=Velocity.zeros(n),
             f=Force.zeros(n),
-            is_active=jnp.zeros(n),
+            is_active=jnp.ones(n),
         )
 
 
