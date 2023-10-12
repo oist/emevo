@@ -442,7 +442,7 @@ class StateDict:
     segment: State | None = None
     capsule: State | None = None
 
-    def concat(self) -> None:
+    def concat(self) -> Self:
         states = [s for s in self.values() if s is not None]
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
 
@@ -689,7 +689,7 @@ def init_contact_helper(
     # Compute elasiticity * relative_vel
     dv = _dv2from1(v1, r1, v2, r2)
     vn = _vmap_dot(dv, contact.normal)
-    return ContactHelper(
+    return ContactHelper(  # type: ignore
         tangent=tangent,
         mass_normal=1 / (kn1 + kn2),
         mass_tangent=1 / (kt1 + kt2),
@@ -985,9 +985,9 @@ def circle_raycast(
     p1: jax.Array,
     p2: jax.Array,
     circle: Circle,
-    p: Position,
+    state: State,
 ) -> Raycast:
-    s = p1 - p.xy
+    s = p1 - state.p.xy
     d, length = normalize(p2 - p1)
     t = -jnp.dot(s, d)
     c = s + t * d
@@ -996,7 +996,7 @@ def circle_raycast(
     fraction = t - jnp.sqrt(rr - cc)
     hitpoint = s + fraction * d
     normal, _ = normalize(hitpoint)
-    return Raycast(
+    return Raycast(  # type: ignore
         fraction=fraction / length,
         normal=normal,
         hit=jnp.logical_and(
@@ -1014,11 +1014,11 @@ def segment_raycast(
     p1: jax.Array,
     p2: jax.Array,
     segment: Segment,
-    p: Position,
+    state: State,
 ) -> Raycast:
     d = p2 - p1
     v1, v2 = _length_to_points(segment.length)
-    v1, v2 = p.transform(v1), p.transform(v2)
+    v1, v2 = state.p.transform(v1), state.p.transform(v2)
     e = v2 - v1
     eunit, length = normalize(e)
     normal = _sv_cross(jnp.ones_like(length) * -1, eunit)
@@ -1027,12 +1027,8 @@ def segment_raycast(
     t = numerator / denominator
     p = p1 + t * d
     s = jnp.dot(p - v1, eunit)
-    normal = jnp.where(
-        numerator > 0.0,
-        -normal,
-        normal,
-    )
-    return Raycast(
+    normal = jnp.where(numerator > 0.0, -normal, normal)
+    return Raycast(  # type: ignore
         fraction=t,
         normal=normal,
         hit=jnp.logical_and(

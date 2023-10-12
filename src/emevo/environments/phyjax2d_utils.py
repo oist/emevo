@@ -6,7 +6,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from emevo import Vec2d, Vec2dLike
 from emevo.environments.phyjax2d import (
     Capsule,
     Circle,
@@ -14,7 +13,12 @@ from emevo.environments.phyjax2d import (
     Shape,
     ShapeDict,
     Space,
+    StateDict,
+    _length_to_points,
+    _vmap_dot,
+    normalize,
 )
+from emevo.vec2d import Vec2d, Vec2dLike
 
 Self = Any
 
@@ -45,7 +49,7 @@ def _mass_and_moment(
     if is_static:
         return jnp.array([jnp.inf]), jnp.array([jnp.inf])
     else:
-        return mass, moment
+        return jnp.array(mass), jnp.array(moment)
 
 
 def _circle_mass(radius: float, density: float) -> tuple[jax.Array, jax.Array]:
@@ -257,3 +261,42 @@ def make_square(
         for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
             lines.append((start, end))
     return lines
+
+
+def circle_overwrap(
+    shaped: ShapeDict,
+    stated: StateDict,
+    xy: jax.Array,
+    radius: jax.Array,
+) -> jax.Array:
+    # Circle-circle overwrap
+
+    if stated.circle is not None and shaped.circle is not None:
+        cpos = stated.circle.p.xy
+        # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
+        _, dist = jax.vmap(normalize)(cpos - jnp.expand_dims(xy, axis=0))
+        penetration = shaped.circle.radius + radius - dist
+        circle_overwrap = jnp.any(penetration >= 0)
+    else:
+        circle_overwrap = jnp.array(False)
+
+    # Circle-segment overwrap
+
+    if stated.segment is not None and shaped.segment is not None:
+        spos = stated.segment.p
+        # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
+        pb = spos.inv_transform(jnp.expand_dims(xy, axis=0))
+        p1, p2 = _length_to_points(shaped.segment.length)
+        edge = p2 - p1
+        s1 = jnp.expand_dims(_vmap_dot(pb - p1, edge), axis=1)
+        s2 = jnp.expand_dims(_vmap_dot(p2 - pb, edge), axis=1)
+        in_segment = jnp.logical_and(s1 >= 0.0, s2 >= 0.0)
+        ee = jnp.sum(jnp.square(edge), axis=-1, keepdims=True)
+        pa = jnp.where(in_segment, p1 + edge * s1 / ee, jnp.where(s1 < 0.0, p1, p2))
+        _, dist = jax.vmap(normalize)(pb - pa)
+        penetration = radius - dist
+        segment_overwrap = jnp.any(penetration >= 0)
+    else:
+        segment_overwrap = jnp.array(False)
+
+    return jnp.logical_or(circle_overwrap, segment_overwrap)

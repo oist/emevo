@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from emevo.env import Env
-from emevo.environments.phyjax2d import Space, Position, State
+from emevo.environments.phyjax2d import Position, Space, State, StateDict
 from emevo.environments.phyjax2d_utils import (
     SpaceBuilder,
     make_approx_circle,
@@ -27,9 +27,9 @@ class CFObs(NamedTuple):
     sensor: jax.Array
     collision: jax.Array
     velocity: jax.Array
-    angle: float
-    angular_velocity: float
-    energy: float
+    angle: jax.Array
+    angular_velocity: jax.Array
+    energy: jax.Array
 
     def __array__(self) -> jax.Array:
         return jnp.concatenate(
@@ -37,7 +37,9 @@ class CFObs(NamedTuple):
                 self.sensor.ravel(),
                 self.collision,
                 self.velocity,
-                [self.angle, self.angular_velocity, self.energy],
+                self.angle,
+                self.angular_velocity,
+                self.energy,
             )
         )
 

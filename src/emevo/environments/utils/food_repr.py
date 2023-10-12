@@ -26,8 +26,8 @@ Self = Any
 
 @chex.dataclass
 class FoodNumState:
-    current: int
-    internal: float
+    current: jax.Array
+    internal: jax.Array
 
     def appears(self) -> jax.Array:
         return (self.internal - self.current) >= 1.0
@@ -88,14 +88,17 @@ class ReprNum(str, enum.Enum):
     LINEAR = "linear"
     LOGISTIC = "logistic"
 
-    def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprNumFn,]:
+    def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprNumFn, FoodNumState]:
         if len(args) > 0:
             initial = args[0]
         elif "initial" in kwargs:
             initial = kwargs["initial"]
         else:
             raise ValueError("'initial' is required for all ReprNum functions")
-        state = FoodNumState(int(initial), float(initial))
+        state = FoodNumState(  # type: ignore
+            current=jnp.array(int(initial)),
+            internal=jnp.array(float(initial)),
+        )
         if self is ReprNum.CONSTANT:
             fn = ReprNumConstant(**kwargs)
         elif self is ReprNum.LINEAR:
@@ -109,7 +112,7 @@ class ReprNum(str, enum.Enum):
 
 @chex.dataclass
 class SwitchingState:
-    count: int
+    count: jax.Array
 
 
 ReprLocFn = Callable[[chex.PRNGKey, Any], tuple[jax.Array, Any]]
@@ -136,7 +139,11 @@ class ReprLocSwitching:
         self._interval = interval
         self._n = len(locfn_list)
 
-    def __call__(self, key: chex.PRNGKey, state: SwitchingState) -> jax.Array:
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        state: SwitchingState,
+    ) -> tuple[jax.Array, SwitchingState]:
         count = state.count + 1
         index = (count // self._interval) % self._n
         result = jax.lax.switch(index, self._locfn_list, key)
@@ -160,7 +167,7 @@ class ReprLoc(str, enum.Enum):
         elif self is ReprLoc.PRE_DIFINED:
             return _wrap_initloc(init_loc_pre_defined(*args, **kwargs)), None
         elif self is ReprLoc.SWITCHING:
-            state = SwitchingState(count=0)
+            state = SwitchingState(count=jnp.array(0))  # type: ignore
             return ReprLocSwitching(*args, **kwargs), state
         elif self is ReprLoc.UNIFORM:
             return _wrap_initloc(init_loc_uniform(*args, **kwargs)), None
