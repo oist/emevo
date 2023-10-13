@@ -111,15 +111,18 @@ class ReprNum(str, enum.Enum):
 
 
 @chex.dataclass
-class SwitchingState:
-    count: jax.Array
+class ReprLocState:
+    n_produced: jax.Array
+
+    def step(self) -> Self:
+        return self.replace(n_produced=self.n_produced + 1)
 
 
-ReprLocFn = Callable[[chex.PRNGKey, Any], tuple[jax.Array, Any]]
+ReprLocFn = Callable[[chex.PRNGKey, ReprLocState], jax.Array]
 
 
-def _wrap_initloc(fn: InitLocFn) -> ReprLocFn:
-    return lambda key, _state: (fn(key), _state)
+def _wrap_initloc(fn: InitLocFn) -> ReprLocState:
+    return lambda key, state: (fn(key), state)
 
 
 class ReprLocSwitching:
@@ -142,8 +145,8 @@ class ReprLocSwitching:
     def __call__(
         self,
         key: chex.PRNGKey,
-        state: SwitchingState,
-    ) -> tuple[jax.Array, SwitchingState]:
+        state: ReprLocState,
+    ) -> tuple[jax.Array, ReprLocState]:
         count = state.count + 1
         index = (count // self._interval) % self._n
         result = jax.lax.switch(index, self._locfn_list, key)
@@ -160,16 +163,16 @@ class ReprLoc(str, enum.Enum):
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprLocFn, Any]:
+        state = ReprLocState(n_produced=jnp.array(0))
         if self is ReprLoc.GAUSSIAN:
-            return _wrap_initloc(init_loc_gaussian(*args, **kwargs)), None
+            return _wrap_initloc(init_loc_gaussian(*args, **kwargs)), state
         elif self is ReprLoc.GAUSSIAN_MIXTURE:
-            return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs)), None
+            return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs)), state
         elif self is ReprLoc.PRE_DIFINED:
-            return _wrap_initloc(init_loc_pre_defined(*args, **kwargs)), None
+            return _wrap_initloc(init_loc_pre_defined(*args, **kwargs)), state
         elif self is ReprLoc.SWITCHING:
-            state = SwitchingState(count=jnp.array(0))  # type: ignore
             return ReprLocSwitching(*args, **kwargs), state
         elif self is ReprLoc.UNIFORM:
-            return _wrap_initloc(init_loc_uniform(*args, **kwargs)), None
+            return _wrap_initloc(init_loc_uniform(*args, **kwargs)), state
         else:
             raise AssertionError("Unreachable")
