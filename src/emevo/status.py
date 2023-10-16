@@ -39,6 +39,7 @@ class Status:
 
 
 def init_status(
+    *,
     n: int,
     max_n: int,
     init_energy: float,

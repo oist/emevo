@@ -103,12 +103,9 @@ class BoxSpace(Space[jax.Array]):
         return jnp.clip(x, a_min=self.low, a_max=self.high)
 
     def contains(self, x: jax.Array) -> bool:
-        return bool(
-            jnp.can_cast(x.dtype, self.dtype)
-            and x.shape == self.shape
-            and jnp.all(x >= self.low).item()
-            and jnp.all(x <= self.high).item()
-        )
+        type_ok = jnp.can_cast(x.dtype, self.dtype) and x.shape == self.shape
+        value_ok = jnp.logical_and(jnp.all(x >= self.low), jnp.all(x <= self.high))
+        return type_ok and value_ok.item()
 
     def flatten(self) -> BoxSpace:
         return BoxSpace(low=self.low.flatten(), high=self.high.flatten())
@@ -196,11 +193,10 @@ def _broadcast(
         value = jnp.full(shape, value, dtype=dtype)
     else:
         assert isinstance(value, jax.Array)
-        if jnp.any(jnp.isinf(value)):
+        isinf = jnp.isinf(value)
+        if jnp.any(isinf):
             # create new array with dtype, but maintain old one to preserve jnp.inf
-            temp = value.astype(dtype)
-            temp[jnp.isinf(value)] = get_inf(dtype, inf_sign)
-            value = temp
+            value = jnp.where(isinf, get_inf(dtype, inf_sign), value.astype(dtype))
     return value
 
 
@@ -234,7 +230,8 @@ class DiscreteSpace(Space[int]):
         return BoxSpace(low=jnp.zeros(self.n), high=jnp.ones(self.n))
 
     def sample(self, key: chex.PRNGKey) -> int:
-        return jax.random.randint(key, shape=(self.n,)) + self.start
+        rn = jax.random.randint(key, shape=self.shape, minval=0, maxval=self.n)
+        return rn.item() + self.start
 
     def __repr__(self) -> str:
         """Gives a string representation of this space."""

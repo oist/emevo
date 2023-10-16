@@ -1,3 +1,5 @@
+"""Place agent and food"""
+
 import chex
 import jax
 import jax.numpy as jnp
