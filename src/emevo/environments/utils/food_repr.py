@@ -17,7 +17,7 @@ from emevo.environments.utils.locating import (
     InitLocFn,
     init_loc_gaussian,
     init_loc_gaussian_mixture,
-    init_loc_pre_defined,
+    init_loc_choice,
     init_loc_uniform,
 )
 
@@ -156,9 +156,9 @@ class ReprLocSwitching:
 class ReprLoc(str, enum.Enum):
     """Methods to determine the location of new foods or agents"""
 
+    CHOICE = "choice"
     GAUSSIAN = "gaussian"
     GAUSSIAN_MIXTURE = "gaussian-mixture"
-    PRE_DIFINED = "pre-defined"
     SWITCHING = "switching"
     UNIFORM = "uniform"
 
@@ -168,8 +168,8 @@ class ReprLoc(str, enum.Enum):
             return _wrap_initloc(init_loc_gaussian(*args, **kwargs)), state
         elif self is ReprLoc.GAUSSIAN_MIXTURE:
             return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs)), state
-        elif self is ReprLoc.PRE_DIFINED:
-            return _wrap_initloc(init_loc_pre_defined(*args, **kwargs)), state
+        elif self is ReprLoc.CHOICE:
+            return _wrap_initloc(init_loc_choice(*args, **kwargs)), state
         elif self is ReprLoc.SWITCHING:
             return ReprLocSwitching(*args, **kwargs), state
         elif self is ReprLoc.UNIFORM:
