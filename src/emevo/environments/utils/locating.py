@@ -59,12 +59,12 @@ class SquareCoordinate(Coordinate):
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
         return self.xlim, self.ylim
 
-    def contains_circle(self, center: jax.Array, radius: jax.Array) -> bool:
+    def contains_circle(self, center: jax.Array, radius: jax.Array) -> jax.Array:
         xmin, xmax = self.xlim
         ymin, ymax = self.ylim
         low = jnp.array([xmin, ymin]) + radius
         high = jnp.array([xmax, ymax]) - radius
-        return jnp.logical_and(low <= center, center <= high)
+        return jnp.logical_and(jnp.all(low <= center), jnp.all(center <= high))
 
     def uniform(self, key: chex.PRNGKey) -> jax.Array:
         xmin, xmax = self.xlim
