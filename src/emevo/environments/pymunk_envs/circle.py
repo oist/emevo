@@ -26,6 +26,8 @@ from emevo.spaces import BoxSpace, NamedTupleSpace
 
 FN = TypeVar("FN")
 
+
+
 class CFObs(NamedTuple):
     """Observation of an agent."""
 

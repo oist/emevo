@@ -96,8 +96,8 @@ class ReprNum(str, enum.Enum):
         else:
             raise ValueError("'initial' is required for all ReprNum functions")
         state = FoodNumState(  # type: ignore
-            current=jnp.array(int(initial)),
-            internal=jnp.array(float(initial)),
+            current=jnp.array(int(initial), dtype=jnp.int32),
+            internal=jnp.array(float(initial), dtype=jnp.float32),
         )
         if self is ReprNum.CONSTANT:
             fn = ReprNumConstant(*args, **kwargs)
@@ -162,7 +162,7 @@ class ReprLoc(str, enum.Enum):
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprLocFn, Any]:
-        state = ReprLocState(n_produced=jnp.array(0))
+        state = ReprLocState(n_produced=jnp.array(0, dtype=jnp.int32))
         if self is ReprLoc.GAUSSIAN:
             return _wrap_initloc(init_loc_gaussian(*args, **kwargs)), state
         elif self is ReprLoc.GAUSSIAN_MIXTURE:
