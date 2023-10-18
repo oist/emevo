@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from emevo.env import Env
-from emevo.environments.phyjax2d import Circle, Position, Space, State, StateDict
+from emevo.environments.phyjax2d import Position, Space, State, StateDict
 from emevo.environments.phyjax2d_utils import (
     SpaceBuilder,
     make_approx_circle,
@@ -270,7 +270,10 @@ class CircleForaging(Env):
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
 
     def reset(self, key: chex.PRNGKey) -> CFState:
-        pass
+        stated = self._initialize_physics_state(key)
+        repr_loc = self._initial_foodloc_state
+        food_num = self._initial_foodnum_state
+        return CFState(physics=stated, repr_loc=repr_loc, food_num=food_num)
 
     def _initialize_physics_state(self, key: chex.PRNGKey) -> StateDict:
         stated = self._space.shaped.zeros_state()
@@ -306,7 +309,7 @@ class CircleForaging(Env):
                 agent_failed += 1
 
         if agent_failed > 0:
-            warnings.warn(f"Failed to place {agent_failed} agents!")
+            warnings.warn(f"Failed to place {agent_failed} agents!", stacklevel=1)
 
         food_failed = 0
         foodloc_state = self._initial_foodloc_state
@@ -328,6 +331,6 @@ class CircleForaging(Env):
                 food_failed += 1
 
         if food_failed > 0:
-            warnings.warn(f"Failed to place {food_failed} foods!")
+            warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
         return stated.replace(circle=circle, segment=self._segment_state)
