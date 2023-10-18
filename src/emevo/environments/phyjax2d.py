@@ -371,6 +371,12 @@ class Capsule(Shape):
     radius: jax.Array
 
 
+def _length_to_points(length: jax.Array) -> tuple[jax.Array, jax.Array]:
+    a = jnp.stack((length * -0.5, length * 0.0), axis=-1)
+    b = jnp.stack((length * 0.5, length * 0.0), axis=-1)
+    return a, b
+
+
 @chex.dataclass
 class Segment(Shape):
     length: jax.Array
@@ -386,11 +392,8 @@ class Segment(Shape):
             radius=jnp.zeros_like(self.length),
         )
 
-
-def _length_to_points(length: jax.Array) -> tuple[jax.Array, jax.Array]:
-    a = jnp.stack((length * -0.5, length * 0.0), axis=-1)
-    b = jnp.stack((length * 0.5, length * 0.0), axis=-1)
-    return a, b
+    def get_ab(self) -> tuple[jax.Array, jax.Array]:
+        return _length_to_points(self.length)
 
 
 @jax.vmap

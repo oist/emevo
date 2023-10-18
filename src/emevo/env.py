@@ -55,7 +55,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
 
     @abc.abstractmethod
     def profile(self) -> Profile:
-        """Returns profile of all 'alive' agents in the! environment"""
+        """Returns profile of all 'alive' agents in the environment"""
         pass
 
     @abc.abstractmethod
@@ -87,6 +87,6 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def visualizer(self, *args, **kwargs) -> Visualizer:
+    def visualizer(self, headless: bool = False, **kwargs) -> Visualizer:
         """Create a visualizer for the environment"""
         pass

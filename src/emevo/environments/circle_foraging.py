@@ -5,8 +5,9 @@ import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.typing import ArrayLike
 
-from emevo.env import Env
+from emevo.env import Env, Profile, Visualizer
 from emevo.environments.phyjax2d import Position, Space, State, StateDict
 from emevo.environments.phyjax2d_utils import (
     SpaceBuilder,
@@ -28,6 +29,7 @@ from emevo.environments.utils.locating import (
     InitLocFn,
     SquareCoordinate,
 )
+from emevo.types import Index
 
 FN = TypeVar("FN")
 
@@ -167,6 +169,7 @@ class CircleForaging(Env):
         # Food and body placing functions
         self._agent_radius = agent_radius
         self._food_radius = food_radius
+        self._foodloc_interval = foodloc_interval
         self._food_loc_fn, self._initial_foodloc_state = self._make_food_loc_fn(
             food_loc_fn
         )
@@ -174,7 +177,6 @@ class CircleForaging(Env):
             food_num_fn
         )
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
-        self._foodloc_interval = foodloc_interval
         # Initial numbers
         assert n_max_agents > n_initial_agents
         assert n_max_foods > self._food_num_fn.initial
@@ -269,6 +271,21 @@ class CircleForaging(Env):
     def set_agent_loc_fn(self, agent_loc_fn: str | tuple | InitLocFn) -> None:
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
 
+    def step(self, state: CFState, action: ArrayLike):
+        pass
+
+    def activate(self, state: CFState, index: Index) -> CFState:
+        pass
+
+    def deactivate(self, state: CFState, index: Index) -> CFState:
+        pass
+
+    def is_extinct(self, state: CFState) -> bool:
+        pass
+
+    def profile(self) -> Profile:
+        pass
+
     def reset(self, key: chex.PRNGKey) -> CFState:
         stated = self._initialize_physics_state(key)
         repr_loc = self._initial_foodloc_state
@@ -334,3 +351,22 @@ class CircleForaging(Env):
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
         return stated.replace(circle=circle, segment=self._segment_state)
+
+    def visualizer(
+        self,
+        state: CFState,
+        headless: bool = False,
+        **kwargs,
+    ) -> Visualizer:
+        """Create a visualizer for the environment"""
+        from emevo.environments.pymunk_envs import moderngl_vis
+
+        return moderngl_vis.MglVisualizer(
+            x_range=self._x_range,
+            y_range=self._y_range,
+            space=self._space,
+            stated=state.physics,
+            figsize=figsize,
+            backend=mgl_backend,
+            **kwargs,
+        )
