@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Callable, Literal, NamedTuple, TypeVar
+from typing import Any, Callable, Literal, NamedTuple
 
 import chex
 import jax
@@ -14,7 +14,7 @@ from emevo.environments.phyjax2d_utils import (
     make_approx_circle,
     make_square,
 )
-from emevo.environments.placement import _inf_xy, place_agent, place_food
+from emevo.environments.placement import place_agent, place_food
 from emevo.environments.utils.food_repr import (
     FoodNumState,
     ReprLoc,
@@ -30,8 +30,6 @@ from emevo.environments.utils.locating import (
     SquareCoordinate,
 )
 from emevo.types import Index
-
-FN = TypeVar("FN")
 
 
 class CFObs(NamedTuple):
@@ -65,7 +63,7 @@ class CFState:
 
 
 def _get_num_or_loc_fn(
-    arg: str | tuple | FN,
+    arg: str | tuple | list,
     enum_type: Callable[..., Callable[..., Any]],
     default_args: dict[str, tuple[Any, ...]],
 ) -> Any:
@@ -75,7 +73,7 @@ def _get_num_or_loc_fn(
         name, *args = arg
         return enum_type(name)(*args)
     else:
-        return arg
+        raise ValueError(f"Invalid value in _get_num_or_loc_fn {arg}")
 
 
 def _make_space(
@@ -319,7 +317,7 @@ class CircleForaging(Env):
                 shaped=self._space.shaped,
                 stated=stated,
             )
-            if jnp.all(xy < _inf_xy):
+            if jnp.all(xy < jnp.inf):
                 circle_xy = circle_xy.at[i].set(xy)
                 circle = circle.replace(p=circle.p.replace(xy=circle_xy))  # type: ignore
             else:

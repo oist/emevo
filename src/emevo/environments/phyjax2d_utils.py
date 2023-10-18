@@ -274,11 +274,11 @@ def circle_overwrap(
     if stated.circle is not None and shaped.circle is not None:
         cpos = stated.circle.p.xy
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
-        _, dist = jax.vmap(normalize)(cpos - jnp.expand_dims(xy, axis=0))
+        dist = jnp.linalg.norm(cpos - jnp.expand_dims(xy, axis=0), axis=-1)
         penetration = shaped.circle.radius + radius - dist
-        circle_overwrap = jnp.any(penetration >= 0)
+        overwrap2cir = jnp.any(penetration >= 0)
     else:
-        circle_overwrap = jnp.array(False)
+        overwrap2cir = jnp.array(False)
 
     # Circle-segment overwrap
 
@@ -287,16 +287,17 @@ def circle_overwrap(
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
         pb = spos.inv_transform(jnp.expand_dims(xy, axis=0))
         p1, p2 = _length_to_points(shaped.segment.length)
+        p1, p2 = jnp.squeeze(p1, axis=1), jnp.squeeze(p2, axis=1)
         edge = p2 - p1
         s1 = jnp.expand_dims(_vmap_dot(pb - p1, edge), axis=1)
         s2 = jnp.expand_dims(_vmap_dot(p2 - pb, edge), axis=1)
         in_segment = jnp.logical_and(s1 >= 0.0, s2 >= 0.0)
         ee = jnp.sum(jnp.square(edge), axis=-1, keepdims=True)
         pa = jnp.where(in_segment, p1 + edge * s1 / ee, jnp.where(s1 < 0.0, p1, p2))
-        _, dist = jax.vmap(normalize)(pb - pa)
+        dist = jnp.linalg.norm(pb - pa, axis=-1)
         penetration = radius - dist
-        segment_overwrap = jnp.any(penetration >= 0)
+        overwrap2seg = jnp.any(penetration >= 0)
     else:
-        segment_overwrap = jnp.array(False)
+        overwrap2seg = jnp.array(False)
 
-    return jnp.logical_or(circle_overwrap, segment_overwrap)
+    return jnp.logical_or(overwrap2cir, overwrap2seg)
