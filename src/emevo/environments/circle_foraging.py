@@ -8,7 +8,7 @@ import numpy as np
 from jax.typing import ArrayLike
 
 from emevo.env import Env, Profile, Visualizer
-from emevo.environments.phyjax2d import Position, Space, State, StateDict
+from emevo.environments.phyjax2d import Position, Space, State, StateDict, Velocity
 from emevo.environments.phyjax2d_utils import (
     SpaceBuilder,
     make_approx_circle,
@@ -203,6 +203,8 @@ class CircleForaging(Env):
         self._agent_indices = jnp.arange(n_max_agents)
         self._food_indices = jnp.arange(n_max_foods)
         self._n_physics_steps = n_physics_steps
+        # Placeholder
+        self._invisible_xy = jnp.array([-100.0, -100.0], dtype=jnp.float32)
 
     @staticmethod
     def _make_food_num_fn(
@@ -276,11 +278,43 @@ class CircleForaging(Env):
     def step(self, state: CFState, action: ArrayLike):
         pass
 
-    def activate(self, state: CFState, index: Index) -> CFState:
-        pass
+    def activate(
+        self,
+        key: chex.PRNGKey,
+        state: CFState,
+        index: Index,
+    ) -> tuple[CFState, bool]:
+        xy = place_agent(
+            n_trial=self._max_place_attempts,
+            agent_radius=self._agent_radius,
+            coordinate=self._coordinate,
+            initloc_fn=self._agent_loc_fn,
+            key=key,
+            shaped=self._space.shaped,
+            stated=state.physics,
+        )
+
+        def success() -> CFState:
+            circle_xy = state.physics.circle.p.xy.at[index].set(xy)
+            circle_angle = state.physics.circle.p.angle.at[index].set(0.0)
+            p = Position(angle=circle_angle, xy=circle_xy)
+            is_active = state.physics.circle.is_active.at[index].set(True)
+            circle = state.physics.circle.replace(p=p, is_active=is_active)
+            physics = state.physics.replace(circle=circle)
+            return state.replace(physics=physics), True
+
+        return jnp.cond(jnp.all(xy < jnp.inf), success, lambda: state)
 
     def deactivate(self, state: CFState, index: Index) -> CFState:
-        pass
+        p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
+        p = Position(xy=p_xy)
+        v_xy = state.physics.circle.v.xy.at[index].set(jnp.zeros(2))
+        v_angle = state.physics.circle.v.xy.at[index].set(jnp.zeros(1))
+        v = Velocity(angle=v_angle, xy=v_xy)
+        is_active = state.physics.circle.is_active.at[index].set(False)
+        circle = state.physics.circle.replace(p=p, v=v, is_active=is_active)
+        physics = state.physics.replace(circle=circle)
+        return state.replace(physics=physics)
 
     def is_extinct(self, state: CFState) -> bool:
         pass

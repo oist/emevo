@@ -67,7 +67,12 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def activate(self, state: STATE, index: Index) -> STATE:
+    def activate(
+        self,
+        key: chex.PRNGKey,
+        state: STATE,
+        index: Index,
+    ) -> tuple[STATE, bool]:
         """Mark an agent or some agents active."""
         pass
 
