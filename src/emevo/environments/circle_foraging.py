@@ -61,6 +61,10 @@ class CFState:
     food_num: FoodNumState
     repr_loc: ReprLocState
 
+    @property
+    def stated(self) -> StateDict:
+        return self.physics
+
 
 def _get_num_or_loc_fn(
     arg: str | tuple | list,
@@ -292,11 +296,9 @@ class CircleForaging(Env):
 
     def _initialize_physics_state(self, key: chex.PRNGKey) -> StateDict:
         stated = self._space.shaped.zeros_state()
-        circle = stated.circle
-        assert circle is not None
-        circle_xy = circle.p.xy
+        assert stated.circle is not None
 
-        circle_isactive = jnp.concatenate(
+        is_active = jnp.concatenate(
             (
                 jnp.ones(self._n_initial_agents, dtype=bool),
                 jnp.zeros(self._n_max_agents - self._n_initial_agents, dtype=bool),
@@ -304,10 +306,15 @@ class CircleForaging(Env):
                 jnp.zeros(self._n_max_foods - self._n_initial_foods, dtype=bool),
             )
         )
-        stated = stated.replace(circle=stated.circle.replace(is_active=circle_isactive))  # type: ignore
+        # Move all circle to the invisiable area
+        stated = stated.nested_replace(
+            "circle.p.xy",
+            jnp.ones_like(stated.circle.p.xy) * -100,
+        )
+        stated = stated.nested_replace("circle.is_active", is_active)
         keys = jax.random.split(key, self._n_initial_foods + self._n_initial_agents)
         agent_failed = 0
-        for i, key in enumerate(keys[: self._n_initial_foods]):
+        for i, key in enumerate(keys[: self._n_initial_agents]):
             xy = place_agent(
                 n_trial=self._max_place_attempts,
                 agent_radius=self._agent_radius,
@@ -318,8 +325,10 @@ class CircleForaging(Env):
                 stated=stated,
             )
             if jnp.all(xy < jnp.inf):
-                circle_xy = circle_xy.at[i].set(xy)
-                circle = circle.replace(p=circle.p.replace(xy=circle_xy))  # type: ignore
+                stated = stated.nested_replace(
+                    "circle.p.xy",
+                    stated.circle.p.xy.at[i].set(xy),
+                )
             else:
                 agent_failed += 1
 
@@ -339,21 +348,24 @@ class CircleForaging(Env):
                 shaped=self._space.shaped,
                 stated=stated,
             )
-            if jnp.all(xy < _inf_xy):
-                circle_xy = circle_xy.at[i + self._n_max_agents].set(xy)
-                circle = circle.replace(p=circle.p.replace(xy=circle_xy))  # type: ignore
+            if jnp.all(xy < jnp.inf):
+                stated = stated.nested_replace(
+                    "circle.p.xy",
+                    stated.circle.p.xy.at[i + self._n_max_agents].set(xy),
+                )
             else:
                 food_failed += 1
 
         if food_failed > 0:
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
-        return stated.replace(circle=circle, segment=self._segment_state)
+        return stated.replace(segment=self._segment_state)
 
     def visualizer(
         self,
         state: CFState,
-        headless: bool = False,
+        figsize: tuple[float, float] | None = None,
+        mgl_backend: str = "pyglet",
         **kwargs,
     ) -> Visualizer:
         """Create a visualizer for the environment"""

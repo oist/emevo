@@ -189,16 +189,16 @@ class SpaceBuilder:
         self.segments.append(segment)
 
     def build(self) -> Space:
-        def stack_or(sl: list[Shape]) -> Shape | None:
+        def concat_or(sl: list[Shape]) -> Shape | None:
             if len(sl) > 0:
-                return jax.tree_map(lambda *args: jnp.stack(args), *sl)
+                return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *sl)
             else:
                 return None
 
         shaped = ShapeDict(
-            circle=stack_or(self.circles),
-            segment=stack_or(self.segments),
-            capsule=stack_or(self.capsules),
+            circle=concat_or(self.circles),
+            segment=concat_or(self.segments),
+            capsule=concat_or(self.capsules),
         )
         dt = self.dt
         linear_damping = jnp.exp(-dt * self.linear_damping).item()
@@ -276,7 +276,8 @@ def circle_overwrap(
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
         dist = jnp.linalg.norm(cpos - jnp.expand_dims(xy, axis=0), axis=-1)
         penetration = shaped.circle.radius + radius - dist
-        overwrap2cir = jnp.any(penetration >= 0)
+        has_overwrap = jnp.logical_and(stated.circle.is_active, penetration >= 0)
+        overwrap2cir = jnp.any(has_overwrap)
     else:
         overwrap2cir = jnp.array(False)
 
@@ -287,7 +288,6 @@ def circle_overwrap(
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
         pb = spos.inv_transform(jnp.expand_dims(xy, axis=0))
         p1, p2 = _length_to_points(shaped.segment.length)
-        p1, p2 = jnp.squeeze(p1, axis=1), jnp.squeeze(p2, axis=1)
         edge = p2 - p1
         s1 = jnp.expand_dims(_vmap_dot(pb - p1, edge), axis=1)
         s2 = jnp.expand_dims(_vmap_dot(p2 - pb, edge), axis=1)
@@ -296,7 +296,8 @@ def circle_overwrap(
         pa = jnp.where(in_segment, p1 + edge * s1 / ee, jnp.where(s1 < 0.0, p1, p2))
         dist = jnp.linalg.norm(pb - pa, axis=-1)
         penetration = radius - dist
-        overwrap2seg = jnp.any(penetration >= 0)
+        has_overwrap = jnp.logical_and(stated.segment.is_active, penetration >= 0)
+        overwrap2seg = jnp.any(has_overwrap)
     else:
         overwrap2seg = jnp.array(False)
 

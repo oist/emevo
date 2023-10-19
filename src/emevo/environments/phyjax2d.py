@@ -319,20 +319,6 @@ def init_solver(n: int) -> VelocitySolver:
     )
 
 
-def _pv_gather(
-    p1: _PositionLike,
-    p2: _PositionLike,
-    orig: _PositionLike,
-) -> _PositionLike:
-    indices = jnp.arange(len(orig.angle))
-    outer, inner = generate_self_pairs(indices)
-    p1_xy = jnp.zeros_like(orig.xy).at[outer].add(p1.xy)
-    p1_angle = jnp.zeros_like(orig.angle).at[outer].add(p1.angle)
-    p2_xy = jnp.zeros_like(orig.xy).at[inner].add(p2.xy)
-    p2_angle = jnp.zeros_like(orig.angle).at[inner].add(p2.angle)
-    return p1.__class__(xy=p1_xy + p2_xy, angle=p1_angle + p2_angle)
-
-
 def _vmap_dot(xy1: jax.Array, xy2: jax.Array) -> jax.Array:
     """Dot product between nested vectors"""
     chex.assert_equal_shape((xy1, xy2))
@@ -471,6 +457,17 @@ class StateDict:
         segment = self._get("segment", statec)
         capsule = self._get("capsule", statec)
         return self.__class__(circle=circle, segment=segment, capsule=capsule)
+
+    def nested_replace(self, query: str, value: Any) -> Self:
+        """Convenient method for nested replace"""
+        queries = query.split(".")
+        objects = [self]
+        for q in queries[:-1]:
+            objects.append(objects[-1][q])  # type: ignore
+        obj = objects[-1].replace(**{queries[-1]: value})  # type: ignore
+        for o, q in zip(objects[-2::-1], queries[-2::-1]):
+            obj = o.replace(**{q: obj})  # type: ignore
+        return obj
 
 
 @chex.dataclass
@@ -623,6 +620,13 @@ class Space:
                     outer_index=outer_index + offset1,
                     inner_index=inner_index + offset2,
                 )
+                if jnp.any(contact.penetration >= 0.0):
+                    total_loop = 0
+                    for i in range(len1):
+                        for j in range(len2):
+                            if total_loop == 394:
+                                print(stated[n1].p.get_slice(i), stated[n2].p.get_slice(j))
+                            total_loop += 1
                 contacts.append(contact_with_meta)
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *contacts)
 

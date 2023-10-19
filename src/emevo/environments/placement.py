@@ -44,7 +44,7 @@ def place_food(
 ) -> jax.Array:
     """Returns `[inf, inf]` if it fails"""
     keys = jax.random.split(key, n_trial)
-    loc_fn = jax.vmap(reprloc_fn, in_axes=(0, None), out_axes=(0, None))
+    loc_fn = jax.vmap(reprloc_fn, in_axes=(0, None))
     locations = loc_fn(keys, reprloc_state)
     return _place_common(
         coordinate,

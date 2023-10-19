@@ -4,7 +4,7 @@ Currently, only supports circles and lines.
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar, Iterable
+from typing import Any, ClassVar, Protocol
 
 import moderngl as mgl
 import moderngl_window as mglw
@@ -13,6 +13,11 @@ from moderngl_window.context import headless
 from numpy.typing import NDArray
 
 from emevo.environments.phyjax2d import Circle, Segment, Space, State, StateDict
+
+
+class HasStateD(Protocol):
+    stated: StateDict
+
 
 _CIRCLE_VERTEX_SHADER = """
 #version 330
@@ -253,14 +258,12 @@ def _collect_circles(
     state: State,
     circle_scaling: float,
 ) -> tuple[NDArray, NDArray, NDArray]:
-    points = state.p.xy
+    points = np.array(state.p.xy, dtype=np.float32)
     scales = circle.radius * circle_scaling
-    colors = circle.rgba
-    return (
-        np.array(points, dtype=np.float32),
-        np.array(scales, dtype=np.float32),
-        np.array(colors, dtype=np.float32) / 255.0,
-    )
+    colors = np.array(circle.rgba, dtype=np.float32) / 255.0
+    is_active = np.expand_dims(np.array(state.is_active), axis=1)
+    colors = np.where(is_active, colors, np.ones_like(colors))
+    return points, np.array(scales, dtype=np.float32), colors
 
 
 def _collect_static_lines(segment: Segment, state: State) -> NDArray:
@@ -341,7 +344,10 @@ class MglRenderer:
         self._static_lines = SegmentVA(
             ctx=context,
             program=static_segment_program,
-            segments=_collect_static_lines(space.shaped.segment, stated.segment),
+            segments=_collect_static_lines(
+                space.shaped.segment,
+                stated.segment,
+            ),
         )
         # head_program = self._make_gl_program(
         #     vertex_shader=_LINE_VERTEX_SHADER,
@@ -430,7 +436,7 @@ class MglRenderer:
 
     def render(self, stated: StateDict) -> None:
         circles = _collect_circles(
-            space.shaped.circle,
+            self._space.shaped.circle,
             stated.circle,
             self._circle_scaling,
         )
@@ -502,10 +508,10 @@ class MglVisualizer:
     def overlay(self, name: str, value: Any) -> None:
         self._renderer.overlay(name, value)
 
-    def render(self, stated: StateDict) -> None:
+    def render(self, state: HasStateD) -> None:
         self._window.clear(1.0, 1.0, 1.0)
         self._window.use()
-        self._renderer.render(stated=stated)
+        self._renderer.render(stated=state.stated)
 
     def show(self) -> None:
         self._window.swap_buffers()

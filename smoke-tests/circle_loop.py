@@ -57,9 +57,7 @@ def main(
     state = env.reset(jax.random.PRNGKey(43))
 
     if render is not None:
-        visualizer = env.visualizer()
-
-    change_foods = food_num is FoodNum.CONSTANT and n_foods_later != n_foods
+        visualizer = env.visualizer(state)
 
     for i in tqdm(range(steps)):
         # actions = {body: body.act_space.sample(gen) for body in bodies}
@@ -67,7 +65,7 @@ def main(
         # actions = {body: np.array([0.0, -1.0]) for body in bodies}
         # _ = env.step(actions)  # type: ignore
         if visualizer is not None:
-            visualizer.render(env)
+            visualizer.render(state)
             visualizer.show()
 
 
