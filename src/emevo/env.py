@@ -73,6 +73,9 @@ class StateProtocol(Protocol):
     profile: Profile
     n_born_agents: jax.Array
 
+    def is_extinct(self) -> bool:
+        ...
+
 
 STATE = TypeVar("STATE", bound="StateProtocol")
 

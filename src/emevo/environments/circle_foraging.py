@@ -69,6 +69,9 @@ class CFState:
     def stated(self) -> StateDict:
         return self.physics
 
+    def is_extinct(self) -> bool:
+        return jnp.logical_not(jnp.any(self.profile.is_active()))
+
 
 def _get_num_or_loc_fn(
     arg: str | tuple | list,
@@ -279,7 +282,7 @@ class CircleForaging(Env):
     def set_agent_loc_fn(self, agent_loc_fn: str | tuple | InitLocFn) -> None:
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
 
-    def step(self, state: CFState, action: ArrayLike):
+    def step(self, state: CFState, action: ArrayLike) -> CFState:
         pass
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
@@ -343,9 +346,6 @@ class CircleForaging(Env):
             return state.replace(physics=physics, profile=profile), True
 
         return jax.lax.cond(ok, success, lambda: (state, False))
-
-    def is_extinct(self, state: CFState) -> bool:
-        pass
 
     def reset(self, key: chex.PRNGKey) -> CFState:
         state_key, init_key = jax.random.split(key)
