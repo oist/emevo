@@ -9,7 +9,6 @@ from emevo.environments.phyjax2d_utils import circle_overwrap
 from emevo.environments.utils.food_repr import ReprLocFn, ReprLocState
 from emevo.environments.utils.locating import Coordinate, InitLocFn
 
-_inf_xy = jnp.array([jnp.inf, jnp.inf])
 _vmap_co = jax.vmap(circle_overwrap, in_axes=(None, None, 0, 0))
 
 
@@ -24,12 +23,13 @@ def _place_common(
         jax.vmap(coordinate.contains_circle)(locations, radius),
         jnp.logical_not(_vmap_co(shaped, stated, locations, radius)),
     )
-
-    def step_fun(state: jax.Array, xi: tuple[jax.Array, jax.Array]):
-        is_ok, loc = xi
-        return jax.lax.select(is_ok, loc, state), None
-
-    return jax.lax.scan(step_fun, _inf_xy, (ok, locations))[0]
+    (ok_idx,) = jnp.nonzero(ok, size=1, fill_value=-1)
+    ok_idx = ok_idx[0]
+    return jax.lax.cond(
+        ok_idx < 0,
+        lambda: jnp.ones(2) * jnp.inf,
+        lambda: locations[ok_idx],
+    )
 
 
 def place_food(

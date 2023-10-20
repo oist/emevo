@@ -4,14 +4,13 @@
 import enum
 from typing import Any, Optional, Tuple
 
+import jax
 import numpy as np
 import typer
 from numpy.random import PCG64
 from tqdm import tqdm
-import jax
+
 from emevo import make
-
-
 
 
 class FoodNum(str, enum.Enum):
@@ -52,6 +51,8 @@ def main(
     env = make(
         "CircleForaging-v0",
         env_shape=env_shape,
+        n_max_agents=20,
+        n_initial_agents=6,
         **env_kwargs,
     )
     state = env.reset(jax.random.PRNGKey(43))
@@ -59,15 +60,30 @@ def main(
     if render is not None:
         visualizer = env.visualizer(state)
 
+    activate_index = 5
+
     for i in tqdm(range(steps)):
         # actions = {body: body.act_space.sample(gen) for body in bodies}
         # Samples for adding constant force for debugging
         # actions = {body: np.array([0.0, -1.0]) for body in bodies}
         # _ = env.step(actions)  # type: ignore
+        if i % 1000 == 0:
+            if 10 <= activate_index:
+                state, success = env.deactivate(state, activate_index)
+                if not success:
+                    print(f"Failed to deactivate agent! {activate_index}")
+                else:
+                    activate_index -= 1
+            else:
+                state, success = env.activate(0, state)
+                if not success:
+                    print("Failed to activate agent!")
+                else:
+                    activate_index += 1
+
         if visualizer is not None:
             visualizer.render(state)
             visualizer.show()
-
 
 
 if __name__ == "__main__":

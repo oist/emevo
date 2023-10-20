@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
 
-from emevo.env import Env, Profile, Visualizer
+from emevo.env import Env, Profile, Visualizer, init_profile
 from emevo.environments.phyjax2d import Position, Space, State, StateDict, Velocity
 from emevo.environments.phyjax2d_utils import (
     SpaceBuilder,
@@ -60,6 +60,10 @@ class CFState:
     physics: StateDict
     food_num: FoodNumState
     repr_loc: ReprLocState
+    key: chex.PRNGKey
+    step: jax.Array
+    profile: Profile
+    n_born_agents: jax.Array
 
     @property
     def stated(self) -> StateDict:
@@ -278,55 +282,86 @@ class CircleForaging(Env):
     def step(self, state: CFState, action: ArrayLike):
         pass
 
-    def activate(
-        self,
-        key: chex.PRNGKey,
-        state: CFState,
-        index: Index,
-    ) -> tuple[CFState, bool]:
+    def activate(self, parent_gen: jax.Array, state: CFState) -> tuple[CFState, bool]:
+        key, activate_key = jax.random.split(state.key)
+        (index,) = jnp.nonzero(
+            jnp.logical_not(state.profile.is_active()),
+            size=1,
+            fill_value=-1,
+        )
+        index = index[0]
         xy = place_agent(
             n_trial=self._max_place_attempts,
             agent_radius=self._agent_radius,
             coordinate=self._coordinate,
             initloc_fn=self._agent_loc_fn,
-            key=key,
+            key=activate_key,
             shaped=self._space.shaped,
             stated=state.physics,
         )
+        ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
 
-        def success() -> CFState:
+        def success() -> tuple[CFState, bool]:
             circle_xy = state.physics.circle.p.xy.at[index].set(xy)
             circle_angle = state.physics.circle.p.angle.at[index].set(0.0)
             p = Position(angle=circle_angle, xy=circle_xy)
             is_active = state.physics.circle.is_active.at[index].set(True)
             circle = state.physics.circle.replace(p=p, is_active=is_active)
             physics = state.physics.replace(circle=circle)
-            return state.replace(physics=physics), True
+            profile = state.profile.activate(
+                index,
+                parent_gen,
+                state.n_born_agents,
+                state.step,
+            )
+            new_state = state.replace(
+                physics=physics,
+                profile=profile,
+                n_born_agents=state.n_born_agents + 1,
+                key=key,
+            )
+            return new_state, True
 
-        return jnp.cond(jnp.all(xy < jnp.inf), success, lambda: state)
+        def failure() -> tuple[CFState, bool]:
+            return state.replace(key=key), False
 
-    def deactivate(self, state: CFState, index: Index) -> CFState:
-        p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
-        p = Position(xy=p_xy)
-        v_xy = state.physics.circle.v.xy.at[index].set(jnp.zeros(2))
-        v_angle = state.physics.circle.v.xy.at[index].set(jnp.zeros(1))
-        v = Velocity(angle=v_angle, xy=v_xy)
-        is_active = state.physics.circle.is_active.at[index].set(False)
-        circle = state.physics.circle.replace(p=p, v=v, is_active=is_active)
-        physics = state.physics.replace(circle=circle)
-        return state.replace(physics=physics)
+        return jax.lax.cond(ok, success, failure)
+
+    def deactivate(self, state: CFState, index: Index) -> tuple[CFState, bool]:
+        ok = state.profile.is_active()[index]
+
+        def success() -> tuple[CFState, bool]:
+            p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
+            p = state.physics.circle.p.replace(xy=p_xy)
+            v_xy = state.physics.circle.v.xy.at[index].set(jnp.zeros(2))
+            v_angle = state.physics.circle.v.angle.at[index].set(0)
+            v = Velocity(angle=v_angle, xy=v_xy)
+            is_active = state.physics.circle.is_active.at[index].set(False)
+            circle = state.physics.circle.replace(p=p, v=v, is_active=is_active)
+            physics = state.physics.replace(circle=circle)
+            profile = state.profile.deactivate(index)
+            return state.replace(physics=physics, profile=profile), True
+
+        return jax.lax.cond(ok, success, lambda: (state, False))
 
     def is_extinct(self, state: CFState) -> bool:
         pass
 
-    def profile(self) -> Profile:
-        pass
-
     def reset(self, key: chex.PRNGKey) -> CFState:
-        stated = self._initialize_physics_state(key)
+        state_key, init_key = jax.random.split(key)
+        stated = self._initialize_physics_state(init_key)
         repr_loc = self._initial_foodloc_state
         food_num = self._initial_foodnum_state
-        return CFState(physics=stated, repr_loc=repr_loc, food_num=food_num)
+        return CFState(
+            physics=stated,
+            repr_loc=repr_loc,
+            food_num=food_num,
+            # Protocols
+            key=state_key,
+            step=jnp.array(0, dtype=jnp.int32),
+            profile=init_profile(self._n_initial_agents, self._n_max_agents),
+            n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
+        )
 
     def _initialize_physics_state(self, key: chex.PRNGKey) -> StateDict:
         stated = self._space.shaped.zeros_state()
