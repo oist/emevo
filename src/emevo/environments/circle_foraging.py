@@ -282,7 +282,7 @@ class CircleForaging(Env):
     def step(self, state: CFState, action: ArrayLike):
         pass
 
-    def activate(self, parent_gen: jax.Array, state: CFState) -> tuple[CFState, bool]:
+    def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
         key, activate_key = jax.random.split(state.key)
         (index,) = jnp.nonzero(
             jnp.logical_not(state.profile.is_active()),

@@ -107,17 +107,12 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def activate(
-        self,
-        key: chex.PRNGKey,
-        parent_gen: jax.Array,
-        state: STATE,
-    ) -> tuple[STATE, bool]:
+    def activate(self, state: STATE, parent_gen: int | jax.Array) -> tuple[STATE, bool]:
         """Mark an agent or some agents active."""
         pass
 
     @abc.abstractmethod
-    def deactivate(self, state: STATE) -> tuple[STATE, bool]:
+    def deactivate(self, state: STATE, index: Index) -> tuple[STATE, bool]:
         """
         Deactivate an agent or some agents. The shape of observations should remain the
         same so that `Env.step` is compiled onle once. So, to represent that an agent is
