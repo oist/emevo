@@ -16,7 +16,6 @@ from emevo.environments.phyjax2d import (
     StateDict,
     _length_to_points,
     _vmap_dot,
-    normalize,
 )
 from emevo.vec2d import Vec2d, Vec2dLike
 
@@ -103,6 +102,8 @@ class SpaceBuilder:
     max_linear_correction: float = 0.2
     allowed_penetration: float = 0.005
     bounce_threshold: float = 1.0
+    max_velocity: float | None = None
+    max_angular_velocity: float | None = None
 
     def add_circle(
         self,
@@ -203,6 +204,10 @@ class SpaceBuilder:
         dt = self.dt
         linear_damping = jnp.exp(-dt * self.linear_damping).item()
         angular_damping = jnp.exp(-dt * self.angular_damping).item()
+        max_velocity = jnp.inf if self.max_velocity is None else self.max_velocity
+        max_angular_velocity = (
+            jnp.inf if self.max_angular_velocity is None else self.max_angular_velocity
+        )
         return Space(
             gravity=jnp.array(self.gravity),
             shaped=shaped,
@@ -215,6 +220,8 @@ class SpaceBuilder:
             max_linear_correction=self.max_linear_correction,
             allowed_penetration=self.allowed_penetration,
             bounce_threshold=self.bounce_threshold,
+            max_velocity=max_velocity,
+            max_angular_velocity=max_angular_velocity,
         )
 
 

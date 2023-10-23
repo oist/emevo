@@ -239,6 +239,18 @@ class State(PyTreeOps):
             is_active=jnp.ones(n),
         )
 
+    def apply_force_global(self, point: jax.Array, force: jax.Array) -> Self:
+        chex.assert_equal_shape((self.f.xy, force))
+        xy = self.f.xy + force
+        angle = self.f.angle + jnp.cross(point - self.p.xy, force)
+        f = self.f.replace(xy=xy, angle=angle)
+        return self.replace(f=f)
+
+    def apply_force_local(self, point: jax.Array, force: jax.Array) -> Self:
+        chex.assert_equal_shape((self.p.xy, point))
+        point = self.p.transform(point)
+        return self.apply_force_global(point, force)
+
 
 @chex.dataclass
 class Contact(PyTreeOps):
@@ -307,16 +319,6 @@ class VelocitySolver:
         pn = jnp.where(continuing_contact, self.pn, jnp.zeros_like(self.pn))
         pt = jnp.where(continuing_contact, self.pt, jnp.zeros_like(self.pt))
         return self.replace(pn=pn, pt=pt, contact=new_contact)
-
-
-def init_solver(n: int) -> VelocitySolver:
-    return VelocitySolver(
-        v1=Velocity.zeros(n),
-        v2=Velocity.zeros(n),
-        pn=jnp.zeros(n),
-        pt=jnp.zeros(n),
-        contact=jnp.zeros(n, dtype=bool),
-    )
 
 
 def _vmap_dot(xy1: jax.Array, xy2: jax.Array) -> jax.Array:
@@ -598,6 +600,8 @@ class Space:
     max_linear_correction: float = 0.2
     allowed_penetration: float = 0.005
     bounce_threshold: float = 1.0
+    max_velocity: float = 100.0
+    max_angular_velocity: float = 100.0
 
     def check_contacts(self, stated: StateDict) -> ContactWithMetadata:
         contacts = []
@@ -620,13 +624,6 @@ class Space:
                     outer_index=outer_index + offset1,
                     inner_index=inner_index + offset2,
                 )
-                if jnp.any(contact.penetration >= 0.0):
-                    total_loop = 0
-                    for i in range(len1):
-                        for j in range(len2):
-                            if total_loop == 394:
-                                print(stated[n1].p.get_slice(i), stated[n2].p.get_slice(j))
-                            total_loop += 1
                 contacts.append(contact_with_meta)
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *contacts)
 
@@ -641,6 +638,16 @@ class Space:
                     n += len1 * len2
         return n
 
+    def init_solver(self) -> VelocitySolver:
+        n = self.n_possible_contacts()
+        return VelocitySolver(
+            v1=Velocity.zeros(n),
+            v2=Velocity.zeros(n),
+            pn=jnp.zeros(n),
+            pt=jnp.zeros(n),
+            contact=jnp.zeros(n, dtype=bool),
+        )
+
 
 def update_velocity(space: Space, shape: Shape, state: State) -> State:
     # Expand (N, ) to (N, 1) because xy has a shape (N, 2)
@@ -652,6 +659,12 @@ def update_velocity(space: Space, shape: Shape, state: State) -> State:
     )
     v_xy = state.v.xy + (gravity + state.f.xy * invm) * space.dt
     v_ang = state.v.angle + state.f.angle * shape.inv_moment() * space.dt
+    v_xy = jnp.clip(state.v.xy, a_max=space.max_velocity, a_min=-space.max_velocity)
+    v_ang = jnp.clip(
+        state.v.angle,
+        a_max=space.max_angular_velocity,
+        a_min=-space.max_angular_velocity,
+    )
     # Damping: dv/dt + vc = 0 -> v(t) = v0 * exp(-tc)
     # v(t + dt) = v0 * exp(-tc - dtc) = v0 * exp(-tc) * exp(-dtc) = v(t)exp(-dtc)
     # Thus, linear/angular damping factors are actually exp(-dtc)
@@ -960,7 +973,11 @@ def dont_solve_constraints(
     return v, p, solver
 
 
-def step(space: Space, stated: StateDict, solver: VelocitySolver) -> StateDict:
+def step(
+    space: Space,
+    stated: StateDict,
+    solver: VelocitySolver,
+) -> tuple[StateDict, VelocitySolver]:
     state = update_velocity(space, space.shaped.concat(), stated.concat())
     contact_with_meta = space.check_contacts(stated.update(state))
     # Check there's any penetration
@@ -976,7 +993,7 @@ def step(space: Space, stated: StateDict, solver: VelocitySolver) -> StateDict:
         contact_with_meta,
     )
     statec = update_position(space, state.replace(v=v, p=p))
-    return stated.update(statec)
+    return stated.update(statec), solver
 
 
 @chex.dataclass

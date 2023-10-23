@@ -8,7 +8,10 @@ import numpy as np
 from jax.typing import ArrayLike
 
 from emevo.env import Env, Profile, Visualizer, init_profile
-from emevo.environments.phyjax2d import Position, Space, State, StateDict, Velocity
+from emevo.environments.phyjax2d import Position
+from emevo.environments.phyjax2d import Space as Physics
+from emevo.environments.phyjax2d import State, StateDict, Velocity, VelocitySolver
+from emevo.environments.phyjax2d import step as physics_step
 from emevo.environments.phyjax2d_utils import (
     SpaceBuilder,
     make_approx_circle,
@@ -29,7 +32,13 @@ from emevo.environments.utils.locating import (
     InitLocFn,
     SquareCoordinate,
 )
+from emevo.spaces import BoxSpace, NamedTupleSpace
 from emevo.types import Index
+from emevo.vec2d import Vec2d
+
+MAX_ANGULAR_VELOCITY: float = float(np.pi)
+MAX_VELOCITY: float = 10.0
+MAX_FORCE: float = 1.0
 
 
 class CFObs(NamedTuple):
@@ -58,6 +67,7 @@ class CFObs(NamedTuple):
 @chex.dataclass
 class CFState:
     physics: StateDict
+    solver: VelocitySolver
     food_num: FoodNumState
     repr_loc: ReprLocState
     key: chex.PRNGKey
@@ -87,7 +97,7 @@ def _get_num_or_loc_fn(
         raise ValueError(f"Invalid value in _get_num_or_loc_fn {arg}")
 
 
-def _make_space(
+def _make_physics(
     dt: float,
     coordinate: CircleCoordinate | SquareCoordinate,
     linear_damping: float = 0.9,
@@ -98,7 +108,7 @@ def _make_space(
     n_max_foods: int = 20,
     agent_radius: float = 10.0,
     food_radius: float = 4.0,
-) -> tuple[Space, State]:
+) -> tuple[Physics, State]:
     builder = SpaceBuilder(
         gravity=(0.0, 0.0),  # No gravity
         dt=dt,
@@ -106,6 +116,8 @@ def _make_space(
         angular_damping=angular_damping,
         n_velocity_iter=n_velocity_iter,
         n_position_iter=n_position_iter,
+        max_velocity=MAX_VELOCITY,
+        max_angular_velocity=MAX_ANGULAR_VELOCITY,
     )
     # Set walls
     if isinstance(coordinate, CircleCoordinate):
@@ -140,7 +152,7 @@ class CircleForaging(Env):
         self,
         n_initial_agents: int = 6,
         n_max_agents: int = 100,
-        n_max_foods: int = 100,
+        n_max_foods: int = 40,
         food_num_fn: ReprNumFn | str | tuple[str, ...] = "constant",
         food_loc_fn: ReprLocFn | str | tuple[str, ...] = "gaussian",
         agent_loc_fn: InitLocFn | str | tuple[str, ...] = "uniform",
@@ -151,11 +163,10 @@ class CircleForaging(Env):
         obstacles: list[tuple[float, float, float, float]] | None = None,
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
-        sensor_range: tuple[float, float] = (-180.0, 180.0),
+        sensor_range: tuple[float, float] = (-120.0, 120.0),
         agent_radius: float = 12.0,
         food_radius: float = 4.0,
         foodloc_interval: int = 1000,
-        max_abs_impulse: float = 0.2,
         dt: float = 0.05,
         linear_damping: float = 0.9,
         angular_damping: float = 0.8,
@@ -195,7 +206,7 @@ class CircleForaging(Env):
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
         # Physics
-        self._space, self._segment_state = _make_space(
+        self._physics, self._segment_state = _make_physics(
             dt=dt,
             coordinate=self._coordinate,
             linear_damping=linear_damping,
@@ -210,8 +221,26 @@ class CircleForaging(Env):
         self._agent_indices = jnp.arange(n_max_agents)
         self._food_indices = jnp.arange(n_max_foods)
         self._n_physics_steps = n_physics_steps
-        # Placeholder
+        # Spaces
+        N = self._n_max_agents
+        self.act_space = BoxSpace(low=0.0, high=MAX_FORCE, shape=(N, 2))
+        self.obs_space = NamedTupleSpace(
+            CFObs,
+            sensor=BoxSpace(low=0.0, high=1.0, shape=(N, n_agent_sensors, 3)),
+            collision=BoxSpace(low=0.0, high=1.0, shape=(N, 3)),
+            velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(N, 2)),
+            angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=(N,)),
+            angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=(N,)),
+            energy=BoxSpace(low=0.0, high=50.0, shape=(N,)),
+        )
+        # Some cached constants
         self._invisible_xy = jnp.array([-100.0, -100.0], dtype=jnp.float32)
+        act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
+        act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
+        N = self._n_max_agents + self._n_max_foods
+        self._act_p1 = jnp.tile(jnp.array(act_p1), (N, 1))
+        self._act_p2 = jnp.tile(jnp.array(act_p2), (N, 1))
+        self._act_food = jnp.zeros((self._n_max_foods, 2))
 
     @staticmethod
     def _make_food_num_fn(
@@ -283,7 +312,17 @@ class CircleForaging(Env):
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
 
     def step(self, state: CFState, action: ArrayLike) -> CFState:
-        pass
+        act = self.act_space.clip(jnp.array(action))
+        act = jnp.concatenate((act, self._act_food), axis=0)
+        f1, f2 = act[:, 0], act[:, 1]
+        f1 = jnp.stack((jnp.zeros_like(f1), f1), axis=1)
+        f2 = jnp.stack((jnp.zeros_like(f2), f2), axis=1)
+        circle = state.physics.circle
+        circle = circle.apply_force_local(self._act_p1, f1)
+        circle = circle.apply_force_local(self._act_p2, f2)
+        stated = state.physics.replace(circle=circle)
+        stated, solver = physics_step(self._physics, stated, state.solver)
+        return state.replace(physics=stated)
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
         key, activate_key = jax.random.split(state.key)
@@ -299,7 +338,7 @@ class CircleForaging(Env):
             coordinate=self._coordinate,
             initloc_fn=self._agent_loc_fn,
             key=activate_key,
-            shaped=self._space.shaped,
+            shaped=self._physics.shaped,
             stated=state.physics,
         )
         ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
@@ -354,6 +393,7 @@ class CircleForaging(Env):
         food_num = self._initial_foodnum_state
         return CFState(
             physics=stated,
+            solver=self._physics.init_solver(),
             repr_loc=repr_loc,
             food_num=food_num,
             # Protocols
@@ -364,7 +404,7 @@ class CircleForaging(Env):
         )
 
     def _initialize_physics_state(self, key: chex.PRNGKey) -> StateDict:
-        stated = self._space.shaped.zeros_state()
+        stated = self._physics.shaped.zeros_state()
         assert stated.circle is not None
 
         is_active = jnp.concatenate(
@@ -390,7 +430,7 @@ class CircleForaging(Env):
                 coordinate=self._coordinate,
                 initloc_fn=self._agent_loc_fn,
                 key=key,
-                shaped=self._space.shaped,
+                shaped=self._physics.shaped,
                 stated=stated,
             )
             if jnp.all(xy < jnp.inf):
@@ -414,7 +454,7 @@ class CircleForaging(Env):
                 reprloc_fn=self._food_loc_fn,  # type: ignore
                 reprloc_state=foodloc_state,
                 key=key,
-                shaped=self._space.shaped,
+                shaped=self._physics.shaped,
                 stated=stated,
             )
             if jnp.all(xy < jnp.inf):
@@ -443,7 +483,7 @@ class CircleForaging(Env):
         return moderngl_vis.MglVisualizer(
             x_range=self._x_range,
             y_range=self._y_range,
-            space=self._space,
+            space=self._physics,
             stated=state.physics,
             figsize=figsize,
             backend=mgl_backend,

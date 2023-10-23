@@ -73,7 +73,7 @@ class Vec2d(NamedTuple):
 
     # String representaion (for debugging)
     def __repr__(self) -> str:
-        return f"Vec2d({self.x}, {self.y}"
+        return f"Vec2d({self.x}, {self.y})"
 
     # Addition
     def __add__(self, other: tuple[float, float]) -> Self:  # type: ignore

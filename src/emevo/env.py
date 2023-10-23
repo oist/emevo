@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
+from emevo.spaces import Space
 from emevo.types import Index, PyTree
 from emevo.visualizer import Visualizer
 
@@ -92,6 +93,9 @@ class TimeStep:
 class Env(abc.ABC, Generic[STATE, OBS]):
     """Abstract API for emevo environments"""
 
+    act_space: Space
+    obs_space: Space
+
     def __init__(self, *args, **kwargs) -> None:
         # To supress PyRight errors in registry
         pass
@@ -122,11 +126,6 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         dead, it is recommended to mark that body is not active and reuse it after a new
         agent is born.
         """
-        pass
-
-    @abc.abstractmethod
-    def is_extinct(self, state: STATE) -> bool:
-        """Return if agents are extinct"""
         pass
 
     @abc.abstractmethod

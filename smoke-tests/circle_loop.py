@@ -67,6 +67,10 @@ def main(
         # Samples for adding constant force for debugging
         # actions = {body: np.array([0.0, -1.0]) for body in bodies}
         # _ = env.step(actions)  # type: ignore
+        key, act_key = jax.random.split(state.key)
+        state = state.replace(key=key)
+        act = env.act_space.sample(act_key)
+        state = env.step(state, act)
         if i % 1000 == 0:
             if 10 <= activate_index:
                 state, success = env.deactivate(state, activate_index)
@@ -75,7 +79,7 @@ def main(
                 else:
                     activate_index -= 1
             else:
-                state, success = env.activate(0, state)
+                state, success = env.activate(state, 0)
                 if not success:
                     print("Failed to activate agent!")
                 else:

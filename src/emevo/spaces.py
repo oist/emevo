@@ -216,14 +216,7 @@ class DiscreteSpace(Space[int]):
 
     def contains(self, x: int) -> bool:
         """Return boolean specifying if x is a valid member of this space."""
-        if isinstance(x, int):
-            as_int = x
-        elif isinstance(x, (jnp.generic, jnp.ndarray)) and (
-            x.dtype.char in jnp.typecodes["AllInteger"] and x.shape == ()
-        ):
-            as_int = int(x)  # type: ignore
-        else:
-            return False
+        as_int = x
         return self.start <= as_int < self.start + self.n
 
     def flatten(self) -> BoxSpace:
