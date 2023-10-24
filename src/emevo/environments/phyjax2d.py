@@ -430,8 +430,10 @@ def _capsule_to_circle_impl(
 @chex.dataclass
 class StateDict:
     circle: State | None = None
+    static_circle: State | None = None
     segment: State | None = None
     capsule: State | None = None
+    static_capsule: State | None = None
 
     def concat(self) -> Self:
         states = [s for s in self.values() if s is not None]
@@ -456,9 +458,17 @@ class StateDict:
 
     def update(self, statec: State) -> Self:
         circle = self._get("circle", statec)
+        static_circle = self._get("static_circle", statec)
         segment = self._get("segment", statec)
         capsule = self._get("capsule", statec)
-        return self.__class__(circle=circle, segment=segment, capsule=capsule)
+        static_capsule = self._get("static_capsule", statec)
+        return self.__class__(
+            circle=circle,
+            static_circle=static_circle,
+            segment=segment,
+            capsule=capsule,
+            static_capsule=static_capsule,
+        )
 
     def nested_replace(self, query: str, value: Any) -> Self:
         """Convenient method for nested replace"""
@@ -475,8 +485,10 @@ class StateDict:
 @chex.dataclass
 class ShapeDict:
     circle: Circle | None = None
-    segment: Segment | None = None
+    static_circle: Circle | None = None
     capsule: Capsule | None = None
+    static_capsule: Capsule | None = None
+    segment: Segment | None = None
 
     def concat(self) -> Shape:
         shapes = [s.to_shape() for s in self.values() if s is not None]
@@ -484,9 +496,17 @@ class ShapeDict:
 
     def zeros_state(self) -> StateDict:
         circle = then(self.circle, lambda s: State.zeros(len(s.mass)))
+        static_circle = then(self.static_circle, lambda s: State.zeros(len(s.mass)))
         segment = then(self.segment, lambda s: State.zeros(len(s.mass)))
         capsule = then(self.capsule, lambda s: State.zeros(len(s.mass)))
-        return StateDict(circle=circle, segment=segment, capsule=capsule)
+        static_capsule = then(self.capsule, lambda s: State.zeros(len(s.mass)))
+        return StateDict(
+            circle=circle,
+            static_circle=static_circle,
+            segment=segment,
+            capsule=capsule,
+            static_capsule=static_capsule,
+        )
 
 
 def _circle_to_circle(
@@ -496,6 +516,32 @@ def _circle_to_circle(
     circle1, circle2 = tree_map2(generate_self_pairs, shaped.circle)
     pos1, pos2 = tree_map2(generate_self_pairs, stated.circle.p)
     is_active = jnp.logical_and(*generate_self_pairs(stated.circle.is_active))
+    contacts = _circle_to_circle_impl(
+        circle1,
+        circle2,
+        pos1,
+        pos2,
+        is_active,
+    )
+    return contacts, circle1, circle2
+
+
+def _circle_to_static_circle(
+    shaped: ShapeDict,
+    stated: StateDict,
+) -> tuple[Contact, Circle, Circle]:
+    circle1 = jax.tree_map(
+        functools.partial(_pair_outer, reps=shaped.static_circle.mass.shape[0]),
+        shaped.circle,
+    )
+    circle2 = jax.tree_map(
+        functools.partial(_pair_inner, reps=shaped.circle.mass.shape[0]),
+        shaped.static_circle,
+    )
+    pos1, pos2 = tree_map2(generate_pairs, stated.circle.p, stated.static_circle.p)
+    is_active = jnp.logical_and(
+        *generate_pairs(stated.circle.is_active, stated.static_circle.is_active)
+    )
     contacts = _circle_to_circle_impl(
         circle1,
         circle2,
@@ -560,6 +606,7 @@ def _segment_to_circle(
 
 _CONTACT_FUNCTIONS = {
     ("circle", "circle"): _circle_to_circle,
+    ("circle", "static_circle"): _circle_to_static_circle,
     ("capsule", "circle"): _capsule_to_circle,
     ("segment", "circle"): _segment_to_circle,
 }
@@ -659,19 +706,20 @@ def update_velocity(space: Space, shape: Shape, state: State) -> State:
     )
     v_xy = state.v.xy + (gravity + state.f.xy * invm) * space.dt
     v_ang = state.v.angle + state.f.angle * shape.inv_moment() * space.dt
-    v_xy = jnp.clip(state.v.xy, a_max=space.max_velocity, a_min=-space.max_velocity)
+    v_xy = jnp.clip(
+        v_xy * space.linear_damping,
+        a_max=space.max_velocity,
+        a_min=-space.max_velocity,
+    )
     v_ang = jnp.clip(
-        state.v.angle,
+        v_ang * space.angular_damping,
         a_max=space.max_angular_velocity,
         a_min=-space.max_angular_velocity,
     )
     # Damping: dv/dt + vc = 0 -> v(t) = v0 * exp(-tc)
     # v(t + dt) = v0 * exp(-tc - dtc) = v0 * exp(-tc) * exp(-dtc) = v(t)exp(-dtc)
     # Thus, linear/angular damping factors are actually exp(-dtc)
-    return state.replace(
-        v=Velocity(angle=v_ang * space.angular_damping, xy=v_xy * space.linear_damping),
-        f=state.f.zeros_like(),
-    )
+    return state.replace(v=Velocity(angle=v_ang, xy=v_xy), f=state.f.zeros_like())
 
 
 def update_position(space: Space, state: State) -> State:

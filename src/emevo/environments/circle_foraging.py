@@ -139,10 +139,20 @@ def _make_physics(
     seg_position = jax.tree_map(lambda *args: jnp.stack(args), *segments)
     seg_state = State.from_position(seg_position)
     for _ in range(n_max_agents):
-        # Use the default density for now
-        builder.add_circle(radius=agent_radius, friction=0.1, elasticity=0.2)
+        builder.add_circle(
+            radius=agent_radius,
+            friction=0.1,
+            elasticity=0.2,
+            density=0.01,
+        )
     for _ in range(n_max_foods):
-        builder.add_circle(radius=food_radius, friction=0.0, elasticity=0.2)
+        builder.add_circle(
+            radius=food_radius,
+            friction=0.0,
+            elasticity=0.2,
+            density=0.1,
+            is_static=True,
+        )
     space = builder.build()
     return space, seg_state
 
@@ -237,10 +247,9 @@ class CircleForaging(Env):
         self._invisible_xy = jnp.array([-100.0, -100.0], dtype=jnp.float32)
         act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
         act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
-        N = self._n_max_agents + self._n_max_foods
+        N = self._n_max_agents
         self._act_p1 = jnp.tile(jnp.array(act_p1), (N, 1))
         self._act_p2 = jnp.tile(jnp.array(act_p2), (N, 1))
-        self._act_food = jnp.zeros((self._n_max_foods, 2))
 
     @staticmethod
     def _make_food_num_fn(
@@ -313,7 +322,6 @@ class CircleForaging(Env):
 
     def step(self, state: CFState, action: ArrayLike) -> CFState:
         act = self.act_space.clip(jnp.array(action))
-        act = jnp.concatenate((act, self._act_food), axis=0)
         f1, f2 = act[:, 0], act[:, 1]
         f1 = jnp.stack((jnp.zeros_like(f1), f1), axis=1)
         f2 = jnp.stack((jnp.zeros_like(f2), f2), axis=1)
@@ -322,7 +330,7 @@ class CircleForaging(Env):
         circle = circle.apply_force_local(self._act_p2, f2)
         stated = state.physics.replace(circle=circle)
         stated, solver = physics_step(self._physics, stated, state.solver)
-        return state.replace(physics=stated)
+        return state.replace(physics=stated, solver=solver)
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
         key, activate_key = jax.random.split(state.key)
@@ -407,20 +415,30 @@ class CircleForaging(Env):
         stated = self._physics.shaped.zeros_state()
         assert stated.circle is not None
 
-        is_active = jnp.concatenate(
+        # Set is_active
+        is_active_c = jnp.concatenate(
             (
                 jnp.ones(self._n_initial_agents, dtype=bool),
                 jnp.zeros(self._n_max_agents - self._n_initial_agents, dtype=bool),
+            )
+        )
+        is_active_s = jnp.concatenate(
+            (
                 jnp.ones(self._n_initial_foods, dtype=bool),
                 jnp.zeros(self._n_max_foods - self._n_initial_foods, dtype=bool),
             )
         )
+        stated = stated.nested_replace("circle.is_active", is_active_c)
+        stated = stated.nested_replace("static_circle.is_active", is_active_s)
         # Move all circle to the invisiable area
         stated = stated.nested_replace(
             "circle.p.xy",
             jnp.ones_like(stated.circle.p.xy) * -100,
         )
-        stated = stated.nested_replace("circle.is_active", is_active)
+        stated = stated.nested_replace(
+            "static_circle.p.xy",
+            jnp.ones_like(stated.static_circle.p.xy) * -100,
+        )
         keys = jax.random.split(key, self._n_initial_foods + self._n_initial_agents)
         agent_failed = 0
         for i, key in enumerate(keys[: self._n_initial_agents]):
@@ -459,8 +477,8 @@ class CircleForaging(Env):
             )
             if jnp.all(xy < jnp.inf):
                 stated = stated.nested_replace(
-                    "circle.p.xy",
-                    stated.circle.p.xy.at[i + self._n_max_agents].set(xy),
+                    "static_circle.p.xy",
+                    stated.static_circle.p.xy.at[i].set(xy),
                 )
             else:
                 food_failed += 1
@@ -478,7 +496,7 @@ class CircleForaging(Env):
         **kwargs,
     ) -> Visualizer:
         """Create a visualizer for the environment"""
-        from emevo.environments.pymunk_envs import moderngl_vis
+        from emevo.environments import moderngl_vis
 
         return moderngl_vis.MglVisualizer(
             x_range=self._x_range,

@@ -90,7 +90,9 @@ class SpaceBuilder:
 
     gravity: Vec2dLike = dataclasses.field(default=(0.0, -9.8))
     circles: list[Circle] = dataclasses.field(default_factory=list)
+    static_circles: list[Circle] = dataclasses.field(default_factory=list)
     capsules: list[Capsule] = dataclasses.field(default_factory=list)
+    static_capsules: list[Capsule] = dataclasses.field(default_factory=list)
     segments: list[Segment] = dataclasses.field(default_factory=list)
     dt: float = 0.1
     linear_damping: float = 0.9
@@ -130,7 +132,10 @@ class SpaceBuilder:
             friction=jnp.array([friction]),
             rgba=jnp.array(rgba).reshape(1, 4),
         )
-        self.circles.append(circle)
+        if is_static:
+            self.static_circles.append(circle)
+        else:
+            self.circles.append(circle)
 
     def add_capsule(
         self,
@@ -163,7 +168,10 @@ class SpaceBuilder:
             friction=jnp.array([friction]),
             rgba=jnp.array(rgba).reshape(1, 4),
         )
-        self.capsules.append(capsule)
+        if is_static:
+            self.static_capsules.append(capsule)
+        else:
+            self.capsules.append(capsule)
 
     def add_segment(
         self,
@@ -198,8 +206,10 @@ class SpaceBuilder:
 
         shaped = ShapeDict(
             circle=concat_or(self.circles),
+            static_circle=concat_or(self.static_circles),
             segment=concat_or(self.segments),
             capsule=concat_or(self.capsules),
+            static_capsule=concat_or(self.static_capsules),
         )
         dt = self.dt
         linear_damping = jnp.exp(-dt * self.linear_damping).item()
@@ -287,6 +297,15 @@ def circle_overwrap(
         overwrap2cir = jnp.any(has_overwrap)
     else:
         overwrap2cir = jnp.array(False)
+
+     # Circle-static_circle overwrap
+    if stated.static_circle is not None and shaped.static_circle is not None:
+        cpos = stated.static_circle.p.xy
+        # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
+        dist = jnp.linalg.norm(cpos - jnp.expand_dims(xy, axis=0), axis=-1)
+        penetration = shaped.static_circle.radius + radius - dist
+        has_overwrap = jnp.logical_and(stated.static_circle.is_active, penetration >= 0)
+        overwrap2cir = jnp.logical_or(jnp.any(has_overwrap), overwrap2cir)
 
     # Circle-segment overwrap
 

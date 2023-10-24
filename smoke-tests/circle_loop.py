@@ -57,8 +57,10 @@ def main(
     )
     state = env.reset(jax.random.PRNGKey(43))
 
-    if render is not None:
+    if render:
         visualizer = env.visualizer(state)
+    else:
+        visualizer = None
 
     activate_index = 5
 
@@ -69,8 +71,8 @@ def main(
         # _ = env.step(actions)  # type: ignore
         key, act_key = jax.random.split(state.key)
         state = state.replace(key=key)
-        act = env.act_space.sample(act_key)
-        state = env.step(state, act)
+        act = jax.jit(env.act_space.sample)(act_key)
+        state = jax.jit(env.step)(state, act)
         if i % 1000 == 0:
             if 10 <= activate_index:
                 state, success = env.deactivate(state, activate_index)

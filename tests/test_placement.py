@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from emevo.environments.circle_foraging import _make_space
+from emevo.environments.circle_foraging import _make_physics
 from emevo.environments.phyjax2d import Space, StateDict
 from emevo.environments.placement import place_agent, place_food
 from emevo.environments.utils.food_repr import ReprLoc
@@ -22,7 +22,7 @@ def key() -> chex.PRNGKey:
 
 def get_space_and_more() -> tuple[Space, StateDict, CircleCoordinate]:
     coordinate = CircleCoordinate((100.0, 100.0), 100.0)
-    space, seg_state = _make_space(
+    space, seg_state = _make_physics(
         0.1,
         coordinate,
         n_max_agents=N_MAX_AGENTS,
@@ -56,7 +56,7 @@ def test_place_agents(key) -> None:
     is_active = jnp.concatenate(
         (
             jnp.ones(n, dtype=bool),
-            jnp.zeros(N_MAX_AGENTS + N_MAX_FOODS - n, dtype=bool),
+            jnp.zeros(N_MAX_AGENTS - n, dtype=bool),
         )
     )
     stated = stated.nested_replace("circle.is_active", is_active)
@@ -71,7 +71,7 @@ def test_place_foods(key) -> None:
     keys = jax.random.split(key, n)
     space, stated, coordinate = get_space_and_more()
     reprloc_fn, reprloc_state = ReprLoc.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
-    assert stated.circle is not None
+    assert stated.static_circle is not None
     for i, key in enumerate(keys):
         xy = place_food(
             n_trial=10,
@@ -85,18 +85,21 @@ def test_place_foods(key) -> None:
         )
         assert jnp.all(xy < jnp.inf), stated.circle.p.xy
         stated = stated.nested_replace(
-            "circle.p.xy",
-            stated.circle.p.xy.at[i + N_MAX_AGENTS].set(xy),
+            "static_circle.p.xy",
+            stated.static_circle.p.xy.at[i].set(xy),
         )
 
+    stated = stated.nested_replace(
+        "circle.is_active",
+        jnp.zeros(N_MAX_AGENTS, dtype=bool),
+    )
     is_active = jnp.concatenate(
         (
-            jnp.zeros(N_MAX_AGENTS, dtype=bool),
             jnp.ones(n, dtype=bool),
             jnp.zeros(N_MAX_FOODS - n, dtype=bool),
         )
     )
-    stated = stated.nested_replace("circle.is_active", is_active)
+    stated = stated.nested_replace("static_circle.is_active", is_active)
 
     # test no overwrap each other
     contact_data = space.check_contacts(stated)
