@@ -1,6 +1,6 @@
 """Example of using circle foraging environment"""
 
-
+import chex
 import enum
 from typing import Any, Optional, Tuple
 
@@ -55,7 +55,9 @@ def main(
         n_initial_agents=6,
         **env_kwargs,
     )
-    state = env.reset(jax.random.PRNGKey(43))
+    key = jax.random.PRNGKey(43)
+    keys = jax.random.split(key, steps + 1)
+    state = env.reset(keys[0])
 
     if render:
         visualizer = env.visualizer(state)
@@ -63,16 +65,13 @@ def main(
         visualizer = None
 
     activate_index = 5
-
-    for i in tqdm(range(steps)):
-        # actions = {body: body.act_space.sample(gen) for body in bodies}
-        # Samples for adding constant force for debugging
-        # actions = {body: np.array([0.0, -1.0]) for body in bodies}
-        # _ = env.step(actions)  # type: ignore
-        key, act_key = jax.random.split(state.key)
-        state = state.replace(key=key)
-        act = jax.jit(env.act_space.sample)(act_key)
-        state = jax.jit(env.step)(state, act)
+    jit_step = jax.jit(env.step)
+    jit_sample = jax.jit(env.act_space.sample)
+    for i, key in tqdm(zip(range(steps), keys[1:])):
+        # key, act_key = jax.random.split(state.key)
+        # state = state.replace(key=key)
+        act = jit_sample(key)
+        state = jit_step(state, act)
         if i % 1000 == 0:
             if 10 <= activate_index:
                 state, success = env.deactivate(state, activate_index)
