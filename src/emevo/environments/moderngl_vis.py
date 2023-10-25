@@ -467,7 +467,7 @@ class MglVisualizer:
         hoffsets: tuple[int, ...] = (),
         vsync: bool = False,
         backend: str = "pyglet",
-        title: str = "EmEvo PymunkEnv",
+        title: str = "EmEvo CircleForaging",
     ) -> None:
         self.pix_fmt = "rgba"
 
