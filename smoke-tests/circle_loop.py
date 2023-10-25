@@ -30,6 +30,7 @@ def main(
     obstacles: bool = False,
     angle: bool = False,
     render: bool = False,
+    replace: bool = False,
     env_shape: str = "square",
     food_loc_fn: str = "gaussian",
     food_num: FoodNum = FoodNum.CONSTANT,
@@ -51,8 +52,8 @@ def main(
     env = make(
         "CircleForaging-v0",
         env_shape=env_shape,
-        n_max_agents=20,
-        n_initial_agents=6,
+        n_max_agents=50,
+        n_initial_agents=40,
         **env_kwargs,
     )
     key = jax.random.PRNGKey(43)
@@ -72,7 +73,7 @@ def main(
         # state = state.replace(key=key)
         act = jit_sample(key)
         state = jit_step(state, act)
-        if i % 1000 == 0:
+        if replace and i % 1000 == 0:
             if 10 <= activate_index:
                 state, success = env.deactivate(state, activate_index)
                 if not success:
