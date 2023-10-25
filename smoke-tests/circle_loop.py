@@ -29,6 +29,7 @@ def main(
     render: Optional[Rendering] = None,
     food_initial_force: Tuple[float, float] = (0.0, 0.0),
     seed: int = 1,
+    n_agents: int = 10,
     n_foods: int = 10,
     n_foods_later: int = 10,
     debug: bool = False,
@@ -72,6 +73,7 @@ def main(
             env_shape=env_shape,
             food_initial_force=food_initial_force,
             seed=seed,
+            n_initial_bodies=n_agents,
             **env_kwargs,
         )
     bodies = env.bodies()
