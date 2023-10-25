@@ -1,3 +1,4 @@
+import dataclasses
 import functools
 from collections.abc import Sequence
 from typing import Any, Callable, Protocol
@@ -509,21 +510,54 @@ class ShapeDict:
         )
 
 
+@chex.dataclass
+class ContactIndices:
+    shape1: Shape
+    shape2: Shape
+    index1: jax.Array
+    index2: jax.Array
+
+
+_jitted_self_pairs = jax.jit(generate_self_pairs)
+
+
+# This fuction is used within post_init so need to jit
+def _circle_to_circle_index(shaped: ShapeDict) -> ContactIndices:
+    circle1, circle2 = tree_map2(_jitted_self_pairs, shaped.circle)
+    n = shaped.circle.mass.shape[0]
+    index1, index2 = _jitted_self_pairs(jnp.arange(n))
+    return ContactIndices(
+        shape1=circle1,
+        shape2=circle2,
+        index1=index1,
+        index2=index2,
+    )
+
+
+def _circle_to_circle_new(
+    ci: ContactIndices,
+    stated: StateDict,
+) -> tuple[Contact, Circle, Circle]:
+    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
+    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
+    is_active1 = stated.circle.is_active[ci.index1]
+    is_active2 = stated.circle.is_active[ci.index2]
+    contacts = _circle_to_circle_impl(
+        ci.shape1,
+        ci.shape2,
+        pos1,
+        pos2,
+        jnp.logical_and(is_active1, is_active2),
+    )
+    return contacts, ci.shape1, ci.shape2
+
+
 def _circle_to_circle(
     shaped: ShapeDict,
     stated: StateDict,
 ) -> tuple[Contact, Circle, Circle]:
-    circle1, circle2 = tree_map2(generate_self_pairs, shaped.circle)
-    pos1, pos2 = tree_map2(generate_self_pairs, stated.circle.p)
-    is_active = jnp.logical_and(*generate_self_pairs(stated.circle.is_active))
-    contacts = _circle_to_circle_impl(
-        circle1,
-        circle2,
-        pos1,
-        pos2,
-        is_active,
-    )
-    return contacts, circle1, circle2
+    ci = _circle_to_circle_index(shaped)
+    return _circle_to_circle_new(ci, stated)
 
 
 def _circle_to_static_circle(
@@ -604,6 +638,14 @@ def _segment_to_circle(
     return contacts, segment, circle
 
 
+_CONTACT_INDEX_FUNCTIONS = {
+    ("circle", "circle"): _circle_to_circle,
+    ("circle", "static_circle"): _circle_to_static_circle,
+    ("capsule", "circle"): _capsule_to_circle,
+    ("segment", "circle"): _segment_to_circle,
+}
+
+
 _CONTACT_FUNCTIONS = {
     ("circle", "circle"): _circle_to_circle,
     ("circle", "static_circle"): _circle_to_static_circle,
@@ -649,6 +691,15 @@ class Space:
     bounce_threshold: float = 1.0
     max_velocity: float = 100.0
     max_angular_velocity: float = 100.0
+    contact_helpers: dict[tuple[str, str]] = dataclasses.field(
+        default_factory=dict,
+        init=False,
+    )
+
+    def __post_init__(self) -> None:
+        for (n1, n2), fn in _CONTACT_INDEX_FUNCTIONS.items():
+            if self.shaped[n1] is not None and self.shaped[n2] is not None:
+                pass
 
     def check_contacts(self, stated: StateDict) -> ContactWithMetadata:
         contacts = []

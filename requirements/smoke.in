@@ -1,3 +1,4 @@
 -e .[moderngl,video,pyside6]
+py-spy  # for profiling
 tqdm
 typer

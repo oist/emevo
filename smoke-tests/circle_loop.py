@@ -22,18 +22,16 @@ class FoodNum(str, enum.Enum):
 def main(
     steps: int = 100,
     seed: int = 1,
+    n_agents: int = 10,
     n_foods: int = 10,
-    n_foods_later: int = 10,
     debug: bool = False,
     forward_sensor: bool = False,
     use_test_env: bool = False,
     obstacles: bool = False,
-    angle: bool = False,
     render: bool = False,
     replace: bool = False,
     env_shape: str = "square",
     food_loc_fn: str = "gaussian",
-    food_num: FoodNum = FoodNum.CONSTANT,
 ) -> None:
     if debug:
         import loguru
@@ -52,11 +50,13 @@ def main(
     env = make(
         "CircleForaging-v0",
         env_shape=env_shape,
-        n_max_agents=50,
-        n_initial_agents=40,
+        n_max_agents=n_agents + 10,
+        n_initial_agents=n_agents,
+        food_num_fn=("constant", n_foods),
+        food_loc_fn=food_loc_fn,
         **env_kwargs,
     )
-    key = jax.random.PRNGKey(43)
+    key = jax.random.PRNGKey(seed)
     keys = jax.random.split(key, steps + 1)
     state = env.reset(keys[0])
 
@@ -65,16 +65,13 @@ def main(
     else:
         visualizer = None
 
-    activate_index = 5
+    activate_index = n_agents
     jit_step = jax.jit(env.step)
     jit_sample = jax.jit(env.act_space.sample)
     for i, key in tqdm(zip(range(steps), keys[1:])):
-        # key, act_key = jax.random.split(state.key)
-        # state = state.replace(key=key)
-        act = jit_sample(key)
-        state = jit_step(state, act)
+        state = jit_step(state, jit_sample(key))
         if replace and i % 1000 == 0:
-            if 10 <= activate_index:
+            if n_agents + 5 <= activate_index:
                 state, success = env.deactivate(state, activate_index)
                 if not success:
                     print(f"Failed to deactivate agent! {activate_index}")

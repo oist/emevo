@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any, Callable, Literal, NamedTuple
 
@@ -13,6 +15,7 @@ from emevo.environments.phyjax2d import Space as Physics
 from emevo.environments.phyjax2d import State, StateDict, Velocity, VelocitySolver
 from emevo.environments.phyjax2d import step as physics_step
 from emevo.environments.phyjax2d_utils import (
+    Color,
     SpaceBuilder,
     make_approx_circle,
     make_square,
@@ -39,6 +42,8 @@ from emevo.vec2d import Vec2d
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
 MAX_FORCE: float = 1.0
+AGENT_COLOR: Color = Color(2, 204, 254)
+FOOD_COLOR: Color = Color(254, 2, 162)
 
 
 class CFObs(NamedTuple):
@@ -144,6 +149,7 @@ def _make_physics(
             friction=0.1,
             elasticity=0.2,
             density=0.01,
+            color=AGENT_COLOR,
         )
     for _ in range(n_max_foods):
         builder.add_circle(
@@ -151,10 +157,10 @@ def _make_physics(
             friction=0.0,
             elasticity=0.2,
             density=0.1,
+            color=FOOD_COLOR,
             is_static=True,
         )
-    space = builder.build()
-    return space, seg_state
+    return builder.build(), seg_state
 
 
 class CircleForaging(Env):
@@ -323,8 +329,8 @@ class CircleForaging(Env):
     def step(self, state: CFState, action: ArrayLike) -> CFState:
         act = self.act_space.clip(jnp.array(action))
         f1, f2 = act[:, 0], act[:, 1]
-        f1 = jnp.stack((jnp.zeros_like(f1), f1), axis=1)
-        f2 = jnp.stack((jnp.zeros_like(f2), f2), axis=1)
+        f1 = jnp.stack((jnp.zeros_like(f1), f1), axis=1) * -self._act_p1
+        f2 = jnp.stack((jnp.zeros_like(f2), f2), axis=1) * -self._act_p2
         circle = state.physics.circle
         circle = circle.apply_force_local(self._act_p1, f1)
         circle = circle.apply_force_local(self._act_p2, f2)

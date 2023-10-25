@@ -334,6 +334,18 @@ class MglRenderer:
             scales=scales,
             colors=colors,
         )
+        points, scales, colors = _collect_circles(
+            space.shaped.static_circle,
+            stated.static_circle,
+            self._circle_scaling ,
+        )
+        self._static_circles = CircleVA(
+            ctx=context,
+            program=circle_program,
+            points=points,
+            scales=scales,
+            colors=colors,
+        )
         static_segment_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
@@ -447,6 +459,7 @@ class MglRenderer:
         # sensors = _collect_sensors(shapes)
         # if self._sensors.update(sensors):
         #     self._sensors.render()
+        self._static_circles.render()
         self._static_lines.render()
 
 

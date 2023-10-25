@@ -115,7 +115,7 @@ class SpaceBuilder:
         is_static: bool = False,
         friction: float = 0.8,
         elasticity: float = 0.8,
-        rgba: Color = _BLACK,
+        color: Color = _BLACK,
     ) -> None:
         _check_params_positive(
             friction=friction,
@@ -130,7 +130,7 @@ class SpaceBuilder:
             moment=moment,
             elasticity=jnp.array([elasticity]),
             friction=jnp.array([friction]),
-            rgba=jnp.array(rgba).reshape(1, 4),
+            rgba=jnp.array(color).reshape(1, 4),
         )
         if is_static:
             self.static_circles.append(circle)
@@ -146,7 +146,7 @@ class SpaceBuilder:
         is_static: bool = False,
         friction: float = 0.8,
         elasticity: float = 0.8,
-        rgba: Color = _BLACK,
+        color: Color = _BLACK,
     ) -> None:
         _check_params_positive(
             friction=friction,
@@ -166,7 +166,7 @@ class SpaceBuilder:
             moment=moment,
             elasticity=jnp.array([elasticity]),
             friction=jnp.array([friction]),
-            rgba=jnp.array(rgba).reshape(1, 4),
+            rgba=jnp.array(color).reshape(1, 4),
         )
         if is_static:
             self.static_capsules.append(capsule)
