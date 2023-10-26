@@ -1,9 +1,10 @@
 """Example of using circle foraging environment"""
 
-import chex
+import datetime
 import enum
 from typing import Any, Optional, Tuple
 
+import chex
 import jax
 import numpy as np
 import typer
@@ -68,8 +69,15 @@ def main(
     activate_index = n_agents
     jit_step = jax.jit(env.step)
     jit_sample = jax.jit(env.act_space.sample)
+    elapsed_list = []
     for i, key in tqdm(zip(range(steps), keys[1:])):
+        before = datetime.datetime.now()
         state = jit_step(state, jit_sample(key))
+        elapsed = datetime.datetime.now() - before
+        if i == 0:
+            print(f"Compile: {elapsed.total_seconds()}s")
+        elif i > 10:
+            elapsed_list.append(elapsed / datetime.timedelta(microseconds=1))
         if replace and i % 1000 == 0:
             if n_agents + 5 <= activate_index:
                 state, success = env.deactivate(state, activate_index)
@@ -87,6 +95,8 @@ def main(
         if visualizer is not None:
             visualizer.render(state)
             visualizer.show()
+
+    print(f"Avg. μs for step: {np.mean(elapsed_list)}")
 
 
 if __name__ == "__main__":

@@ -149,7 +149,7 @@ def _make_physics(
             radius=agent_radius,
             friction=0.1,
             elasticity=0.2,
-            density=0.01,
+            density=0.04,
             color=AGENT_COLOR,
         )
     for _ in range(n_max_foods):
