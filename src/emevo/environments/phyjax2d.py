@@ -518,132 +518,91 @@ class ContactIndices:
     index2: jax.Array
 
 
+# These fuctions are used in __post_init__ so need to jit
 _jitted_self_pairs = jax.jit(generate_self_pairs)
+_jitted_pairs = jax.jit(generate_pairs)
+_jitted_pair_outer = jax.jit(_pair_outer, static_argnums=(1,))
+_jitted_pair_inner = jax.jit(_pair_inner, static_argnums=(1,))
 
 
-# This fuction is used within post_init so need to jit
-def _circle_to_circle_index(shaped: ShapeDict) -> ContactIndices:
-    circle1, circle2 = tree_map2(_jitted_self_pairs, shaped.circle)
-    n = shaped.circle.mass.shape[0]
-    index1, index2 = _jitted_self_pairs(jnp.arange(n))
+def _self_ci(shape: Shape) -> ContactIndices:
+    shape1, shape2 = tree_map2(_jitted_self_pairs, shape)
+    index1, index2 = _jitted_self_pairs(jnp.arange(shape.mass.shape[0]))
     return ContactIndices(
-        shape1=circle1,
-        shape2=circle2,
+        shape1=shape1,
+        shape2=shape2,
         index1=index1,
         index2=index2,
     )
 
 
-def _circle_to_circle_new(
-    ci: ContactIndices,
-    stated: StateDict,
-) -> tuple[Contact, Circle, Circle]:
+def _pair_ci(shape1: Shape, shape2: Shape) -> ContactIndices:
+    n1, n2 = shape1.mass.shape[0], shape2.mass.shape[0]
+    s1_extended = jax.tree_map(functools.partial(_jitted_pair_outer, reps=n2), shape1)
+    s2_extended = jax.tree_map(functools.partial(_jitted_pair_inner, reps=n1), shape2)
+    index1, index2 = _jitted_pairs(jnp.arange(n1), jnp.arange(n2))
+    return ContactIndices(
+        shape1=s1_extended,
+        shape2=s2_extended,
+        index1=index1,
+        index2=index2,
+    )
+
+
+def _circle_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
     pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
     pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.circle.is_active[ci.index1]
     is_active2 = stated.circle.is_active[ci.index2]
-    contacts = _circle_to_circle_impl(
+    return _circle_to_circle_impl(
         ci.shape1,
         ci.shape2,
         pos1,
         pos2,
         jnp.logical_and(is_active1, is_active2),
     )
-    return contacts, ci.shape1, ci.shape2
 
 
-def _circle_to_circle(
-    shaped: ShapeDict,
-    stated: StateDict,
-) -> tuple[Contact, Circle, Circle]:
-    ci = _circle_to_circle_index(shaped)
-    return _circle_to_circle_new(ci, stated)
-
-
-def _circle_to_static_circle(
-    shaped: ShapeDict,
-    stated: StateDict,
-) -> tuple[Contact, Circle, Circle]:
-    circle1 = jax.tree_map(
-        functools.partial(_pair_outer, reps=shaped.static_circle.mass.shape[0]),
-        shaped.circle,
-    )
-    circle2 = jax.tree_map(
-        functools.partial(_pair_inner, reps=shaped.circle.mass.shape[0]),
-        shaped.static_circle,
-    )
-    pos1, pos2 = tree_map2(generate_pairs, stated.circle.p, stated.static_circle.p)
-    is_active = jnp.logical_and(
-        *generate_pairs(stated.circle.is_active, stated.static_circle.is_active)
-    )
-    contacts = _circle_to_circle_impl(
-        circle1,
-        circle2,
+def _circle_to_static_circle(ci: ContactIndices, stated: StateDict) -> Contact:
+    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
+    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.static_circle.p)
+    is_active1 = stated.circle.is_active[ci.index1]
+    is_active2 = stated.static_circle.is_active[ci.index2]
+    return _circle_to_circle_impl(
+        ci.shape1,
+        ci.shape2,
         pos1,
         pos2,
-        is_active,
+        jnp.logical_and(is_active1, is_active2),
     )
-    return contacts, circle1, circle2
 
 
-def _capsule_to_circle(
-    shaped: ShapeDict,
-    stated: StateDict,
-) -> tuple[Contact, Capsule, Circle]:
-    capsule = jax.tree_map(
-        functools.partial(_pair_outer, reps=shaped.circle.mass.shape[0]),
-        shaped.capsule,
-    )
-    circle = jax.tree_map(
-        functools.partial(_pair_inner, reps=shaped.capsule.mass.shape[0]),
-        shaped.circle,
-    )
-    pos1, pos2 = tree_map2(generate_pairs, stated.capsule.p, stated.circle.p)
-    is_active = jnp.logical_and(
-        *generate_pairs(stated.capsule.is_active, stated.circle.is_active)
-    )
-    contacts = _capsule_to_circle_impl(
-        capsule,
-        circle,
+def _capsule_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
+    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.capsule.p)
+    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
+    is_active1 = stated.capsule.is_active[ci.index1]
+    is_active2 = stated.circle.is_active[ci.index2]
+    return _circle_to_circle_impl(
+        ci.shape1,
+        ci.shape2,
         pos1,
         pos2,
-        is_active,
+        jnp.logical_and(is_active1, is_active2),
     )
-    return contacts, capsule, circle
 
 
-def _segment_to_circle(
-    shaped: ShapeDict,
-    stated: StateDict,
-) -> tuple[Contact, Segment, Circle]:
-    segment = jax.tree_map(
-        functools.partial(_pair_outer, reps=shaped.circle.mass.shape[0]),
-        shaped.segment,
-    )
-    circle = jax.tree_map(
-        functools.partial(_pair_inner, reps=shaped.segment.mass.shape[0]),
-        shaped.circle,
-    )
-    pos1, pos2 = tree_map2(generate_pairs, stated.segment.p, stated.circle.p)
-    is_active = jnp.logical_and(
-        *generate_pairs(stated.segment.is_active, stated.circle.is_active)
-    )
-    contacts = _capsule_to_circle_impl(
-        segment.to_capsule(),
-        circle,
+def _segment_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
+    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.segment.p)
+    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
+    is_active1 = stated.segment.is_active[ci.index1]
+    is_active2 = stated.circle.is_active[ci.index2]
+    return _capsule_to_circle_impl(
+        ci.shape1.to_capsule(),
+        ci.shape2,
         pos1,
         pos2,
-        is_active,
+        jnp.logical_and(is_active1, is_active2),
     )
-    return contacts, segment, circle
-
-
-_CONTACT_INDEX_FUNCTIONS = {
-    ("circle", "circle"): _circle_to_circle,
-    ("circle", "static_circle"): _circle_to_static_circle,
-    ("capsule", "circle"): _capsule_to_circle,
-    ("segment", "circle"): _segment_to_circle,
-}
 
 
 _CONTACT_FUNCTIONS = {
@@ -655,12 +614,12 @@ _CONTACT_FUNCTIONS = {
 
 
 @chex.dataclass
-class ContactWithMetadata:
+class ContactWithIndices:
     contact: Contact
     shape1: Shape
     shape2: Shape
-    outer_index: jax.Array
-    inner_index: jax.Array
+    index1: jax.Array
+    index2: jax.Array
 
     def gather_p_or_v(
         self,
@@ -668,10 +627,10 @@ class ContactWithMetadata:
         inner: _PositionLike,
         orig: _PositionLike,
     ) -> _PositionLike:
-        xy_outer = jnp.zeros_like(orig.xy).at[self.outer_index].add(outer.xy)
-        angle_outer = jnp.zeros_like(orig.angle).at[self.outer_index].add(outer.angle)
-        xy_inner = jnp.zeros_like(orig.xy).at[self.inner_index].add(inner.xy)
-        angle_inner = jnp.zeros_like(orig.angle).at[self.inner_index].add(inner.angle)
+        xy_outer = jnp.zeros_like(orig.xy).at[self.index1].add(outer.xy)
+        angle_outer = jnp.zeros_like(orig.angle).at[self.index1].add(outer.angle)
+        xy_inner = jnp.zeros_like(orig.xy).at[self.index2].add(inner.xy)
+        angle_inner = jnp.zeros_like(orig.angle).at[self.index2].add(inner.angle)
         return orig.__class__(angle=angle_outer + angle_inner, xy=xy_outer + xy_inner)
 
 
@@ -691,38 +650,36 @@ class Space:
     bounce_threshold: float = 1.0
     max_velocity: float = 100.0
     max_angular_velocity: float = 100.0
-    contact_helpers: dict[tuple[str, str]] = dataclasses.field(
+    contact_indices: dict[tuple[str, str], ContactIndices] = dataclasses.field(
         default_factory=dict,
         init=False,
     )
 
     def __post_init__(self) -> None:
-        for (n1, n2), fn in _CONTACT_INDEX_FUNCTIONS.items():
+        for n1, n2 in _CONTACT_FUNCTIONS.keys():
             if self.shaped[n1] is not None and self.shaped[n2] is not None:
-                pass
+                if n1 == n2:
+                    ci = _self_ci(self.shaped[n1])
+                else:
+                    ci = _pair_ci(self.shaped[n1], self.shaped[n2])
+                self.contact_indices[n1, n2] = ci
 
-    def check_contacts(self, stated: StateDict) -> ContactWithMetadata:
+    def check_contacts(self, stated: StateDict) -> ContactWithIndices:
         contacts = []
         for (n1, n2), fn in _CONTACT_FUNCTIONS.items():
             if stated[n1] is not None and stated[n2] is not None:
-                contact, shape1, shape2 = fn(self.shaped, stated)
-                len1, len2 = stated[n1].p.batch_size(), stated[n2].p.batch_size()
+                ci = self.contact_indices[n1, n2]
+                contact = fn(ci, stated)
+                # Add some offset for global indices
                 offset1, offset2 = stated.offset(n1), stated.offset(n2)
-                if n1 == n2:
-                    outer_index, inner_index = generate_self_pairs(jnp.arange(len1))
-                else:
-                    outer_index, inner_index = generate_pairs(
-                        jnp.arange(len1),
-                        jnp.arange(len2),
-                    )
-                contact_with_meta = ContactWithMetadata(
+                contact_with_idx = ContactWithIndices(
                     contact=contact,
-                    shape1=shape1.to_shape(),
-                    shape2=shape2.to_shape(),
-                    outer_index=outer_index + offset1,
-                    inner_index=inner_index + offset2,
+                    shape1=ci.shape1.to_shape(),
+                    shape2=ci.shape2.to_shape(),
+                    index1=ci.index1 + offset1,
+                    index2=ci.index2 + offset2,
                 )
-                contacts.append(contact_with_meta)
+                contacts.append(contact_with_idx)
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *contacts)
 
     def n_possible_contacts(self) -> int:
@@ -994,10 +951,10 @@ def solve_constraints(
     solver: VelocitySolver,
     p: Position,
     v: Velocity,
-    contact_with_meta: ContactWithMetadata,
+    contact_with_idx: ContactWithIndices,
 ) -> tuple[Velocity, Position, VelocitySolver]:
     """Resolve collisions by Sequential Impulse method"""
-    outer, inner = contact_with_meta.outer_index, contact_with_meta.inner_index
+    outer, inner = contact_with_idx.index1, contact_with_idx.index2
 
     def get_pairs(p_or_v: _PositionLike) -> tuple[_PositionLike, _PositionLike]:
         return p_or_v.get_slice(outer), p_or_v.get_slice(inner)
@@ -1006,9 +963,9 @@ def solve_constraints(
     v1, v2 = get_pairs(v)
     helper = init_contact_helper(
         space,
-        contact_with_meta.contact,
-        contact_with_meta.shape1,
-        contact_with_meta.shape2,
+        contact_with_idx.contact,
+        contact_with_idx.shape1,
+        contact_with_idx.shape2,
         p1,
         p2,
         v1,
@@ -1016,7 +973,7 @@ def solve_constraints(
     )
     # Warm up the velocity solver
     solver = apply_initial_impulse(
-        contact_with_meta.contact,
+        contact_with_idx.contact,
         helper,
         solver.replace(v1=v1, v2=v2),
     )
@@ -1026,14 +983,14 @@ def solve_constraints(
         vs: tuple[Velocity, VelocitySolver],
     ) -> tuple[Velocity, VelocitySolver]:
         v_i, solver_i = vs
-        solver_i1 = apply_velocity_normal(contact_with_meta.contact, helper, solver_i)
-        v_i1 = contact_with_meta.gather_p_or_v(solver_i1.v1, solver_i1.v2, v_i) + v_i
+        solver_i1 = apply_velocity_normal(contact_with_idx.contact, helper, solver_i)
+        v_i1 = contact_with_idx.gather_p_or_v(solver_i1.v1, solver_i1.v2, v_i) + v_i
         v1, v2 = get_pairs(v_i1)
         return v_i1, solver_i1.replace(v1=v1, v2=v2)
 
     v, solver = jax.lax.fori_loop(0, space.n_velocity_iter, vstep, (v, solver))
-    bv1, bv2 = apply_bounce(contact_with_meta.contact, helper, solver)
-    v = contact_with_meta.gather_p_or_v(bv1, bv2, v) + v
+    bv1, bv2 = apply_bounce(contact_with_idx.contact, helper, solver)
+    v = contact_with_idx.gather_p_or_v(bv1, bv2, v) + v
 
     def pstep(
         _n_iter: int,
@@ -1044,11 +1001,11 @@ def solve_constraints(
             space.bias_factor,
             space.linear_slop,
             space.max_linear_correction,
-            contact_with_meta.contact,
+            contact_with_idx.contact,
             helper,
             solver_i,
         )
-        p_i1 = contact_with_meta.gather_p_or_v(solver_i1.p1, solver_i1.p2, p_i) + p_i
+        p_i1 = contact_with_idx.gather_p_or_v(solver_i1.p1, solver_i1.p2, p_i) + p_i
         p1, p2 = get_pairs(p_i1)
         return p_i1, solver_i1.replace(p1=p1, p2=p2)
 
@@ -1067,7 +1024,7 @@ def dont_solve_constraints(
     solver: VelocitySolver,
     p: Position,
     v: Velocity,
-    _contact_with_meta: ContactWithMetadata,
+    _contact_with_idx: ContactWithIndices,
 ) -> tuple[Velocity, Position, VelocitySolver]:
     return v, p, solver
 
@@ -1078,9 +1035,9 @@ def step(
     solver: VelocitySolver,
 ) -> tuple[StateDict, VelocitySolver]:
     state = update_velocity(space, space.shaped.concat(), stated.concat())
-    contact_with_meta = space.check_contacts(stated.update(state))
+    contact_with_idx = space.check_contacts(stated.update(state))
     # Check there's any penetration
-    contacts = contact_with_meta.contact.penetration >= 0
+    contacts = contact_with_idx.contact.penetration >= 0
     v, p, solver = jax.lax.cond(
         jnp.any(contacts),
         solve_constraints,
@@ -1089,7 +1046,7 @@ def step(
         solver.update(contacts),
         state.p,
         state.v,
-        contact_with_meta,
+        contact_with_idx,
     )
     statec = update_position(space, state.replace(v=v, p=p))
     return stated.update(statec), solver
