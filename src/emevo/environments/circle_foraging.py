@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import warnings
 from typing import Any, Callable, Literal, NamedTuple
 
@@ -256,6 +257,26 @@ class CircleForaging(Env):
         N = self._n_max_agents
         self._act_p1 = jnp.tile(jnp.array(act_p1), (N, 1))
         self._act_p2 = jnp.tile(jnp.array(act_p2), (N, 1))
+        self._place_agent = jax.jit(
+            functools.partial(
+                place_agent,
+                n_trial=self._max_place_attempts,
+                agent_radius=self._agent_radius,
+                coordinate=self._coordinate,
+                initloc_fn=self._agent_loc_fn,
+                shaped=self._physics.shaped,
+            )
+        )
+        self._place_food = jax.jit(
+            functools.partial(
+                place_food,
+                n_trial=self._max_place_attempts,
+                food_radius=self._food_radius,
+                coordinate=self._coordinate,
+                reprloc_fn=self._food_loc_fn,
+                shaped=self._physics.shaped,
+            )
+        )
 
     @staticmethod
     def _make_food_num_fn(
@@ -448,15 +469,7 @@ class CircleForaging(Env):
         keys = jax.random.split(key, self._n_initial_foods + self._n_initial_agents)
         agent_failed = 0
         for i, key in enumerate(keys[: self._n_initial_agents]):
-            xy = place_agent(
-                n_trial=self._max_place_attempts,
-                agent_radius=self._agent_radius,
-                coordinate=self._coordinate,
-                initloc_fn=self._agent_loc_fn,
-                key=key,
-                shaped=self._physics.shaped,
-                stated=stated,
-            )
+            xy = self._place_agent(key=key, stated=stated)
             if jnp.all(xy < jnp.inf):
                 stated = stated.nested_replace(
                     "circle.p.xy",
@@ -471,16 +484,7 @@ class CircleForaging(Env):
         food_failed = 0
         foodloc_state = self._initial_foodloc_state
         for i, key in enumerate(keys[self._n_initial_foods :]):
-            xy = place_food(
-                n_trial=self._max_place_attempts,
-                food_radius=self._food_radius,
-                coordinate=self._coordinate,
-                reprloc_fn=self._food_loc_fn,  # type: ignore
-                reprloc_state=foodloc_state,
-                key=key,
-                shaped=self._physics.shaped,
-                stated=stated,
-            )
+            xy = self._place_food(reprloc_state=foodloc_state, key=key, stated=stated)
             if jnp.all(xy < jnp.inf):
                 stated = stated.nested_replace(
                     "static_circle.p.xy",

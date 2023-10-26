@@ -428,7 +428,7 @@ def _capsule_to_circle_impl(
     )
 
 
-@chex.dataclass
+@chex.dataclass(unsafe_hash=True)
 class StateDict:
     circle: State | None = None
     static_circle: State | None = None
@@ -471,6 +471,7 @@ class StateDict:
             static_capsule=static_capsule,
         )
 
+    @functools.partial(jax.jit, static_argnums=(1,))
     def nested_replace(self, query: str, value: Any) -> Self:
         """Convenient method for nested replace"""
         queries = query.split(".")
