@@ -41,7 +41,7 @@ out vec4 f_color;
 void main() {
     float dist = length(gl_PointCoord.xy - vec2(0.5));
     float delta = fwidth(dist);
-    float alpha = smoothstep(0.45, 0.45 - delta, dist);
+    float alpha = smoothstep(0.5, 0.5 - delta, dist);
     f_color = v_color * alpha;
 }
 """
@@ -271,10 +271,15 @@ def _collect_static_lines(segment: Segment, state: State) -> NDArray:
     a, b = segment.get_ab()
     a = state.p.transform(a)
     b = state.p.transform(b)
-    for ai, bi in zip(a, b):
-        points.append(ai)
-        points.append(bi)
-    return np.array(points, dtype=np.float32)
+    return np.concatenate((a, b), axis=1).reshape(-1, 2)
+
+
+def _collect_heads(circle: Circle, state: State) -> NDArray:
+    y = np.array(circle.radius)
+    x = np.zeros_like(y)
+    p1, p2 = np.stack((x, y * 0.8), axis=1), np.stack((x, y * 1.2), axis=1)
+    p1, p2 = state.p.transform(p1), state.p.transform(p2)
+    return np.concatenate((p1, p2), axis=1).reshape(-1, 2)
 
 
 def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
@@ -310,6 +315,7 @@ class MglRenderer:
         self._screen_y = _get_clip_ranges([screen_height, *voffsets])
         self._x_range, self._y_range = x_range, y_range
         self._range_min = min(x_range, y_range)
+
         if x_range < y_range:
             self._range_min = x_range
             self._circle_scaling = screen_width / x_range * 2
@@ -337,7 +343,7 @@ class MglRenderer:
         points, scales, colors = _collect_circles(
             space.shaped.static_circle,
             stated.static_circle,
-            self._circle_scaling ,
+            self._circle_scaling,
         )
         self._static_circles = CircleVA(
             ctx=context,
@@ -356,23 +362,20 @@ class MglRenderer:
         self._static_lines = SegmentVA(
             ctx=context,
             program=static_segment_program,
-            segments=_collect_static_lines(
-                space.shaped.segment,
-                stated.segment,
-            ),
+            segments=_collect_static_lines(space.shaped.segment, stated.segment),
         )
-        # head_program = self._make_gl_program(
-        #     vertex_shader=_LINE_VERTEX_SHADER,
-        #     geometry_shader=_LINE_GEOMETRY_SHADER,
-        #     fragment_shader=_LINE_FRAGMENT_SHADER,
-        #     color=np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32),
-        #     width=np.array([0.004], dtype=np.float32),
-        # )
-        # self._heads = SegmentVA(
-        #     ctx=context,
-        #     program=head_program,
-        #     segments=_collect_heads(shapes),
-        # )
+        head_program = self._make_gl_program(
+            vertex_shader=_LINE_VERTEX_SHADER,
+            geometry_shader=_LINE_GEOMETRY_SHADER,
+            fragment_shader=_LINE_FRAGMENT_SHADER,
+            color=np.array([0.5, 0.0, 1.0, 1.0], dtype=np.float32),
+            width=np.array([0.004], dtype=np.float32),
+        )
+        self._heads = SegmentVA(
+            ctx=context,
+            program=head_program,
+            segments=_collect_heads(space.shaped.circle, stated.circle),
+        )
         self._overlays = {}
 
     def _make_gl_program(
@@ -454,11 +457,8 @@ class MglRenderer:
         )
         if self._circles.update(*circles):
             self._circles.render()
-        # if self._heads.update(_collect_heads(shapes)):
-        #     self._heads.render()
-        # sensors = _collect_sensors(shapes)
-        # if self._sensors.update(sensors):
-        #     self._sensors.render()
+        if self._heads.update(_collect_heads(self._space.shaped.circle, stated.circle)):
+            self._heads.render()
         self._static_circles.render()
         self._static_lines.render()
 

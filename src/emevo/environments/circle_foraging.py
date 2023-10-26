@@ -155,9 +155,8 @@ def _make_physics(
     for _ in range(n_max_foods):
         builder.add_circle(
             radius=food_radius,
-            friction=0.0,
-            elasticity=0.2,
-            density=0.1,
+            friction=0.1,
+            elasticity=0.1,
             color=FOOD_COLOR,
             is_static=True,
         )
@@ -181,7 +180,7 @@ class CircleForaging(Env):
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
         sensor_range: tuple[float, float] = (-120.0, 120.0),
-        agent_radius: float = 12.0,
+        agent_radius: float = 10.0,
         food_radius: float = 4.0,
         foodloc_interval: int = 1000,
         dt: float = 0.05,
@@ -367,15 +366,7 @@ class CircleForaging(Env):
             fill_value=-1,
         )
         index = index[0]
-        xy = place_agent(
-            n_trial=self._max_place_attempts,
-            agent_radius=self._agent_radius,
-            coordinate=self._coordinate,
-            initloc_fn=self._agent_loc_fn,
-            key=activate_key,
-            shaped=self._physics.shaped,
-            stated=state.physics,
-        )
+        xy = self._place_agent(key=key, stated=stated)
         ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
 
         def success() -> tuple[CFState, bool]:
