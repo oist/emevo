@@ -14,7 +14,7 @@ from emevo.env import Env, Profile, Visualizer, init_profile
 from emevo.environments.phyjax2d import Position
 from emevo.environments.phyjax2d import Space as Physics
 from emevo.environments.phyjax2d import State, StateDict, Velocity, VelocitySolver
-from emevo.environments.phyjax2d import step as physics_step
+from emevo.environments.phyjax2d import nstep as physics_nstep
 from emevo.environments.phyjax2d_utils import (
     Color,
     SpaceBuilder,
@@ -188,7 +188,7 @@ class CircleForaging(Env):
         angular_damping: float = 0.8,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
-        n_physics_steps: int = 5,
+        n_physics_iter: int = 5,
         max_place_attempts: int = 10,
     ) -> None:
         # Coordinate and range
@@ -236,7 +236,7 @@ class CircleForaging(Env):
         )
         self._agent_indices = jnp.arange(n_max_agents)
         self._food_indices = jnp.arange(n_max_foods)
-        self._n_physics_steps = n_physics_steps
+        self._n_physics_iter = n_physics_iter
         # Spaces
         N = self._n_max_agents
         self.act_space = BoxSpace(low=0.0, high=MAX_FORCE, shape=(N, 2))
@@ -347,6 +347,7 @@ class CircleForaging(Env):
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
 
     def step(self, state: CFState, action: ArrayLike) -> CFState:
+        # Add force
         act = self.act_space.clip(jnp.array(action))
         f1, f2 = act[:, 0], act[:, 1]
         f1 = jnp.stack((jnp.zeros_like(f1), f1), axis=1) * -self._act_p1
@@ -355,7 +356,13 @@ class CircleForaging(Env):
         circle = circle.apply_force_local(self._act_p1, f1)
         circle = circle.apply_force_local(self._act_p2, f2)
         stated = state.physics.replace(circle=circle)
-        stated, solver = physics_step(self._physics, stated, state.solver)
+        # Step physics simulator
+        stated, solver = physics_nstep(
+            self._n_physics_iter,
+            self._physics,
+            stated,
+            state.solver,
+        )
         return state.replace(physics=stated, solver=solver)
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:

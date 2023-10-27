@@ -229,7 +229,12 @@ class State(PyTreeOps):
     @staticmethod
     def from_position(p: Position) -> Self:
         n = p.batch_size()
-        return State(p=p, v=Velocity.zeros(n), f=Force.zeros(n), is_active=jnp.ones(n))
+        return State(
+            p=p,
+            v=Velocity.zeros(n),
+            f=Force.zeros(n),
+            is_active=jnp.ones(n, dtype=bool),
+        )
 
     @staticmethod
     def zeros(n: int) -> Self:
@@ -237,7 +242,7 @@ class State(PyTreeOps):
             p=Position.zeros(n),
             v=Velocity.zeros(n),
             f=Force.zeros(n),
-            is_active=jnp.ones(n),
+            is_active=jnp.ones(n, dtype=bool),
         )
 
     def apply_force_global(self, point: jax.Array, force: jax.Array) -> Self:
@@ -428,7 +433,7 @@ def _capsule_to_circle_impl(
     )
 
 
-@chex.dataclass(unsafe_hash=True)
+@chex.dataclass
 class StateDict:
     circle: State | None = None
     static_circle: State | None = None
@@ -1049,8 +1054,23 @@ def step(
         state.v,
         contact_with_idx,
     )
-    statec = update_position(space, state.replace(v=v, p=p))
-    return stated.update(statec), solver
+    state = update_position(space, state.replace(v=v, p=p))
+    return stated.update(state), solver
+
+
+def nstep(
+    n: int,
+    space: Space,
+    stated: StateDict,
+    solver: VelocitySolver,
+) -> tuple[StateDict, VelocitySolver]:
+    def wrapped_step(
+        _n_iter: int,
+        stated_and_solver: tuple[StateDict, VelocitySolver],
+    ) -> tuple[StateDict, VelocitySolver]:
+        return step(space, *stated_and_solver)
+
+    return jax.lax.fori_loop(0, n, wrapped_step, (stated, solver))
 
 
 @chex.dataclass
