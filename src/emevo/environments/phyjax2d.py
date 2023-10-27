@@ -18,16 +18,9 @@ def then(x: Any, f: Callable[[Any], Any]) -> Any:
         return f(x)
 
 
-def safe_norm(x: jax.Array, axis: Axis | None = None) -> jax.Array:
-    is_zero = jnp.allclose(x, 0.0)
-    x = jnp.where(is_zero, jnp.ones_like(x), x)
-    n = jnp.linalg.norm(x, axis=axis)
-    return jnp.where(is_zero, 0.0, n)  # pyright: ignore
-
-
 def normalize(x: jax.Array, axis: Axis | None = None) -> tuple[jax.Array, jax.Array]:
-    norm = safe_norm(x, axis=axis)
-    n = x / (norm + 1e-6 * (norm == 0.0))
+    norm = jnp.linalg.norm(x, axis=axis)
+    n = x / jnp.clip(norm, a_min=1e-6)
     return n, norm
 
 
@@ -627,18 +620,6 @@ class ContactWithIndices:
     index1: jax.Array
     index2: jax.Array
 
-    def gather_p_or_v(
-        self,
-        outer: _PositionLike,
-        inner: _PositionLike,
-        orig: _PositionLike,
-    ) -> _PositionLike:
-        xy_outer = jnp.zeros_like(orig.xy).at[self.index1].add(outer.xy)
-        angle_outer = jnp.zeros_like(orig.angle).at[self.index1].add(outer.angle)
-        xy_inner = jnp.zeros_like(orig.xy).at[self.index2].add(inner.xy)
-        angle_inner = jnp.zeros_like(orig.angle).at[self.index2].add(inner.angle)
-        return orig.__class__(angle=angle_outer + angle_inner, xy=xy_outer + xy_inner)
-
 
 @chex.dataclass
 class Space:
@@ -960,13 +941,23 @@ def solve_constraints(
     contact_with_idx: ContactWithIndices,
 ) -> tuple[Velocity, Position, VelocitySolver]:
     """Resolve collisions by Sequential Impulse method"""
-    outer, inner = contact_with_idx.index1, contact_with_idx.index2
+    idx1, idx2 = contact_with_idx.index1, contact_with_idx.index2
 
-    def get_pairs(p_or_v: _PositionLike) -> tuple[_PositionLike, _PositionLike]:
-        return p_or_v.get_slice(outer), p_or_v.get_slice(inner)
+    def gather_and_pair(
+        a: _PositionLike,
+        b: _PositionLike,
+        orig: _PositionLike,
+    ) -> tuple[_PositionLike, _PositionLike, _PositionLike]:
+        xy0, angle0 = jnp.zeros_like(orig.xy), jnp.zeros_like(orig.angle)
+        xy = xy0.at[idx1].add(a.xy).at[idx2].add(b.xy) + orig.xy
+        angle = angle0.at[idx1].add(a.angle).at[idx2].add(b.angle) + orig.angle
+        cls = orig.__class__
+        a = cls(angle=angle[idx1], xy=xy[idx1])
+        b = cls(angle=angle[idx2], xy=xy[idx2])
+        return cls(angle=angle, xy=xy), a, b
 
-    p1, p2 = get_pairs(p)
-    v1, v2 = get_pairs(v)
+    p1, p2 = p.get_slice(idx1), p.get_slice(idx2)
+    v1, v2 = v.get_slice(idx1), v.get_slice(idx2)
     helper = init_contact_helper(
         space,
         contact_with_idx.contact,
@@ -990,13 +981,12 @@ def solve_constraints(
     ) -> tuple[Velocity, VelocitySolver]:
         v_i, solver_i = vs
         solver_i1 = apply_velocity_normal(contact_with_idx.contact, helper, solver_i)
-        v_i1 = contact_with_idx.gather_p_or_v(solver_i1.v1, solver_i1.v2, v_i) + v_i
-        v1, v2 = get_pairs(v_i1)
+        v_i1, v1, v2 = gather_and_pair(solver_i1.v1, solver_i1.v2, v_i)
         return v_i1, solver_i1.replace(v1=v1, v2=v2)
 
     v, solver = jax.lax.fori_loop(0, space.n_velocity_iter, vstep, (v, solver))
     bv1, bv2 = apply_bounce(contact_with_idx.contact, helper, solver)
-    v = contact_with_idx.gather_p_or_v(bv1, bv2, v) + v
+    v = gather_and_pair(bv1, bv2, v)[0]
 
     def pstep(
         _n_iter: int,
@@ -1011,8 +1001,7 @@ def solve_constraints(
             helper,
             solver_i,
         )
-        p_i1 = contact_with_idx.gather_p_or_v(solver_i1.p1, solver_i1.p2, p_i) + p_i
-        p1, p2 = get_pairs(p_i1)
+        p_i1, p1, p2 = gather_and_pair(solver_i1.p1, solver_i1.p2, p_i)
         return p_i1, solver_i1.replace(p1=p1, p2=p2)
 
     pos_solver = PositionSolver(
