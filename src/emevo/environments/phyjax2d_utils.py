@@ -13,9 +13,12 @@ from emevo.environments.phyjax2d import (
     Shape,
     ShapeDict,
     Space,
+    State,
     StateDict,
     _length_to_points,
     _vmap_dot,
+    circle_raycast,
+    segment_raycast,
 )
 from emevo.vec2d import Vec2d, Vec2dLike
 
@@ -328,3 +331,12 @@ def circle_overwrap(
         overwrap2seg = jnp.array(False)
 
     return jnp.logical_or(overwrap2cir, overwrap2seg)
+
+
+def raycast_closest(
+    p1: jax.Array,
+    p2: jax.Array,
+    shaped: ShapeDict,
+    stated: StateDict,
+):
+    pass

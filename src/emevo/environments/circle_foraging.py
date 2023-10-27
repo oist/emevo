@@ -183,7 +183,7 @@ class CircleForaging(Env):
         agent_radius: float = 10.0,
         food_radius: float = 4.0,
         foodloc_interval: int = 1000,
-        dt: float = 0.05,
+        dt: float = 0.1,
         linear_damping: float = 0.9,
         angular_damping: float = 0.8,
         n_velocity_iter: int = 6,
@@ -373,7 +373,7 @@ class CircleForaging(Env):
             fill_value=-1,
         )
         index = index[0]
-        xy = self._place_agent(key=key, stated=stated)
+        xy = self._place_agent(key=key, stated=state.physics)
         ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
 
         def success() -> tuple[CFState, bool]:
