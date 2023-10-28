@@ -1,5 +1,6 @@
 import dataclasses
 import functools
+import uuid
 from collections.abc import Sequence
 from typing import Any, Callable, Protocol
 
@@ -187,6 +188,9 @@ class Shape(PyTreeOps):
     friction: jax.Array
     rgba: jax.Array
 
+    def batch_size(self) -> int:
+        return self.mass.shape[0]
+
     def inv_mass(self) -> jax.Array:
         """To support static shape, set let inv_mass 0 if mass is infinite"""
         m = self.mass
@@ -249,6 +253,9 @@ class State(PyTreeOps):
         chex.assert_equal_shape((self.p.xy, point))
         point = self.p.transform(point)
         return self.apply_force_global(point, force)
+
+    def batch_size(self) -> int:
+        return self.p.batch_size()
 
 
 @chex.dataclass
@@ -426,6 +433,9 @@ def _capsule_to_circle_impl(
     )
 
 
+_ALL_SHAPES = ["circle", "static_circle", "capsule", "static_capsule", "segment"]
+
+
 @chex.dataclass
 class StateDict:
     circle: State | None = None
@@ -438,20 +448,11 @@ class StateDict:
         states = [s for s in self.values() if s is not None]
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
 
-    def offset(self, key: str) -> int:
-        total = 0
-        for k, state in self.items():
-            if k == key:
-                return total
-            if state is not None:
-                total += state.p.batch_size()
-        raise RuntimeError("Unreachable")
-
     def _get(self, name: str, state: State) -> State | None:
         if self[name] is None:
             return None
         else:
-            start = self.offset(name)
+            start = _offset(self, name)
             end = start + self[name].p.batch_size()
             return state.get_slice(jnp.arange(start, end))
 
@@ -507,6 +508,17 @@ class ShapeDict:
             capsule=capsule,
             static_capsule=static_capsule,
         )
+
+
+def _offset(sd: ShapeDict | StateDict, name: str) -> int:
+    total = 0
+    for key in _ALL_SHAPES:
+        if key == name:
+            return total
+        s = sd[key]
+        if s is not None:
+            total += s.batch_size()
+    raise RuntimeError("Unreachable")
 
 
 @chex.dataclass
@@ -613,15 +625,6 @@ _CONTACT_FUNCTIONS = {
 
 
 @chex.dataclass
-class ContactWithIndices:
-    contact: Contact
-    shape1: Shape
-    shape2: Shape
-    index1: jax.Array
-    index2: jax.Array
-
-
-@chex.dataclass
 class Space:
     gravity: jax.Array
     shaped: ShapeDict
@@ -637,36 +640,47 @@ class Space:
     bounce_threshold: float = 1.0
     max_velocity: float = 100.0
     max_angular_velocity: float = 100.0
-    contact_indices: dict[tuple[str, str], ContactIndices] = dataclasses.field(
+    _ci: dict[tuple[str, str], ContactIndices] = dataclasses.field(
         default_factory=dict,
         init=False,
     )
+    _ci_total: ContactIndices | None = dataclasses.field(default=None, init=False)
+    _hash_key: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4, init=False)
+
+    def __hash__(self) -> int:
+        return hash(self._hash_key)
+
+    def __eq__(self, other: Any) -> int:
+        return self._hash_key == other._hash_key
 
     def __post_init__(self) -> None:
+        ci_slided_list = []
         for n1, n2 in _CONTACT_FUNCTIONS.keys():
             if self.shaped[n1] is not None and self.shaped[n2] is not None:
                 if n1 == n2:
                     ci = _self_ci(self.shaped[n1])
                 else:
                     ci = _pair_ci(self.shaped[n1], self.shaped[n2])
-                self.contact_indices[n1, n2] = ci
-
-    def check_contacts(self, stated: StateDict) -> ContactWithIndices:
-        contacts = []
-        for (n1, n2), fn in _CONTACT_FUNCTIONS.items():
-            if stated[n1] is not None and stated[n2] is not None:
-                ci = self.contact_indices[n1, n2]
-                contact = fn(ci, stated)
+                self._ci[n1, n2] = ci
+                offset1, offset2 = _offset(self.shaped, n1), _offset(self.shaped, n2)
                 # Add some offset for global indices
-                offset1, offset2 = stated.offset(n1), stated.offset(n2)
-                contact_with_idx = ContactWithIndices(
-                    contact=contact,
+                ci_slided = ContactIndices(
                     shape1=ci.shape1.to_shape(),
                     shape2=ci.shape2.to_shape(),
                     index1=ci.index1 + offset1,
                     index2=ci.index2 + offset2,
                 )
-                contacts.append(contact_with_idx)
+                ci_slided_list.append(ci_slided)
+        self._ci_total = jax.tree_map(
+            lambda *args: jnp.concatenate(args, axis=0),
+            *ci_slided_list,
+        )
+
+    def check_contacts(self, stated: StateDict) -> Contact:
+        contacts = []
+        for (n1, n2), fn in _CONTACT_FUNCTIONS.items():
+            if stated[n1] is not None and stated[n2] is not None:
+                contacts.append(fn(self._ci[n1, n2], stated))
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *contacts)
 
     def n_possible_contacts(self) -> int:
@@ -938,10 +952,10 @@ def solve_constraints(
     solver: VelocitySolver,
     p: Position,
     v: Velocity,
-    contact_with_idx: ContactWithIndices,
+    contact: Contact,
 ) -> tuple[Velocity, Position, VelocitySolver]:
     """Resolve collisions by Sequential Impulse method"""
-    idx1, idx2 = contact_with_idx.index1, contact_with_idx.index2
+    idx1, idx2 = space._ci_total.index1, space._ci_total.index2
 
     def gather_and_pair(
         a: _PositionLike,
@@ -959,32 +973,28 @@ def solve_constraints(
     v1, v2 = v.get_slice(idx1), v.get_slice(idx2)
     helper = init_contact_helper(
         space,
-        contact_with_idx.contact,
-        contact_with_idx.shape1,
-        contact_with_idx.shape2,
+        contact,
+        space._ci_total.shape1,
+        space._ci_total.shape2,
         p1,
         p2,
         v1,
         v2,
     )
     # Warm up the velocity solver
-    solver = apply_initial_impulse(
-        contact_with_idx.contact,
-        helper,
-        solver.replace(v1=v1, v2=v2),
-    )
+    solver = apply_initial_impulse(contact, helper, solver.replace(v1=v1, v2=v2))
 
     def vstep(
         _n_iter: int,
         vs: tuple[Velocity, VelocitySolver],
     ) -> tuple[Velocity, VelocitySolver]:
         v_i, solver_i = vs
-        solver_i1 = apply_velocity_normal(contact_with_idx.contact, helper, solver_i)
+        solver_i1 = apply_velocity_normal(contact, helper, solver_i)
         v_i1, v1, v2 = gather_and_pair(solver_i1.v1, solver_i1.v2, v_i)
         return v_i1, solver_i1.replace(v1=v1, v2=v2)
 
     v, solver = jax.lax.fori_loop(0, space.n_velocity_iter, vstep, (v, solver))
-    bv1, bv2 = apply_bounce(contact_with_idx.contact, helper, solver)
+    bv1, bv2 = apply_bounce(contact, helper, solver)
     v = gather_and_pair(bv1, bv2, v)[0]
 
     def pstep(
@@ -996,7 +1006,7 @@ def solve_constraints(
             space.bias_factor,
             space.linear_slop,
             space.max_linear_correction,
-            contact_with_idx.contact,
+            contact,
             helper,
             solver_i,
         )
@@ -1013,34 +1023,19 @@ def solve_constraints(
     return v, p, solver
 
 
-def dont_solve_constraints(
-    _space: Space,
-    solver: VelocitySolver,
-    p: Position,
-    v: Velocity,
-    _contact_with_idx: ContactWithIndices,
-) -> tuple[Velocity, Position, VelocitySolver]:
-    return v, p, solver
-
-
 def step(
     space: Space,
     stated: StateDict,
     solver: VelocitySolver,
 ) -> tuple[StateDict, VelocitySolver]:
     state = update_velocity(space, space.shaped.concat(), stated.concat())
-    contact_with_idx = space.check_contacts(stated.update(state))
-    # Check there's any penetration
-    contacts = contact_with_idx.contact.penetration >= 0
-    v, p, solver = jax.lax.cond(
-        jnp.any(contacts),
-        solve_constraints,
-        dont_solve_constraints,
+    contact = space.check_contacts(stated.update(state))
+    v, p, solver = solve_constraints(
         space,
-        solver.update(contacts),
+        solver.update(contact.penetration >= 0),
         state.p,
         state.v,
-        contact_with_idx,
+        contact,
     )
     state = update_position(space, state.replace(v=v, p=p))
     return stated.update(state), solver

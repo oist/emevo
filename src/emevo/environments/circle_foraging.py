@@ -276,6 +276,7 @@ class CircleForaging(Env):
                 shaped=self._physics.shaped,
             )
         )
+        self._nstep = jax.jit(physics_nstep, static_argnums=(0, 1))
 
     @staticmethod
     def _make_food_num_fn(
@@ -357,7 +358,7 @@ class CircleForaging(Env):
         circle = circle.apply_force_local(self._act_p2, f2)
         stated = state.physics.replace(circle=circle)
         # Step physics simulator
-        stated, solver = physics_nstep(
+        stated, solver = self._nstep(
             self._n_physics_iter,
             self._physics,
             stated,
