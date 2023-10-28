@@ -301,7 +301,7 @@ def circle_overwrap(
     else:
         overwrap2cir = jnp.array(False)
 
-     # Circle-static_circle overwrap
+    # Circle-static_circle overwrap
     if stated.static_circle is not None and shaped.static_circle is not None:
         cpos = stated.static_circle.p.xy
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
@@ -339,4 +339,16 @@ def raycast_closest(
     shaped: ShapeDict,
     stated: StateDict,
 ):
-    pass
+    if shaped.circle is not None:
+        rc = circle_raycast(0.0, 1.0, p1, p2, shaped.circle, stated.circle)
+    if shaped.static_circle is not None:
+        rc = circle_raycast(
+            0.0,
+            1.0,
+            p1,
+            p2,
+            shaped.static_circle,
+            stated.static_circle,
+        )
+    if shaped.segment is not None:
+        rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)

@@ -948,9 +948,8 @@ def solve_constraints(
         b: _PositionLike,
         orig: _PositionLike,
     ) -> tuple[_PositionLike, _PositionLike, _PositionLike]:
-        xy0, angle0 = jnp.zeros_like(orig.xy), jnp.zeros_like(orig.angle)
-        xy = xy0.at[idx1].add(a.xy).at[idx2].add(b.xy) + orig.xy
-        angle = angle0.at[idx1].add(a.angle).at[idx2].add(b.angle) + orig.angle
+        xy = orig.xy.at[idx1].add(a.xy).at[idx2].add(b.xy)
+        angle = orig.angle.at[idx1].add(a.angle).at[idx2].add(b.angle)
         cls = orig.__class__
         a = cls(angle=angle[idx1], xy=xy[idx1])
         b = cls(angle=angle[idx2], xy=xy[idx2])
