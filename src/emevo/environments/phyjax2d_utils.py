@@ -334,21 +334,23 @@ def circle_overwrap(
 
 
 def raycast_closest(
+    fraction: float,
     p1: jax.Array,
     p2: jax.Array,
     shaped: ShapeDict,
     stated: StateDict,
 ):
     if shaped.circle is not None:
-        rc = circle_raycast(0.0, 1.0, p1, p2, shaped.circle, stated.circle)
+        rc = circle_raycast(0.0, fraction, p1, p2, shaped.circle, stated.circle)
+        jnp.where(rc.hit, rc.fraction, 0.0)
     if shaped.static_circle is not None:
         rc = circle_raycast(
             0.0,
-            1.0,
+            fraction,
             p1,
             p2,
             shaped.static_circle,
             stated.static_circle,
         )
     if shaped.segment is not None:
-        rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
+        rc = segment_raycast(fraction, p1, p2, shaped.segment, stated.segment)

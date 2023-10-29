@@ -193,13 +193,11 @@ class Shape(PyTreeOps):
 
     def inv_mass(self) -> jax.Array:
         """To support static shape, set let inv_mass 0 if mass is infinite"""
-        m = self.mass
-        return jnp.where(jnp.isfinite(m), 1.0 / m, jnp.zeros_like(m))
+        return jnp.where(jnp.isfinite(self.mass), 1.0 / self.mass, 0.0)
 
     def inv_moment(self) -> jax.Array:
         """As inv_mass does, set inv_moment 0 if moment is infinite"""
-        m = self.moment
-        return jnp.where(jnp.isfinite(m), 1.0 / m, jnp.zeros_like(m))
+        return jnp.where(jnp.isfinite(self.moment), 1.0 / self.moment, 0.0)
 
     def to_shape(self) -> Self:
         return Shape(
@@ -322,8 +320,8 @@ class VelocitySolver:
 
     def update(self, new_contact: jax.Array) -> Self:
         continuing_contact = jnp.logical_and(self.contact, new_contact)
-        pn = jnp.where(continuing_contact, self.pn, jnp.zeros_like(self.pn))
-        pt = jnp.where(continuing_contact, self.pt, jnp.zeros_like(self.pt))
+        pn = jnp.where(continuing_contact, self.pn, 0.0)
+        pt = jnp.where(continuing_contact, self.pt, 0.0)
         return self.replace(pn=pn, pt=pt, contact=new_contact)
 
 
@@ -848,7 +846,7 @@ def apply_velocity_normal(
     )
     # Filter dv
     dv1, dv2 = jax.tree_map(
-        lambda x: jnp.where(solver.contact, x, jnp.zeros_like(x)),
+        lambda x: jnp.where(solver.contact, x, 0.0),
         (dvn1 + dvt1, dvn2 + dvt2),
     )
     # Summing up dv per each contact pair
@@ -887,10 +885,7 @@ def apply_bounce(
     )
     # Filter dv
     allow_bounce = jnp.logical_and(solver.contact, helper.allow_bounce)
-    return jax.tree_map(
-        lambda x: jnp.where(allow_bounce, x, jnp.zeros_like(x)),
-        (dv1, dv2),
-    )
+    return jax.tree_map(lambda x: jnp.where(allow_bounce, x, 0.0), (dv1, dv2))
 
 
 @chex.dataclass
@@ -928,7 +923,7 @@ def correct_position(
     kn1 = _effective_mass(helper.inv_mass1, helper.inv_moment1, r1, contact.normal)
     kn2 = _effective_mass(helper.inv_mass2, helper.inv_moment2, r2, contact.normal)
     k_normal = kn1 + kn2
-    impulse = jnp.where(k_normal > 0.0, -c / k_normal, jnp.zeros_like(c))
+    impulse = jnp.where(k_normal > 0.0, -c / k_normal, 0.0)
     pn = impulse * contact.normal
     p1 = Position(
         angle=-helper.inv_moment1 * jnp.cross(r1, pn),
@@ -941,7 +936,7 @@ def correct_position(
     min_sep = jnp.fmin(solver.min_separation, separation)
     # Filter separation
     p1, p2 = jax.tree_map(
-        lambda x: jnp.where(solver.contact, x, jnp.zeros_like(x)),
+        lambda x: jnp.where(solver.contact, x, 0.0),
         (p1, p2),
     )
     return solver.replace(p1=p1, p2=p2, min_separation=min_sep)
@@ -995,7 +990,7 @@ def solve_constraints(
 
     v, solver = jax.lax.fori_loop(0, space.n_velocity_iter, vstep, (v, solver))
     bv1, bv2 = apply_bounce(contact, helper, solver)
-    v = gather_and_pair(bv1, bv2, v)[0]
+    v, _, _ = gather_and_pair(bv1, bv2, v)
 
     def pstep(
         _n_iter: int,
