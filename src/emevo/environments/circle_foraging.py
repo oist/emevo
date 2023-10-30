@@ -13,7 +13,15 @@ from jax.typing import ArrayLike
 from emevo.env import Env, Profile, Visualizer, init_profile
 from emevo.environments.phyjax2d import Position
 from emevo.environments.phyjax2d import Space as Physics
-from emevo.environments.phyjax2d import State, StateDict, Velocity, VelocitySolver
+from emevo.environments.phyjax2d import (
+    ShapeDict,
+    State,
+    StateDict,
+    Velocity,
+    VelocitySolver,
+    circle_raycast,
+    segment_raycast,
+)
 from emevo.environments.phyjax2d import nstep as physics_nstep
 from emevo.environments.phyjax2d_utils import (
     Color,
@@ -86,7 +94,7 @@ class CFState:
         return self.physics
 
     def is_extinct(self) -> bool:
-        return jnp.logical_not(jnp.any(self.profile.is_active()))
+        return jnp.logical_not(jnp.any(self.profile.is_active())).item()
 
 
 def _get_num_or_loc_fn(
@@ -161,6 +169,35 @@ def _make_physics(
             is_static=True,
         )
     return builder.build(), seg_state
+
+
+def _observe_closest(
+    offset: float,
+    shaped: ShapeDict,
+    p1: jax.Array,
+    p2: jax.Array,
+    stated: StateDict,
+) -> None:
+    assert shaped.circle is not None and stated.circle is not None
+    assert shaped.static_circle is not None and stated.static_circle is not None
+    assert shaped.segment is not None and stated.segment is not None
+
+    frac = 1.0 + offset
+    rc = circle_raycast(0.0, frac, p2, p1, shaped.circle, stated.circle)
+    to_c = jnp.clip(jnp.where(rc.hit, rc.fraction, 0.0), a_min=offset)
+    rc = circle_raycast(
+        0.0,
+        frac,
+        p2,
+        p1,
+        shaped.static_circle,
+        stated.static_circle,
+    )
+    to_sc = jnp.clip(jnp.where(rc.hit, rc.fraction, 0.0), a_min=offset)
+    rc = segment_raycast(frac, p2, p1, shaped.segment, stated.segment)
+    to_seg = jnp.clip(jnp.where(rc.hit, rc.fraction, 0.0), a_min=offset)
+    obs = jnp.stack((to_c, to_sc, to_seg))
+    return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, 0.0)
 
 
 class CircleForaging(Env):

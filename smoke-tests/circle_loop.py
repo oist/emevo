@@ -25,28 +25,32 @@ def main(
     seed: int = 1,
     n_agents: int = 10,
     n_foods: int = 10,
-    debug: bool = False,
     forward_sensor: bool = False,
     use_test_env: bool = False,
     obstacles: bool = False,
     render: bool = False,
     replace: bool = False,
+    fixed_agent_loc: bool = False,
     env_shape: str = "square",
     food_loc_fn: str = "gaussian",
 ) -> None:
-    if debug:
-        import loguru
-
-        loguru.logger.enable("emevo")
-
-    if forward_sensor:
-        env_kwargs: dict[str, Any] = {
-            "sensor_range": (-30, 30),
-            "sensor_length": 100,
-            "foodloc_interval": 20,
+    if fixed_agent_loc:
+        additional_kwargs = {
+            "agent_loc_fn": (
+                "periodic",
+                [
+                    [40.0, 60.0],
+                    [60.0, 90.0],
+                    [80.0, 60.0],
+                    [100.0, 90.0],
+                    [120.0, 60.0],
+                ],
+            ),
+            "max_place_attempts": 40,
         }
+        n_agents = min(n_agents, 4)
     else:
-        env_kwargs = {"foodloc_interval": 20}
+        additional_kwargs = {}
 
     env = make(
         "CircleForaging-v0",
@@ -55,7 +59,8 @@ def main(
         n_initial_agents=n_agents,
         food_num_fn=("constant", n_foods),
         food_loc_fn=food_loc_fn,
-        **env_kwargs,
+        foodloc_interval=20,
+        **additional_kwargs,
     )
     key = jax.random.PRNGKey(seed)
     keys = jax.random.split(key, steps + 1)

@@ -687,8 +687,9 @@ class Space:
     def check_contacts(self, stated: StateDict) -> Contact:
         contacts = []
         for (n1, n2), fn in _CONTACT_FUNCTIONS.items():
-            if stated[n1] is not None and stated[n2] is not None:
-                contacts.append(fn(self._ci[n1, n2], stated))
+            ci = self._ci.get((n1, n2), None)
+            if ci is not None:
+                contacts.append(fn(ci, stated))
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *contacts)
 
     def n_possible_contacts(self) -> int:

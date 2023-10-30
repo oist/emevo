@@ -10,11 +10,4 @@ from emevo.status import Status
 from emevo.vec2d import Vec2d
 
 
-def __disable_loguru() -> None:
-    from loguru import logger
-
-    logger.disable("emevo")
-
-
-__disable_loguru()
 __version__ = "0.1.0"
