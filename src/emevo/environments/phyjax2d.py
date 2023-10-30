@@ -121,6 +121,10 @@ class PyTreeOps:
 TWO_PI = jnp.pi * 2
 
 
+def _axy(angle: jax.Array, xy: jax.Array) -> jax.Array:
+    return jnp.concatenate((jnp.expand_dims(angle, axis=-1), xy), axis=-1)
+
+
 class _PositionLike(Protocol):
     angle: jax.Array  # Angular velocity (N,)
     xy: jax.Array  # (N, 2)
@@ -131,15 +135,28 @@ class _PositionLike(Protocol):
     def batch_size(self) -> int:
         return self.angle.shape[0]
 
+    def into_axy(self) -> jax.Array:
+        return _axy(self.angle, self.xy)
+
     @classmethod
     def zeros(cls: type[Self], n: int) -> Self:
         return cls(angle=jnp.zeros((n,)), xy=jnp.zeros((n, 2)))
+
+    @classmethod
+    def from_axy(cls: type[Self], axy: int) -> Self:
+        angle = jax.lax.squeeze(jax.lax.slice_in_dim(axy, 0, 1, axis=-1), (-1,))
+        xy = jax.lax.slice_in_dim(axy, 1, 3, axis=-1)
+        return cls(angle=angle, xy=xy)
 
 
 @chex.dataclass
 class Velocity(_PositionLike, PyTreeOps):
     angle: jax.Array  # Angular velocity (N,)
     xy: jax.Array  # (N, 2)
+
+    def rv(self, r: jax.Array) -> jax.Array:
+        """Relative velocity"""
+        return self.xy + _sv_cross(self.angle, r)
 
 
 @chex.dataclass
@@ -312,8 +329,8 @@ class ContactHelper:
 
 @chex.dataclass
 class VelocitySolver:
-    v1: Velocity
-    v2: Velocity
+    v1: jax.Array
+    v2: jax.Array
     pn: jax.Array
     pt: jax.Array
     contact: jax.Array
@@ -338,13 +355,6 @@ def _sv_cross(s: jax.Array, v: jax.Array) -> jax.Array:
     """Cross product with scalar and vector"""
     x, y = _get_xy(v)
     return jnp.stack((y * -s, x * s), axis=-1)
-
-
-def _dv2from1(v1: Velocity, r1: jax.Array, v2: Velocity, r2: jax.Array) -> jax.Array:
-    """Compute relative veclotiy from v2/r2 to v1/r1"""
-    rel_v1 = v1.xy + _sv_cross(v1.angle, r1)
-    rel_v2 = v2.xy + _sv_cross(v2.angle, r2)
-    return rel_v2 - rel_v1
 
 
 def _effective_mass(
@@ -695,8 +705,8 @@ class Space:
     def init_solver(self) -> VelocitySolver:
         n = self.n_possible_contacts()
         return VelocitySolver(
-            v1=Velocity.zeros(n),
-            v2=Velocity.zeros(n),
+            v1=jnp.zeros((n, 3)),
+            v2=jnp.zeros((n, 3)),
             pn=jnp.zeros(n),
             pt=jnp.zeros(n),
             contact=jnp.zeros(n, dtype=bool),
@@ -762,7 +772,7 @@ def init_contact_helper(
     # k_normal, k_tangent, and v_bias should have (N(N-1)/2, N_contacts) shape
     chex.assert_equal_shape((contact.friction, kn1, kn2, kt1, kt2, v_bias))
     # Compute elasiticity * relative_vel
-    dv = _dv2from1(v1, r1, v2, r2)
+    dv = v2.rv(r2) - v1.rv(r1)
     vn = _vmap_dot(dv, contact.normal)
     return ContactHelper(  # type: ignore
         tangent=tangent,
@@ -790,15 +800,19 @@ def apply_initial_impulse(
 ) -> VelocitySolver:
     """Warm starting by applying initial impulse"""
     p = helper.tangent * solver.pt + contact.normal * solver.pn
-    v1 = solver.v1 - Velocity(
+    v1 = solver.v1 - _axy(
         angle=helper.inv_moment1 * jnp.cross(helper.r1, p),
         xy=p * helper.inv_mass1,
     )
-    v2 = solver.v2 + Velocity(
+    v2 = solver.v2 + _axy(
         angle=helper.inv_moment2 * jnp.cross(helper.r2, p),
         xy=p * helper.inv_mass2,
     )
     return solver.replace(v1=v1, v2=v2)
+
+
+def _rv_a2b(a: jax.Array, ra: jax.Array, b: jax.Array, rb: jax.Array):
+    return Velocity.from_axy(b).rv(rb) - Velocity.from_axy(a).rv(ra)
 
 
 @jax.vmap
@@ -812,7 +826,7 @@ def apply_velocity_normal(
     Suppose that each shape has (N_contact, 1) or (N_contact, 2).
     """
     # Relative veclocity (from shape2 to shape1)
-    dv = _dv2from1(solver.v1, helper.r1, solver.v2, helper.r2)
+    dv = _rv_a2b(solver.v1, helper.r1, solver.v2, helper.r2)
     vt = jnp.dot(dv, helper.tangent)
     dpt = -helper.mass_tangent * vt
     # Clamp friction impulse
@@ -820,39 +834,34 @@ def apply_velocity_normal(
     pt = jnp.clip(solver.pt + dpt, a_min=-max_pt, a_max=max_pt)
     dpt_clamped = helper.tangent * (pt - solver.pt)
     # Velocity update by contact tangent
-    dvt1 = Velocity(
+    dvt1 = _axy(
         angle=-helper.inv_moment1 * jnp.cross(helper.r1, dpt_clamped),
         xy=-dpt_clamped * helper.inv_mass1,
     )
-    dvt2 = Velocity(
+    dvt2 = _axy(
         angle=helper.inv_moment2 * jnp.cross(helper.r2, dpt_clamped),
         xy=dpt_clamped * helper.inv_mass2,
     )
     # Compute Relative velocity again
-    dv = _dv2from1(solver.v1 + dvt1, helper.r1, solver.v2 + dvt2, helper.r2)
+    dv = _rv_a2b(solver.v1 + dvt1, helper.r1, solver.v2 + dvt2, helper.r2)
     vn = _vmap_dot(dv, contact.normal)
     dpn = helper.mass_normal * (-vn + helper.v_bias)
     # Accumulate and clamp impulse
     pn = jnp.clip(solver.pn + dpn, a_min=0.0)
     dpn_clamped = contact.normal * (pn - solver.pn)
     # Velocity update by contact normal
-    dvn1 = Velocity(
+    dvn1 = _axy(
         angle=-helper.inv_moment1 * jnp.cross(helper.r1, dpn_clamped),
         xy=-dpn_clamped * helper.inv_mass1,
     )
-    dvn2 = Velocity(
+    dvn2 = _axy(
         angle=helper.inv_moment2 * jnp.cross(helper.r2, dpn_clamped),
         xy=dpn_clamped * helper.inv_mass2,
     )
     # Filter dv
-    dv1, dv2 = jax.tree_map(
-        lambda x: jnp.where(solver.contact, x, 0.0),
-        (dvn1 + dvt1, dvn2 + dvt2),
-    )
-    # Summing up dv per each contact pair
     return VelocitySolver(
-        v1=dv1,
-        v2=dv2,
+        v1=jnp.where(solver.contact, dvn1 + dvt1, 0.0),
+        v2=jnp.where(solver.contact, dvn2 + dvt2, 0.0),
         pn=pn,
         pt=pt,
         contact=solver.contact,
@@ -870,28 +879,28 @@ def apply_bounce(
     Suppose that each shape has (N_contact, 1) or (N_contact, 2).
     """
     # Relative veclocity (from shape2 to shape1)
-    dv = _dv2from1(solver.v1, helper.r1, solver.v2, helper.r2)
+    dv = _rv_a2b(solver.v1, helper.r1, solver.v2, helper.r2)
     vn = jnp.dot(dv, contact.normal)
     pn = -helper.mass_normal * (vn + helper.bounce)
     dpn = contact.normal * pn
     # Velocity update by contact normal
-    dv1 = Velocity(
+    dv1 = _axy(
         angle=-helper.inv_moment1 * jnp.cross(helper.r1, dpn),
         xy=-dpn * helper.inv_mass1,
     )
-    dv2 = Velocity(
+    dv2 = _axy(
         angle=helper.inv_moment2 * jnp.cross(helper.r2, dpn),
         xy=dpn * helper.inv_mass2,
     )
     # Filter dv
     allow_bounce = jnp.logical_and(solver.contact, helper.allow_bounce)
-    return jax.tree_map(lambda x: jnp.where(allow_bounce, x, 0.0), (dv1, dv2))
+    return jnp.where(allow_bounce, dv1, 0.0), jnp.where(allow_bounce, dv2, 0.0)
 
 
 @chex.dataclass
 class PositionSolver:
-    p1: Position
-    p2: Position
+    p1: jax.Array
+    p2: jax.Array
     contact: jax.Array
     min_separation: jax.Array
 
@@ -911,9 +920,10 @@ def correct_position(
     p1 and p2 should have xy: (1, 2) angle (1, 1) shape
     """
     # (N_contact, 2)
-    r1 = solver.p1.rotate(helper.local_anchor1)
-    r2 = solver.p2.rotate(helper.local_anchor2)
-    ga2_ga1 = r2 - r1 + solver.p2.xy - solver.p1.xy
+    p1, p2 = Position.from_axy(solver.p1), Position.from_axy(solver.p2)
+    r1 = p1.rotate(helper.local_anchor1)
+    r2 = p2.rotate(helper.local_anchor2)
+    ga2_ga1 = r2 - r1 + p2.xy - p1.xy
     separation = jnp.dot(ga2_ga1, contact.normal) - contact.penetration
     c = jnp.clip(
         bias_factor * (separation + linear_slop),
@@ -925,21 +935,19 @@ def correct_position(
     k_normal = kn1 + kn2
     impulse = jnp.where(k_normal > 0.0, -c / k_normal, 0.0)
     pn = impulse * contact.normal
-    p1 = Position(
+    dp1 = _axy(
         angle=-helper.inv_moment1 * jnp.cross(r1, pn),
         xy=-pn * helper.inv_mass1,
     )
-    p2 = Position(
+    dp2 = _axy(
         angle=helper.inv_moment2 * jnp.cross(r2, pn),
         xy=pn * helper.inv_mass2,
     )
     min_sep = jnp.fmin(solver.min_separation, separation)
-    # Filter separation
-    p1, p2 = jax.tree_map(
-        lambda x: jnp.where(solver.contact, x, 0.0),
-        (p1, p2),
-    )
-    return solver.replace(p1=p1, p2=p2, min_separation=min_sep)
+    # Filter p1/p2
+    dp1 = jnp.where(solver.contact, dp1, 0.0)
+    dp2 = jnp.where(solver.contact, dp2, 0.0)
+    return solver.replace(p1=dp1, p2=dp2, min_separation=min_sep)
 
 
 def solve_constraints(
@@ -952,17 +960,8 @@ def solve_constraints(
     """Resolve collisions by Sequential Impulse method"""
     idx1, idx2 = space._ci_total.index1, space._ci_total.index2
 
-    def gather_and_pair(
-        a: _PositionLike,
-        b: _PositionLike,
-        orig: _PositionLike,
-    ) -> tuple[_PositionLike, _PositionLike, _PositionLike]:
-        xy = orig.xy.at[idx1].add(a.xy).at[idx2].add(b.xy)
-        angle = orig.angle.at[idx1].add(a.angle).at[idx2].add(b.angle)
-        cls = orig.__class__
-        a = cls(angle=angle[idx1], xy=xy[idx1])
-        b = cls(angle=angle[idx2], xy=xy[idx2])
-        return cls(angle=angle, xy=xy), a, b
+    def gather(a: jax.Array, b: jax.Array, orig: jax.Array) -> jax.Array:
+        return orig.at[idx1].add(a).at[idx2].add(b)
 
     p1, p2 = p.get_slice(idx1), p.get_slice(idx2)
     v1, v2 = v.get_slice(idx1), v.get_slice(idx2)
@@ -977,7 +976,8 @@ def solve_constraints(
         v2,
     )
     # Warm up the velocity solver
-    solver = apply_initial_impulse(contact, helper, solver.replace(v1=v1, v2=v2))
+    solver = solver.replace(v1=v1.into_axy(), v2=v2.into_axy())
+    solver = apply_initial_impulse(contact, helper, solver)
 
     def vstep(
         _n_iter: int,
@@ -985,12 +985,17 @@ def solve_constraints(
     ) -> tuple[Velocity, VelocitySolver]:
         v_i, solver_i = vs
         solver_i1 = apply_velocity_normal(contact, helper, solver_i)
-        v_i1, v1, v2 = gather_and_pair(solver_i1.v1, solver_i1.v2, v_i)
-        return v_i1, solver_i1.replace(v1=v1, v2=v2)
+        v_i1 = gather(solver_i1.v1, solver_i1.v2, v_i)
+        return v_i1, solver_i1.replace(v1=v_i1[idx1], v2=v_i1[idx2])
 
-    v, solver = jax.lax.fori_loop(0, space.n_velocity_iter, vstep, (v, solver))
+    v, solver = jax.lax.fori_loop(
+        0,
+        space.n_velocity_iter,
+        vstep,
+        (v.into_axy(), solver),
+    )
     bv1, bv2 = apply_bounce(contact, helper, solver)
-    v, _, _ = gather_and_pair(bv1, bv2, v)
+    v = gather(bv1, bv2, v)
 
     def pstep(
         _n_iter: int,
@@ -1005,17 +1010,22 @@ def solve_constraints(
             helper,
             solver_i,
         )
-        p_i1, p1, p2 = gather_and_pair(solver_i1.p1, solver_i1.p2, p_i)
-        return p_i1, solver_i1.replace(p1=p1, p2=p2)
+        p_i1 = gather(solver_i1.p1, solver_i1.p2, p_i)
+        return p_i1, solver_i1.replace(p1=p_i1[idx1], p2=p_i1[idx2])
 
     pos_solver = PositionSolver(
-        p1=p1,
-        p2=p2,
+        p1=p1.into_axy(),
+        p2=p2.into_axy(),
         contact=solver.contact,
         min_separation=jnp.zeros_like(p1.angle),
     )
-    p, pos_solver = jax.lax.fori_loop(0, space.n_position_iter, pstep, (p, pos_solver))
-    return v, p, solver
+    p, pos_solver = jax.lax.fori_loop(
+        0,
+        space.n_position_iter,
+        pstep,
+        (p.into_axy(), pos_solver),
+    )
+    return Velocity.from_axy(v), Position.from_axy(p), solver
 
 
 def step(
