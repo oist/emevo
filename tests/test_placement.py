@@ -6,8 +6,7 @@ import pytest
 from emevo.environments.circle_foraging import _make_physics
 from emevo.environments.phyjax2d import Space, StateDict
 from emevo.environments.placement import place_agent, place_food
-from emevo.environments.utils.food_repr import ReprLoc
-from emevo.environments.utils.locating import CircleCoordinate, InitLoc
+from emevo.environments.locating import CircleCoordinate, Locating
 
 N_MAX_AGENTS = 20
 N_MAX_FOODS = 10
@@ -38,14 +37,14 @@ def test_place_agents(key) -> None:
     n = N_MAX_AGENTS // 2
     keys = jax.random.split(key, n)
     space, stated, coordinate = get_space_and_more()
-    initloc_fn = InitLoc.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
+    initloc_fn, _ = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     assert stated.circle is not None
     for i, key in enumerate(keys):
         xy = place_agent(
             n_trial=10,
             agent_radius=AGENT_RADIUS,
             coordinate=coordinate,
-            initloc_fn=initloc_fn,
+            loc_fn=initloc_fn,
             key=key,
             shaped=space.shaped,
             stated=stated,
@@ -70,15 +69,15 @@ def test_place_foods(key) -> None:
     n = N_MAX_FOODS // 2
     keys = jax.random.split(key, n)
     space, stated, coordinate = get_space_and_more()
-    reprloc_fn, reprloc_state = ReprLoc.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
+    reprloc_fn, reprloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     assert stated.static_circle is not None
     for i, key in enumerate(keys):
         xy = place_food(
             n_trial=10,
             food_radius=FOOD_RADIUS,
             coordinate=coordinate,
-            reprloc_fn=reprloc_fn,
-            reprloc_state=reprloc_state,
+            loc_fn=reprloc_fn,
+            loc_state=reprloc_state,
             key=key,
             shaped=space.shaped,
             stated=stated,

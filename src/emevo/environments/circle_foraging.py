@@ -11,39 +11,32 @@ import numpy as np
 from jax.typing import ArrayLike
 
 from emevo.env import Env, Profile, Visualizer, init_profile
-from emevo.environments.phyjax2d import Position
+from emevo.environments.locating import (
+    CircleCoordinate,
+    Locating,
+    LocatingFn,
+    LocatingState,
+    SquareCoordinate,
+)
+from emevo.environments.phyjax2d import Position, ShapeDict
 from emevo.environments.phyjax2d import Space as Physics
 from emevo.environments.phyjax2d import (
-    ShapeDict,
     State,
     StateDict,
     Velocity,
     VelocitySolver,
     circle_raycast,
-    segment_raycast,
 )
 from emevo.environments.phyjax2d import nstep as physics_nstep
+from emevo.environments.phyjax2d import segment_raycast
 from emevo.environments.phyjax2d_utils import (
     Color,
     SpaceBuilder,
     make_approx_circle,
     make_square,
 )
-from emevo.environments.placement import place_agent, place_food
-from emevo.environments.utils.food_repr import (
-    FoodNumState,
-    ReprLoc,
-    ReprLocFn,
-    ReprLocState,
-    ReprNum,
-    ReprNumFn,
-)
-from emevo.environments.utils.locating import (
-    CircleCoordinate,
-    InitLoc,
-    InitLocFn,
-    SquareCoordinate,
-)
+from emevo.environments.placement import place
+from emevo.environments.reproduction import FoodNumState, ReprNum, ReprNumFn
 from emevo.spaces import BoxSpace, NamedTupleSpace
 from emevo.types import Index
 from emevo.vec2d import Vec2d
@@ -83,7 +76,8 @@ class CFState:
     physics: StateDict
     solver: VelocitySolver
     food_num: FoodNumState
-    repr_loc: ReprLocState
+    agent_loc: LocatingState
+    food_loc: LocatingState
     key: chex.PRNGKey
     step: jax.Array
     profile: Profile
@@ -98,10 +92,12 @@ class CFState:
 
 
 def _get_num_or_loc_fn(
-    arg: str | tuple | list,
+    arg: str | tuple | list | Callable[..., Any],
     enum_type: Callable[..., Callable[..., Any]],
     default_args: dict[str, tuple[Any, ...]],
 ) -> Any:
+    if callable(arg):
+        return arg
     if isinstance(arg, str):
         return enum_type(arg)(*default_args[arg])
     elif isinstance(arg, tuple) or isinstance(arg, list):
@@ -207,8 +203,8 @@ class CircleForaging(Env):
         n_max_agents: int = 100,
         n_max_foods: int = 40,
         food_num_fn: ReprNumFn | str | tuple[str, ...] = "constant",
-        food_loc_fn: ReprLocFn | str | tuple[str, ...] = "gaussian",
-        agent_loc_fn: InitLocFn | str | tuple[str, ...] = "uniform",
+        food_loc_fn: LocatingFn | str | tuple[str, ...] = "gaussian",
+        agent_loc_fn: LocatingFn | str | tuple[str, ...] = "uniform",
         xlim: tuple[float, float] = (0.0, 200.0),
         ylim: tuple[float, float] = (0.0, 200.0),
         env_radius: float = 120.0,
@@ -249,7 +245,9 @@ class CircleForaging(Env):
         self._food_num_fn, self._initial_foodnum_state = self._make_food_num_fn(
             food_num_fn
         )
-        self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
+        self._agent_loc_fn, self._initial_agentloc_state = self._make_agent_loc_fn(
+            agent_loc_fn
+        )
         # Initial numbers
         assert n_max_agents > n_initial_agents
         assert n_max_foods > self._food_num_fn.initial
@@ -295,21 +293,21 @@ class CircleForaging(Env):
         self._act_p2 = jnp.tile(jnp.array(act_p2), (N, 1))
         self._place_agent = jax.jit(
             functools.partial(
-                place_agent,
+                place,
                 n_trial=self._max_place_attempts,
-                agent_radius=self._agent_radius,
+                radius=self._agent_radius,
                 coordinate=self._coordinate,
-                initloc_fn=self._agent_loc_fn,
+                loc_fn=self._agent_loc_fn,
                 shaped=self._physics.shaped,
             )
         )
         self._place_food = jax.jit(
             functools.partial(
-                place_food,
+                place,
                 n_trial=self._max_place_attempts,
-                food_radius=self._food_radius,
+                radius=self._food_radius,
                 coordinate=self._coordinate,
-                reprloc_fn=self._food_loc_fn,
+                loc_fn=self._food_loc_fn,
                 shaped=self._physics.shaped,
             )
         )
@@ -327,11 +325,11 @@ class CircleForaging(Env):
 
     def _make_food_loc_fn(
         self,
-        food_loc_fn: str | tuple | ReprLocFn,
-    ) -> tuple[ReprLocFn, ReprLocState]:
+        food_loc_fn: str | tuple | LocatingFn,
+    ) -> tuple[LocatingFn, LocatingState]:
         return _get_num_or_loc_fn(
             food_loc_fn,
-            ReprLoc,  # type: ignore
+            Locating,  # type: ignore
             {
                 "gaussian": (
                     (self._xlim[1] * 0.75, self._ylim[1] * 0.75),
@@ -362,10 +360,13 @@ class CircleForaging(Env):
             },
         )
 
-    def _make_agent_loc_fn(self, init_loc_fn: str | tuple | InitLocFn) -> InitLocFn:
+    def _make_agent_loc_fn(
+        self,
+        init_loc_fn: str | tuple | LocatingFn,
+    ) -> tuple[LocatingFn, LocatingState]:
         return _get_num_or_loc_fn(
             init_loc_fn,
-            InitLoc,  # type: ignore
+            Locating,  # type: ignore
             {
                 "gaussian": (
                     (self._xlim[1] * 0.25, self._ylim[1] * 0.25),
@@ -378,10 +379,10 @@ class CircleForaging(Env):
     def set_food_num_fn(self, food_num_fn: str | tuple | ReprNumFn) -> None:
         self._food_num_fn = self._make_food_num_fn(food_num_fn)
 
-    def set_food_loc_fn(self, food_loc_fn: str | tuple | ReprLocFn) -> None:
+    def set_food_loc_fn(self, food_loc_fn: str | tuple | LocatingFn) -> None:
         self._food_loc_fn = self._make_food_loc_fn(food_loc_fn)
 
-    def set_agent_loc_fn(self, agent_loc_fn: str | tuple | InitLocFn) -> None:
+    def set_agent_loc_fn(self, agent_loc_fn: str | tuple | LocatingFn) -> None:
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
 
     def step(self, state: CFState, action: ArrayLike) -> CFState:
@@ -459,14 +460,13 @@ class CircleForaging(Env):
 
     def reset(self, key: chex.PRNGKey) -> CFState:
         state_key, init_key = jax.random.split(key)
-        stated = self._initialize_physics_state(init_key)
-        repr_loc = self._initial_foodloc_state
-        food_num = self._initial_foodnum_state
-        return CFState(
-            physics=stated,
+        physics, agent_loc, food_loc = self._initialize_physics_state(init_key)
+        return CFState(  # type: ignore
+            physics=physics,
             solver=self._physics.init_solver(),
-            repr_loc=repr_loc,
-            food_num=food_num,
+            agent_loc=agent_loc,
+            food_loc=food_loc,
+            food_num=self._initial_foodnum_state,
             # Protocols
             key=state_key,
             step=jnp.array(0, dtype=jnp.int32),
@@ -474,7 +474,10 @@ class CircleForaging(Env):
             n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
         )
 
-    def _initialize_physics_state(self, key: chex.PRNGKey) -> StateDict:
+    def _initialize_physics_state(
+        self,
+        key: chex.PRNGKey,
+    ) -> tuple[StateDict, LocatingState, LocatingState]:
         stated = self._physics.shaped.zeros_state()
         assert stated.circle is not None
 
@@ -504,13 +507,15 @@ class CircleForaging(Env):
         )
         keys = jax.random.split(key, self._n_initial_foods + self._n_initial_agents)
         agent_failed = 0
+        agentloc_state = self._initial_foodloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
-            xy = self._place_agent(key=key, stated=stated)
+            xy = self._place_agent(loc_state=agentloc_state, key=key, stated=stated)
             if jnp.all(xy < jnp.inf):
                 stated = stated.nested_replace(
                     "circle.p.xy",
                     stated.circle.p.xy.at[i].set(xy),
                 )
+                agentloc_state = agentloc_state.increment()
             else:
                 agent_failed += 1
 
@@ -520,19 +525,21 @@ class CircleForaging(Env):
         food_failed = 0
         foodloc_state = self._initial_foodloc_state
         for i, key in enumerate(keys[self._n_initial_foods :]):
-            xy = self._place_food(reprloc_state=foodloc_state, key=key, stated=stated)
+            xy = self._place_food(loc_state=foodloc_state, key=key, stated=stated)
             if jnp.all(xy < jnp.inf):
                 stated = stated.nested_replace(
                     "static_circle.p.xy",
                     stated.static_circle.p.xy.at[i].set(xy),
                 )
+                foodloc_state = foodloc_state.increment()
             else:
                 food_failed += 1
 
         if food_failed > 0:
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
-        return stated.replace(segment=self._segment_state)
+        stated = stated.replace(segment=self._segment_state)
+        return stated, agentloc_state, foodloc_state
 
     def visualizer(
         self,

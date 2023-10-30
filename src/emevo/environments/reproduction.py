@@ -1,25 +1,14 @@
-"""
-Utility functions to write food reproduction code in foraging environments.
+""" Utility functions to write food reproduction code in foraging environments.
 """
 from __future__ import annotations
 
 import dataclasses
 import enum
-from collections.abc import Iterable
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 import chex
 import jax
 import jax.numpy as jnp
-
-from emevo.environments.utils.locating import (
-    InitLoc,
-    InitLocFn,
-    init_loc_gaussian,
-    init_loc_gaussian_mixture,
-    init_loc_choice,
-    init_loc_uniform,
-)
 
 Self = Any
 
@@ -108,70 +97,3 @@ class ReprNum(str, enum.Enum):
         else:
             raise AssertionError("Unreachable")
         return fn, state
-
-
-@chex.dataclass
-class ReprLocState:
-    n_produced: jax.Array
-
-    def step(self) -> Self:
-        return self.replace(n_produced=self.n_produced + 1)
-
-
-ReprLocFn = Callable[[chex.PRNGKey, ReprLocState], jax.Array]
-
-
-def _wrap_initloc(fn: InitLocFn) -> ReprLocFn:
-    return lambda key, _: fn(key)
-
-
-class ReprLocSwitching:
-    def __init__(
-        self,
-        interval: int,
-        *initloc_fns: Iterable[tuple[str, ...] | InitLocFn],
-    ) -> None:
-        locfn_list = []
-        for fn_or_base in initloc_fns:
-            if callable(fn_or_base):
-                locfn_list.append(fn_or_base)
-            else:
-                name, *args = fn_or_base
-                locfn_list.append(InitLoc(name)(*args))
-        self._locfn_list = locfn_list
-        self._interval = interval
-        self._n = len(locfn_list)
-
-    def __call__(
-        self,
-        key: chex.PRNGKey,
-        state: ReprLocState,
-    ) -> jax.Array:
-        count = state.n_produced + 1
-        index = (count // self._interval) % self._n
-        return jax.lax.switch(index, self._locfn_list, key)
-
-
-class ReprLoc(str, enum.Enum):
-    """Methods to determine the location of new foods or agents"""
-
-    CHOICE = "choice"
-    GAUSSIAN = "gaussian"
-    GAUSSIAN_MIXTURE = "gaussian-mixture"
-    SWITCHING = "switching"
-    UNIFORM = "uniform"
-
-    def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprLocFn, Any]:
-        state = ReprLocState(n_produced=jnp.array(0, dtype=jnp.int32))
-        if self is ReprLoc.GAUSSIAN:
-            return _wrap_initloc(init_loc_gaussian(*args, **kwargs)), state
-        elif self is ReprLoc.GAUSSIAN_MIXTURE:
-            return _wrap_initloc(init_loc_gaussian_mixture(*args, **kwargs)), state
-        elif self is ReprLoc.CHOICE:
-            return _wrap_initloc(init_loc_choice(*args, **kwargs)), state
-        elif self is ReprLoc.SWITCHING:
-            return ReprLocSwitching(*args, **kwargs), state
-        elif self is ReprLoc.UNIFORM:
-            return _wrap_initloc(init_loc_uniform(*args, **kwargs)), state
-        else:
-            raise AssertionError("Unreachable")
