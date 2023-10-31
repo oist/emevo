@@ -874,7 +874,7 @@ def apply_bounce(
     contact: Contact,
     helper: ContactHelper,
     solver: VelocitySolver,
-) -> tuple[Velocity, Velocity]:
+) -> tuple[jax.Array, jax.Array]:
     """
     Apply bounce (resititution).
     Suppose that each shape has (N_contact, 1) or (N_contact, 2).
@@ -1077,24 +1077,27 @@ def circle_raycast(
     circle: Circle,
     state: State,
 ) -> Raycast:
-    s = p1 - state.p.xy
+    # Suppose p1 and p2's shape has (2,)
+    s = jnp.expand_dims(p1, axis=0) - state.p.xy  # (N, 2)
     d, length = normalize(p2 - p1)
-    t = -jnp.dot(s, d)
-    c = s + t * d
-    cc = jnp.linalg.norm(c)
+    t = -jnp.dot(s, d)  # (N,)
+
+    @jax.vmap
+    def muld(x: jax.Array) -> jax.Array:
+        return x * d
+
+    c = s + muld(t)  # (N, 2)
+    cc = _vmap_dot(c, c)  # (N, 1)
     rr = (radius + circle.radius) ** 2
-    fraction = t - jnp.sqrt(rr - cc)
-    hitpoint = s + fraction * d
+    fraction = jnp.where(rr >= cc, t - jnp.sqrt(rr - cc), 0.0)
+    hitpoint = s + muld(fraction)
     normal, _ = normalize(hitpoint)
     return Raycast(  # type: ignore
         fraction=fraction / length,
         normal=normal,
         hit=jnp.logical_and(
             cc <= rr,
-            jnp.logical_and(
-                fraction >= 0.0,
-                max_fraction * length >= fraction,
-            ),
+            jnp.logical_and(0.0 <= fraction, fraction <= max_fraction * length),
         ),
     )
 
@@ -1112,20 +1115,20 @@ def segment_raycast(
     e = v2 - v1
     eunit, length = normalize(e)
     normal = _sv_cross(jnp.ones_like(length) * -1, eunit)
-    numerator = jnp.dot(normal, v1 - p1)
-    denominator = jnp.dot(normal, d)
+    numerator = _vmap_dot(normal, v1 - p1)  # (N,)
+    denominator = jnp.dot(normal, d)  # (N,)
     t = numerator / denominator
-    p = p1 + t * d
-    s = jnp.dot(p - v1, eunit)
-    normal = jnp.where(numerator > 0.0, -normal, normal)
+    p = jax.vmap(lambda ti: ti * d + p1)(t)  # (N, 2)
+    s = _vmap_dot(p - v1, eunit)
+    normal = jnp.where(jnp.expand_dims(numerator > 0.0, axis=1), -normal, normal)
     return Raycast(  # type: ignore
         fraction=t,
         normal=normal,
         hit=jnp.logical_and(
             denominator != 0.0,
             jnp.logical_and(
-                jnp.logical_and(t >= 0.0, max_fraction * length >= t),
-                jnp.logical_and(s >= 0.0, length >= s),
+                jnp.logical_and(t >= 0.0, t <= max_fraction),
+                jnp.logical_and(s >= 0.0, s <= length),
             ),
         ),
     )

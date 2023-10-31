@@ -18,7 +18,7 @@ from emevo.environments.locating import (
     LocatingState,
     SquareCoordinate,
 )
-from emevo.environments.phyjax2d import Position, ShapeDict
+from emevo.environments.phyjax2d import Circle, Position, Raycast, ShapeDict
 from emevo.environments.phyjax2d import Space as Physics
 from emevo.environments.phyjax2d import (
     State,
@@ -168,32 +168,31 @@ def _make_physics(
 
 
 def _observe_closest(
-    offset: float,
     shaped: ShapeDict,
     p1: jax.Array,
     p2: jax.Array,
     stated: StateDict,
-) -> None:
+) -> jax.Array:
     assert shaped.circle is not None and stated.circle is not None
     assert shaped.static_circle is not None and stated.static_circle is not None
     assert shaped.segment is not None and stated.segment is not None
 
-    frac = 1.0 + offset
-    rc = circle_raycast(0.0, frac, p2, p1, shaped.circle, stated.circle)
-    to_c = jnp.clip(jnp.where(rc.hit, rc.fraction, 0.0), a_min=offset)
-    rc = circle_raycast(
-        0.0,
-        frac,
-        p2,
-        p1,
-        shaped.static_circle,
-        stated.static_circle,
+    def cr(shape: Circle, state: State) -> Raycast:
+        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
+
+    rc = cr(shaped.circle, stated.circle)
+    to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    rc = cr(shaped.static_circle, stated.static_circle)
+    to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
+    to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    obs = jnp.concatenate(
+        jax.tree_map(
+            lambda arr: jnp.max(arr, keepdims=True),
+            (to_c, to_sc, to_seg),
+        ),
     )
-    to_sc = jnp.clip(jnp.where(rc.hit, rc.fraction, 0.0), a_min=offset)
-    rc = segment_raycast(frac, p2, p1, shaped.segment, stated.segment)
-    to_seg = jnp.clip(jnp.where(rc.hit, rc.fraction, 0.0), a_min=offset)
-    obs = jnp.stack((to_c, to_sc, to_seg))
-    return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, 0.0)
+    return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
 
 
 class CircleForaging(Env):
@@ -505,7 +504,7 @@ class CircleForaging(Env):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * -100,
         )
-        keys = jax.random.split(key, self._n_initial_foods + self._n_initial_agents)
+        keys = jax.random.split(key, self._n_initial_agents + self._n_initial_foods)
         agent_failed = 0
         agentloc_state = self._initial_foodloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
@@ -524,7 +523,7 @@ class CircleForaging(Env):
 
         food_failed = 0
         foodloc_state = self._initial_foodloc_state
-        for i, key in enumerate(keys[self._n_initial_foods :]):
+        for i, key in enumerate(keys[self._n_initial_agents :]):
             xy = self._place_food(loc_state=foodloc_state, key=key, stated=stated)
             if jnp.all(xy < jnp.inf):
                 stated = stated.nested_replace(
