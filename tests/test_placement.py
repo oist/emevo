@@ -5,7 +5,7 @@ import pytest
 
 from emevo.environments.circle_foraging import _make_physics
 from emevo.environments.phyjax2d import Space, StateDict
-from emevo.environments.placement import place_agent, place_food
+from emevo.environments.placement import place
 from emevo.environments.locating import CircleCoordinate, Locating
 
 N_MAX_AGENTS = 20
@@ -37,14 +37,15 @@ def test_place_agents(key) -> None:
     n = N_MAX_AGENTS // 2
     keys = jax.random.split(key, n)
     space, stated, coordinate = get_space_and_more()
-    initloc_fn, _ = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
+    initloc_fn, initloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     assert stated.circle is not None
     for i, key in enumerate(keys):
-        xy = place_agent(
+        xy = place(
             n_trial=10,
-            agent_radius=AGENT_RADIUS,
+            radius=AGENT_RADIUS,
             coordinate=coordinate,
             loc_fn=initloc_fn,
+            loc_state=initloc_state,
             key=key,
             shaped=space.shaped,
             stated=stated,
@@ -61,8 +62,8 @@ def test_place_agents(key) -> None:
     stated = stated.nested_replace("circle.is_active", is_active)
 
     # test no overwrap each other
-    contact_data = space.check_contacts(stated)
-    assert jnp.all(contact_data.contact.penetration <= 0.0)
+    contact = space.check_contacts(stated)
+    assert jnp.all(contact.penetration <= 0.0)
 
 
 def test_place_foods(key) -> None:
@@ -72,9 +73,9 @@ def test_place_foods(key) -> None:
     reprloc_fn, reprloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     assert stated.static_circle is not None
     for i, key in enumerate(keys):
-        xy = place_food(
+        xy = place(
             n_trial=10,
-            food_radius=FOOD_RADIUS,
+            radius=FOOD_RADIUS,
             coordinate=coordinate,
             loc_fn=reprloc_fn,
             loc_state=reprloc_state,
@@ -101,5 +102,5 @@ def test_place_foods(key) -> None:
     stated = stated.nested_replace("static_circle.is_active", is_active)
 
     # test no overwrap each other
-    contact_data = space.check_contacts(stated)
-    assert jnp.all(contact_data.contact.penetration <= 0.0)
+    contact = space.check_contacts(stated)
+    assert jnp.all(contact.penetration <= 0.0)

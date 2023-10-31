@@ -143,20 +143,19 @@ def loc_uniform(coordinate: Coordinate) -> LocatingFn:
 
 
 class LocPeriodic:
-    def __init__(self, *locations: Iterable[ArrayLike]) -> None:
-        self._locations = jnp.array(list(locations))
+    def __init__(self, *locations: ArrayLike) -> None:
+        self._locations = jnp.array(locations)
         self._n = self._locations.shape[0]
 
-    def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
-        count = state.n_produced + 1
-        return self._locations[count % self._n]
+    def __call__(self, _key: chex.PRNGKey, state: LocatingState) -> jax.Array:
+        return self._locations[state.n_produced % self._n]
 
 
 class LocSwitching:
     def __init__(
         self,
         interval: int,
-        *loc_fns: Iterable[tuple[str, ...] | LocatingFn],
+        *loc_fns: tuple[str, ...] | LocatingFn,
     ) -> None:
         locfn_list = []
         for fn_or_base in loc_fns:
@@ -170,6 +169,5 @@ class LocSwitching:
         self._n = len(locfn_list)
 
     def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
-        count = state.n_produced + 1
-        index = (count // self._interval) % self._n
-        return jax.lax.switch(index, self._locfn_list, key)
+        index = (state.n_produced // self._interval) % self._n
+        return jax.lax.switch(index, self._locfn_list, key, state)

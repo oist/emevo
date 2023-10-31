@@ -38,17 +38,14 @@ def main(
         additional_kwargs = {
             "agent_loc_fn": (
                 "periodic",
-                [
-                    [40.0, 60.0],
-                    [60.0, 90.0],
-                    [80.0, 60.0],
-                    [100.0, 90.0],
-                    [120.0, 60.0],
-                ],
+                [40.0, 60.0],
+                [60.0, 90.0],
+                [80.0, 60.0],
+                [100.0, 90.0],
+                [120.0, 60.0],
             ),
-            "max_place_attempts": 40,
         }
-        n_agents = min(n_agents, 4)
+        n_agents = min(n_agents, 5)
     else:
         additional_kwargs = {}
 

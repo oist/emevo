@@ -412,7 +412,7 @@ class CircleForaging(Env):
             fill_value=-1,
         )
         index = index[0]
-        xy = self._place_agent(key=key, stated=state.physics)
+        xy = self._place_agent(key=activate_key, stated=state.physics)
         ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
 
         def success() -> tuple[CFState, bool]:

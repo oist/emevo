@@ -267,7 +267,7 @@ class State(PyTreeOps):
     def apply_force_local(self, point: jax.Array, force: jax.Array) -> Self:
         chex.assert_equal_shape((self.p.xy, point))
         point = self.p.transform(point)
-        return self.apply_force_global(point, force)
+        return self.apply_force_global(point, self.p.rotate(force))
 
     def batch_size(self) -> int:
         return self.p.batch_size()
