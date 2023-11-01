@@ -195,6 +195,16 @@ def _observe_closest(
     return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
 
 
+@functools.partial(jax.jit, static_argnums=(0, 1, 2))
+def get_sensor_obs(
+    shaped: ShapeDict,
+    n_sensors: int,
+    sensor_range: float,
+    stated: StateDict,
+) -> None:
+    assert stated.circle is not None
+
+
 @functools.partial(jax.jit, static_argnums=(0, 1))
 def nstep(
     n: int,
@@ -422,6 +432,7 @@ class CircleForaging(Env):
             "circle",
             jnp.max(contacts, axis=0),
         )
+
         return state.replace(physics=stated, solver=solver)
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
