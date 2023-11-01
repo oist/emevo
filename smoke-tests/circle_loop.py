@@ -75,7 +75,7 @@ def main(
     elapsed_list = []
     for i, key in tqdm(zip(range(steps), keys[1:])):
         before = datetime.datetime.now()
-        state = jit_step(state, jit_sample(key))
+        state, _ = jit_step(state, jit_sample(key))
         elapsed = datetime.datetime.now() - before
         if i == 0:
             print(f"Compile: {elapsed.total_seconds()}s")

@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import pytest
 
 from emevo import Env, make
-from emevo.environments.circle_foraging import CFState, _observe_closest
+from emevo.environments.circle_foraging import CFState, _observe_closest, get_sensor_obs
 
 N_MAX_AGENTS = 20
 N_MAX_FOODS = 10
@@ -46,7 +46,7 @@ def reset_env(key: chex.PRNGKey) -> tuple[Env, CFState]:
     return env, env.reset(key)
 
 
-def test_observe(key: chex.PRNGKey) -> None:
+def test_observe_closest(key: chex.PRNGKey) -> None:
     env, state = reset_env(key)
     obs = _observe_closest(
         env._physics.shaped,
@@ -83,3 +83,17 @@ def test_observe(key: chex.PRNGKey) -> None:
         state.physics,
     )
     chex.assert_trees_all_close(obs, jnp.array([-1.0, -1.0, 0.3]))
+
+
+def test_sensor_obs(key: chex.PRNGKey) -> None:
+    env, state = reset_env(key)
+    sensor_obs = get_sensor_obs(
+        env._physics.shaped,
+        3,
+        (-90, 90),
+        100.0,
+        state.physics,
+    )
+    chex.assert_shape(sensor_obs, (30, 3))
+    # Wall
+    chex.assert_trees_all_close(sensor_obs[0], jnp.array([-1.0, -1.0, 0.3]))

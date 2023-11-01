@@ -122,7 +122,7 @@ TWO_PI = jnp.pi * 2
 
 
 def _axy(angle: jax.Array, xy: jax.Array) -> jax.Array:
-    return jnp.concatenate((jnp.expand_dims(angle, axis=-1), xy), axis=-1)
+    return jnp.concatenate((jnp.e3xpand_dims(angle, axis=-1), xy), axis=-1)
 
 
 class _PositionLike(Protocol):

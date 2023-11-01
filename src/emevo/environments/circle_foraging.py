@@ -195,14 +195,29 @@ def _observe_closest(
     return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
 
 
-@functools.partial(jax.jit, static_argnums=(0, 1, 2))
+_vmap_obs = jax.vmap(_observe_closest, in_axes=(None, 0, 0, None))
+
+
 def get_sensor_obs(
     shaped: ShapeDict,
     n_sensors: int,
-    sensor_range: float,
+    sensor_range: tuple[float, float],
+    sensor_length: float,
     stated: StateDict,
 ) -> None:
     assert stated.circle is not None
+    radius = shaped.circle.radius
+    p1 = jnp.stack((jnp.zeros_like(radius), radius), axis=1)  # (N, 2)
+    p1 = jnp.repeat(p1, n_sensors, axis=0)  # (N x M, 2)
+    p2 = p1 + jnp.array([0.0, sensor_length])  # (N x M, 2)
+    sensor_rad = jnp.deg2rad(jnp.linspace(*sensor_range, n_sensors))
+    sensor_p = Position(
+        angle=jax.vmap(lambda x: x + sensor_rad)(stated.circle.p.angle).ravel(),
+        xy=jnp.tile(stated.circle.p.xy, (n_sensors, 1)),
+    )
+    p1 = sensor_p.transform(p1)
+    p2 = sensor_p.transform(p2)
+    return _vmap_obs(shaped, p1, p2, stated)
 
 
 @functools.partial(jax.jit, static_argnums=(0, 1))
@@ -432,8 +447,7 @@ class CircleForaging(Env):
             "circle",
             jnp.max(contacts, axis=0),
         )
-
-        return state.replace(physics=stated, solver=solver)
+        return state.replace(physics=stated, solver=solver), circle_contacts
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
         key, activate_key = jax.random.split(state.key)
