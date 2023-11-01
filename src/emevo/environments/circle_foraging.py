@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
 
-from emevo.env import Env, Profile, Visualizer, init_profile
+from emevo.env import Env, Profile, TimeStep, Visualizer, init_profile
 from emevo.environments.locating import (
     CircleCoordinate,
     Locating,
@@ -26,9 +26,9 @@ from emevo.environments.phyjax2d import (
     Velocity,
     VelocitySolver,
     circle_raycast,
+    segment_raycast,
 )
-from emevo.environments.phyjax2d import nstep as physics_nstep
-from emevo.environments.phyjax2d import segment_raycast
+from emevo.environments.phyjax2d import step as physics_step
 from emevo.environments.phyjax2d_utils import (
     Color,
     SpaceBuilder,
@@ -62,7 +62,7 @@ class CFObs(NamedTuple):
         return jnp.concatenate(
             (
                 self.sensor.ravel(),
-                self.collision,
+                self.collision.ravel(),
                 self.velocity,
                 self.angle,
                 self.angular_velocity,
@@ -195,6 +195,24 @@ def _observe_closest(
     return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
 
 
+@functools.partial(jax.jit, static_argnums=(0, 1))
+def nstep(
+    n: int,
+    space: Physics,
+    stated: StateDict,
+    solver: VelocitySolver,
+) -> tuple[StateDict, VelocitySolver, jax.Array]:
+    def body(
+        stated_and_solver: tuple[StateDict, VelocitySolver],
+        _zero: jax.Array,
+    ) -> tuple[tuple[StateDict, VelocitySolver], jax.Array]:
+        state, solver, contact = physics_step(space, *stated_and_solver)
+        return (state, solver), contact.penetration >= 0.0
+
+    (state, solver), contacts = jax.lax.scan(body, (stated, solver), jnp.zeros(n))
+    return state, solver, contacts
+
+
 class CircleForaging(Env):
     def __init__(
         self,
@@ -310,7 +328,6 @@ class CircleForaging(Env):
                 shaped=self._physics.shaped,
             )
         )
-        self._nstep = jax.jit(physics_nstep, static_argnums=(0, 1))
 
     @staticmethod
     def _make_food_num_fn(
@@ -395,11 +412,15 @@ class CircleForaging(Env):
         circle = circle.apply_force_local(self._act_p2, f2)
         stated = state.physics.replace(circle=circle)
         # Step physics simulator
-        stated, solver = self._nstep(
+        stated, solver, contacts = nstep(
             self._n_physics_iter,
             self._physics,
             stated,
             state.solver,
+        )
+        circle_contacts = self._physics.get_specific_contact(
+            "circle",
+            jnp.max(contacts, axis=0),
         )
         return state.replace(physics=stated, solver=solver)
 

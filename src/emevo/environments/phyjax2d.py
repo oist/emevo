@@ -503,6 +503,9 @@ class ShapeDict:
         shapes = [s.to_shape() for s in self.values() if s is not None]
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *shapes)
 
+    def n_shapes(self) -> int:
+        return sum([s.batch_size() for s in self.values() if s is not None])
+
     def zeros_state(self) -> StateDict:
         circle = then(self.circle, lambda s: State.zeros(len(s.mass)))
         static_circle = then(self.static_circle, lambda s: State.zeros(len(s.mass)))
@@ -648,6 +651,10 @@ class Space:
     bounce_threshold: float = 1.0
     max_velocity: float = 100.0
     max_angular_velocity: float = 100.0
+    _contact_offset: dict[tuple[str, str], tuple[int, int]] = dataclasses.field(
+        default_factory=dict,
+        init=False,
+    )
     _ci: dict[tuple[str, str], ContactIndices] = dataclasses.field(
         default_factory=dict,
         init=False,
@@ -663,6 +670,7 @@ class Space:
 
     def __post_init__(self) -> None:
         ci_slided_list = []
+        offset = 0
         for n1, n2 in _CONTACT_FUNCTIONS.keys():
             if self.shaped[n1] is not None and self.shaped[n2] is not None:
                 if n1 == n2:
@@ -670,6 +678,9 @@ class Space:
                 else:
                     ci = _pair_ci(self.shaped[n1], self.shaped[n2])
                 self._ci[n1, n2] = ci
+                offset_start = offset
+                offset += ci.shape1.batch_size()
+                self._contact_offset[n1, n2] = offset_start, offset
                 offset1, offset2 = _offset(self.shaped, n1), _offset(self.shaped, n2)
                 # Add some offset for global indices
                 ci_slided = ContactIndices(
@@ -702,6 +713,26 @@ class Space:
                 else:
                     n += len1 * len2
         return n
+
+    def get_specific_contact(self, name: str, contact: jax.Array) -> jax.Array:
+        idx1, idx2 = self._ci_total.index1, self._ci_total.index2
+        offset = _offset(self.shaped, name)
+        size = self.shaped[name].batch_size()
+        n = self.shaped.n_shapes()
+        ret = []
+        for n1, n2 in _CONTACT_FUNCTIONS.keys():
+            contact_offset = self._contact_offset.get((n1, n2), None)
+            if contact_offset is not None:
+                has_contact = jnp.zeros(n, dtype=bool)
+                from_, to = contact_offset
+                cont = contact[from_:to]
+                if n1 == name:
+                    has_contact = has_contact.at[idx1[from_:to]].max(cont)
+                if n2 == name:
+                    has_contact = has_contact.at[idx2[from_:to]].max(cont)
+                ret.append(has_contact[offset : offset + size])
+
+        return jnp.stack(ret, axis=1)
 
     def init_solver(self) -> VelocitySolver:
         n = self.n_possible_contacts()
@@ -962,7 +993,7 @@ def solve_constraints(
     idx1, idx2 = space._ci_total.index1, space._ci_total.index2
 
     def gather(a: jax.Array, b: jax.Array, orig: jax.Array) -> jax.Array:
-        return orig.at[idx1].add(a).at[idx2].add(b)
+        return orig.at[idx1].add(a, indices_are_sorted=True).at[idx2].add(b)
 
     p1, p2 = p.get_slice(idx1), p.get_slice(idx2)
     v1, v2 = v.get_slice(idx1), v.get_slice(idx2)
@@ -1033,7 +1064,7 @@ def step(
     space: Space,
     stated: StateDict,
     solver: VelocitySolver,
-) -> tuple[StateDict, VelocitySolver]:
+) -> tuple[StateDict, VelocitySolver, Contact]:
     state = update_velocity(space, space.shaped.concat(), stated.concat())
     contact = space.check_contacts(stated.update(state))
     v, p, solver = solve_constraints(
@@ -1044,22 +1075,7 @@ def step(
         contact,
     )
     state = update_position(space, state.replace(v=v, p=p))
-    return stated.update(state), solver
-
-
-def nstep(
-    n: int,
-    space: Space,
-    stated: StateDict,
-    solver: VelocitySolver,
-) -> tuple[StateDict, VelocitySolver]:
-    def wrapped_step(
-        _n_iter: int,
-        stated_and_solver: tuple[StateDict, VelocitySolver],
-    ) -> tuple[StateDict, VelocitySolver]:
-        return step(space, *stated_and_solver)
-
-    return jax.lax.fori_loop(0, n, wrapped_step, (stated, solver))
+    return stated.update(state), solver, contact
 
 
 @chex.dataclass
