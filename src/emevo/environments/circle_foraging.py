@@ -213,7 +213,7 @@ def get_sensor_obs(
     sensor_rad = jnp.deg2rad(jnp.linspace(*sensor_range, n_sensors))
     sensor_p = Position(
         angle=jax.vmap(lambda x: x + sensor_rad)(stated.circle.p.angle).ravel(),
-        xy=jnp.tile(stated.circle.p.xy, (n_sensors, 1)),
+        xy=jnp.repeat(stated.circle.p.xy, n_sensors, axis=0),
     )
     p1 = sensor_p.transform(p1)
     p2 = sensor_p.transform(p2)
