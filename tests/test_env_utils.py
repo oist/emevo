@@ -3,11 +3,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from emevo.environments.reproduction import  ReprNum
-from emevo.environments.locating import (
+from emevo.environments.env_utils import (
     CircleCoordinate,
     Locating,
-    LocatingFn,
+    ReprNum,
     SquareCoordinate,
 )
 

@@ -4,9 +4,8 @@ import jax.numpy as jnp
 import pytest
 
 from emevo.environments.circle_foraging import _make_physics
+from emevo.environments.env_utils import CircleCoordinate, Locating, place
 from emevo.environments.phyjax2d import Space, StateDict
-from emevo.environments.placement import place
-from emevo.environments.locating import CircleCoordinate, Locating
 
 N_MAX_AGENTS = 20
 N_MAX_FOODS = 10

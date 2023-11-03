@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import abc
+import dataclasses
 from typing import Any, Generic, Protocol, TypeVar
 
 import chex
@@ -10,7 +11,7 @@ import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from emevo.spaces import Space
-from emevo.types import Index, PyTree
+from emevo.types import Index
 from emevo.visualizer import Visualizer
 
 Self = Any
@@ -80,14 +81,21 @@ class StateProtocol(Protocol):
 
 STATE = TypeVar("STATE", bound="StateProtocol")
 
-OBS = TypeVar("OBS")
+
+class ObsProtocol(Protocol):
+    """Each state should have PRNG key"""
+
+    def as_array(self) -> jax.Array:
+        ...
+
+OBS = TypeVar("OBS", bound="ObsProtocol")
 
 
 @chex.dataclass
-class TimeStep:
+class TimeStep(Generic[OBS]):
     encount: jax.Array | None
-    obs: PyTree
-    info: dict[str, Any]
+    obs: OBS
+    info: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
 class Env(abc.ABC, Generic[STATE, OBS]):
@@ -106,7 +114,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def step(self, state: STATE, action: ArrayLike) -> tuple[STATE, TimeStep]:
+    def step(self, state: STATE, action: ArrayLike) -> tuple[STATE, TimeStep[OBS]]:
         """
         Step the simulator by 1-step, taking the state and actions from each body.
         Returns the next state and all encounts.

@@ -11,12 +11,16 @@ import numpy as np
 from jax.typing import ArrayLike
 
 from emevo.env import Env, Profile, TimeStep, Visualizer, init_profile
-from emevo.environments.locating import (
+from emevo.environments.env_utils import (
     CircleCoordinate,
+    FoodNumState,
     Locating,
     LocatingFn,
     LocatingState,
+    ReprNum,
+    ReprNumFn,
     SquareCoordinate,
+    place,
 )
 from emevo.environments.phyjax2d import Circle, Position, Raycast, ShapeDict
 from emevo.environments.phyjax2d import Space as Physics
@@ -35,8 +39,6 @@ from emevo.environments.phyjax2d_utils import (
     make_approx_circle,
     make_square,
 )
-from emevo.environments.placement import place
-from emevo.environments.reproduction import FoodNumState, ReprNum, ReprNumFn
 from emevo.spaces import BoxSpace, NamedTupleSpace
 from emevo.types import Index
 from emevo.vec2d import Vec2d
@@ -56,18 +58,17 @@ class CFObs(NamedTuple):
     velocity: jax.Array
     angle: jax.Array
     angular_velocity: jax.Array
-    energy: jax.Array
 
-    def __array__(self) -> jax.Array:
+    def as_array(self) -> jax.Array:
         return jnp.concatenate(
             (
-                self.sensor.ravel(),
+                self.sensor.reshape(self.sensor.shape[0], -1),
                 self.collision.ravel(),
                 self.velocity,
                 self.angle,
                 self.angular_velocity,
-                self.energy,
-            )
+            ),
+            axis=1,
         )
 
 
@@ -324,8 +325,9 @@ class CircleForaging(Env):
             velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(N, 2)),
             angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=(N,)),
             angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=(N,)),
-            energy=BoxSpace(low=0.0, high=50.0, shape=(N,)),
         )
+        # Obs
+        self._n_sensors = n_agent_sensors
         # Some cached constants
         self._invisible_xy = jnp.array([-100.0, -100.0], dtype=jnp.float32)
         act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
@@ -351,6 +353,15 @@ class CircleForaging(Env):
                 coordinate=self._coordinate,
                 loc_fn=self._food_loc_fn,
                 shaped=self._physics.shaped,
+            )
+        )
+        self._sensor_obs = jax.jit(
+            functools.partial(
+                get_sensor_obs,
+                shaped=self._physics.shaped,
+                n_sensors=n_agent_sensors,
+                sensor_range=sensor_range,
+                sensor_length=sensor_length,
             )
         )
 
@@ -426,7 +437,11 @@ class CircleForaging(Env):
     def set_agent_loc_fn(self, agent_loc_fn: str | tuple | LocatingFn) -> None:
         self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
 
-    def step(self, state: CFState, action: ArrayLike) -> CFState:
+    def step(
+        self,
+        state: CFState,
+        action: ArrayLike,
+    ) -> tuple[CFState, TimeStep[CFObs]]:
         # Add force
         act = self.act_space.clip(jnp.array(action))
         f1, f2 = act[:, 0], act[:, 1]
@@ -443,11 +458,19 @@ class CircleForaging(Env):
             stated,
             state.solver,
         )
-        circle_contacts = self._physics.get_specific_contact(
-            "circle",
-            jnp.max(contacts, axis=0),
+        contacts = jnp.max(contacts, axis=0)
+        circle_contacts = self._physics.get_specific_contact("circle", contacts)
+        sensor_obs = self._sensor_obs(stated=stated)
+        obs = CFObs(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, 3),
+            collision=circle_contacts,
+            angle=stated.circle.p.angle,
+            velocity=stated.circle.v.xy,
+            angular_velocity=stated.circle.v.angle,
         )
-        return state.replace(physics=stated, solver=solver), circle_contacts
+        encount = self._physics.get_contact_mat("circle", "circle", contacts)
+        timestep = TimeStep(encount=encount, obs=obs)
+        return state.replace(physics=stated, solver=solver), timestep
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
         key, activate_key = jax.random.split(state.key)
@@ -460,7 +483,7 @@ class CircleForaging(Env):
         xy = self._place_agent(key=activate_key, stated=state.physics)
         ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
 
-        def success() -> tuple[CFState, bool]:
+        def success(state: CFState) -> tuple[CFState, bool]:
             circle_xy = state.physics.circle.p.xy.at[index].set(xy)
             circle_angle = state.physics.circle.p.angle.at[index].set(0.0)
             p = Position(angle=circle_angle, xy=circle_xy)
@@ -481,7 +504,7 @@ class CircleForaging(Env):
             )
             return new_state, True
 
-        def failure() -> tuple[CFState, bool]:
+        def failure(state: CFState) -> tuple[CFState, bool]:
             return state.replace(key=key), False
 
         return jax.lax.cond(ok, success, failure)
@@ -489,7 +512,7 @@ class CircleForaging(Env):
     def deactivate(self, state: CFState, index: Index) -> tuple[CFState, bool]:
         ok = state.profile.is_active()[index]
 
-        def success() -> tuple[CFState, bool]:
+        def success(state: CFState) -> tuple[CFState, bool]:
             p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
             p = state.physics.circle.p.replace(xy=p_xy)
             v_xy = state.physics.circle.v.xy.at[index].set(jnp.zeros(2))
@@ -501,7 +524,7 @@ class CircleForaging(Env):
             profile = state.profile.deactivate(index)
             return state.replace(physics=physics, profile=profile), True
 
-        return jax.lax.cond(ok, success, lambda: (state, False))
+        return jax.lax.cond(ok, success, lambda state: (state, False))
 
     def reset(self, key: chex.PRNGKey) -> CFState:
         state_key, init_key = jax.random.split(key)

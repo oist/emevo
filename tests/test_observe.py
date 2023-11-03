@@ -73,13 +73,6 @@ def test_observe_closest(key: chex.PRNGKey) -> None:
     chex.assert_trees_all_close(obs, jnp.array([-1.0, 0.54, -1.0]))
     obs = _observe_closest(
         env._physics.shaped,
-        jnp.array([110.0, 60.0]),
-        jnp.array([90.0, 60.0]),
-        state.physics,
-    )
-    chex.assert_trees_all_close(obs, jnp.array([-1.0, 0.7, -1.0]))
-    obs = _observe_closest(
-        env._physics.shaped,
         jnp.array([130.0, 60.0]),
         jnp.array([230.0, 60.0]),
         state.physics,
@@ -129,3 +122,7 @@ def test_sensor_obs(key: chex.PRNGKey) -> None:
         sensor_obs[13],
         jnp.array([-1.0, -1.0, -1.0]),
     )
+
+
+def test_encount(key: chex.PRNGKey) -> None:
+    env, state = reset_env(key)

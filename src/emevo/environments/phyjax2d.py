@@ -25,52 +25,6 @@ def normalize(x: jax.Array, axis: Axis | None = None) -> tuple[jax.Array, jax.Ar
     return n, norm
 
 
-def tree_map2(
-    f: Callable[..., Any],
-    tree: Any,
-    *rest: Any,
-    is_leaf: Callable[[Any], bool] | None = None,
-) -> tuple[Any, Any]:
-    """Same as tree_map, but returns a tuple"""
-    leaves, treedef = jax.tree_util.tree_flatten(tree, is_leaf)
-    all_leaves = [leaves] + [treedef.flatten_up_to(r) for r in rest]
-    result = [f(*xs) for xs in zip(*all_leaves)]
-    a = treedef.unflatten([elem[0] for elem in result])
-    b = treedef.unflatten([elem[1] for elem in result])
-    return a, b
-
-
-def generate_self_pairs(x: jax.Array) -> tuple[jax.Array, jax.Array]:
-    """Returns two arrays that iterate over all combination of elements in x and y."""
-    # x.shape[0] > 1
-    chex.assert_axis_dimension_gt(x, 0, 1)
-    n = x.shape[0]
-    # (a, a, a, b, b, c)
-    outer_loop = jnp.repeat(
-        x,
-        jnp.arange(n - 1, -1, -1),
-        axis=0,
-        total_repeat_length=n * (n - 1) // 2,
-    )
-    # (b, c, d, c, d, d)
-    inner_loop = jnp.concatenate([x[i:] for i in range(1, len(x))])
-    return outer_loop, inner_loop
-
-
-def _pair_outer(x: jax.Array, reps: int) -> jax.Array:
-    return jnp.repeat(x, reps, axis=0, total_repeat_length=x.shape[0] * reps)
-
-
-def _pair_inner(x: jax.Array, reps: int) -> jax.Array:
-    return jnp.tile(x, (reps,) + (1,) * (x.ndim - 1))
-
-
-def generate_pairs(x: jax.Array, y: jax.Array) -> tuple[jax.Array, jax.Array]:
-    """Returns two arrays that iterate over all combination of elements in x and y"""
-    xlen, ylen = x.shape[0], y.shape[0]
-    return _pair_outer(x, ylen), _pair_inner(y, xlen)
-
-
 class PyTreeOps:
     def __add__(self, o: Any) -> Self:
         if o.__class__ is self.__class__:
@@ -93,6 +47,7 @@ class PyTreeOps:
     def __truediv__(self, o: float | jax.Array) -> Self:
         return jax.tree_map(lambda x: x / o, self)
 
+    @jax.jit
     def get_slice(
         self,
         index: int | Sequence[int] | Sequence[bool] | jax.Array,
@@ -122,7 +77,7 @@ TWO_PI = jnp.pi * 2
 
 
 def _axy(angle: jax.Array, xy: jax.Array) -> jax.Array:
-    return jnp.concatenate((jnp.e3xpand_dims(angle, axis=-1), xy), axis=-1)
+    return jnp.concatenate((jnp.expand_dims(angle, axis=-1), xy), axis=-1)
 
 
 class _PositionLike(Protocol):
@@ -540,32 +495,32 @@ class ContactIndices:
     index2: jax.Array
 
 
-# These fuctions are used in __post_init__ so need to jit
-_jitted_self_pairs = jax.jit(generate_self_pairs)
-_jitted_pairs = jax.jit(generate_pairs)
-_jitted_pair_outer = jax.jit(_pair_outer, static_argnums=(1,))
-_jitted_pair_inner = jax.jit(_pair_inner, static_argnums=(1,))
-
-
 def _self_ci(shape: Shape) -> ContactIndices:
-    shape1, shape2 = tree_map2(_jitted_self_pairs, shape)
-    index1, index2 = _jitted_self_pairs(jnp.arange(shape.mass.shape[0]))
+    n = shape.batch_size()
+    index1, index2 = jax.jit(jnp.triu_indices, static_argnums=(0, 1))(n, 1)
     return ContactIndices(
-        shape1=shape1,
-        shape2=shape2,
+        shape1=shape.get_slice(index1),
+        shape2=shape.get_slice(index2),
         index1=index1,
         index2=index2,
     )
 
 
 def _pair_ci(shape1: Shape, shape2: Shape) -> ContactIndices:
-    n1, n2 = shape1.mass.shape[0], shape2.mass.shape[0]
-    s1_extended = jax.tree_map(functools.partial(_jitted_pair_outer, reps=n2), shape1)
-    s2_extended = jax.tree_map(functools.partial(_jitted_pair_inner, reps=n1), shape2)
-    index1, index2 = _jitted_pairs(jnp.arange(n1), jnp.arange(n2))
+    @functools.partial(jax.jit, static_argnums=(1,))
+    def pair_outer(x: jax.Array, reps: int) -> jax.Array:
+        return jnp.repeat(x, reps, axis=0, total_repeat_length=x.shape[0] * reps)
+
+    @functools.partial(jax.jit, static_argnums=(1,))
+    def pair_inner(x: jax.Array, reps: int) -> jax.Array:
+        return jnp.tile(x, (reps,) + (1,) * (x.ndim - 1))
+
+    n1, n2 = shape1.batch_size(), shape2.batch_size()
+    index1 = pair_outer(jnp.arange(n1), reps=n2)
+    index2 = pair_inner(jnp.arange(n2), reps=n1)
     return ContactIndices(
-        shape1=s1_extended,
-        shape2=s2_extended,
+        shape1=shape1.get_slice(index1),
+        shape2=shape2.get_slice(index2),
         index1=index1,
         index2=index2,
     )
@@ -719,7 +674,7 @@ class Space:
         offset = _offset(self.shaped, name)
         size = self.shaped[name].batch_size()
         n = self.shaped.n_shapes()
-        ret = []
+        has_contact_list = []
         for n1, n2 in _CONTACT_FUNCTIONS.keys():
             contact_offset = self._contact_offset.get((n1, n2), None)
             if contact_offset is not None:
@@ -730,9 +685,20 @@ class Space:
                     has_contact = has_contact.at[idx1[from_:to]].max(cont)
                 if n2 == name:
                     has_contact = has_contact.at[idx2[from_:to]].max(cont)
-                ret.append(has_contact[offset : offset + size])
+                has_contact_list.append(has_contact[offset : offset + size])
+        return jnp.stack(has_contact_list, axis=1)
 
-        return jnp.stack(ret, axis=1)
+    def get_contact_mat(self, n1: str, n2: str, contact: jax.Array) -> jax.Array:
+        contact_offset = self._contact_offset.get((n1, n2), None)
+        assert contact_offset is not None
+        from_, to = contact_offset
+        size1, size2 = self.shaped[n1].batch_size(), self.shaped[n2].batch_size()
+        if n1 == n2:
+            ret = jnp.zeros((size1, size1), dtype=bool)
+            idx1, idx2 = jnp.triu_indices(size1, k=1)
+            return ret.at[idx1, idx2].set(contact[from_:to])
+        else:
+            return contact[from_:to].reshape(size1, size2)
 
     def init_solver(self) -> VelocitySolver:
         n = self.n_possible_contacts()
