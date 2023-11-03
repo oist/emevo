@@ -15,7 +15,7 @@ class PPONetOutput(NamedTuple):
 
 
 class SoftmaxPPONet(eqx.Module):
-    torso: list
+    torso: list[eqx.Module]
     value_head: eqx.nn.Linear
     policy_head: eqx.nn.Linear
 
@@ -70,47 +70,6 @@ def mask_logits(policy_logits: jax.Array, action_mask: jax.Array) -> jax.Array:
         jnp.ones_like(policy_logits) * -jnp.inf,
     )
 
-
-vmapped_obs2i = jax.vmap(obs_to_image)
-
-
-@eqx.filter_jit
-def exec_rollout(
-    initial_state: State,
-    initial_obs: Observation,
-    env: jumanji.Environment,
-    network: SoftmaxPPONet,
-    prng_key: jax.Array,
-    n_rollout_steps: int,
-) -> tuple[State, Rollout, Observation, jax.Array]:
-    def step_rollout(
-        carried: tuple[State, Observation],
-        key: jax.Array,
-    ) -> tuple[tuple[State, jax.Array], Rollout]:
-        state_t, obs_t = carried
-        obs_image = vmapped_obs2i(obs_t)
-        net_out = jax.vmap(network)(obs_image)
-        masked_logits = mask_logits(net_out.policy_logits, obs_t.action_mask)
-        actions = jax.random.categorical(key, masked_logits, axis=-1)
-        state_t1, timestep = jax.vmap(env.step)(state_t, actions)
-        rollout = Rollout(
-            observations=obs_image,
-            actions=actions,
-            action_masks=obs_t.action_mask,
-            rewards=timestep.reward,
-            terminations=1.0 - timestep.discount,
-            values=net_out.value,
-            policy_logits=masked_logits,
-        )
-        return (state_t1, timestep.observation), rollout
-
-    (state, obs), rollout = jax.lax.scan(
-        step_rollout,
-        (initial_state, initial_obs),
-        jax.random.split(prng_key, n_rollout_steps),
-    )
-    next_value = jax.vmap(network.value)(vmapped_obs2i(obs))
-    return state, rollout, obs, next_value
 
 @chex.dataclass(frozen=True, mappable_dataclass=False)
 class Batch:
@@ -264,3 +223,58 @@ def update_network(
         minibatches,
     )
     return opt_state, eqx.combine(updated_dynet, static_net)
+
+
+def run_training(
+    key: jax.Array,
+    adam_lr: float = 3e-4,
+    adam_eps: float = 1e-7,
+    gamma: float = 0.99,
+    gae_lambda: float = 0.95,
+    n_optim_epochs: int = 10,
+    minibatch_size: int = 1024,
+    n_agents: int = 16,
+    n_rollout_steps: int = 512,
+    n_total_steps: int = 16 * 512 * 100,
+    ppo_clip_eps: float = 0.2,
+    **env_kwargs,
+) -> SoftmaxPPONet:
+    key, net_key, reset_key = jax.random.split(key, 3)
+    pponet = SoftmaxPPONet(net_key)
+    env = AutoResetWrapper(jumanji.make("Maze-v0", **env_kwargs))
+    adam_init, adam_update = optax.adam(adam_lr, eps=adam_eps)
+    opt_state = adam_init(eqx.filter(pponet, eqx.is_array))
+    env_state, timestep = jax.vmap(env.reset)(jax.random.split(reset_key, 16))
+    obs = timestep.observation
+
+    n_loop = n_total_steps // (n_agents * n_rollout_steps)
+    return_reporting_interval = 1 if n_loop < 10 else n_loop // 10
+    n_episodes, reward_sum = 0.0, 0.0
+    for i in range(n_loop):
+        key, rollout_key, update_key = jax.random.split(key, 3)
+        env_state, rollout, obs, next_value = exec_rollout(
+            env_state,
+            obs,
+            env,
+            pponet,
+            rollout_key,
+            n_rollout_steps,
+        )
+        batch = make_batch(rollout, next_value, gamma, gae_lambda)
+        opt_state, pponet = update_network(
+            batch,
+            pponet,
+            adam_update,
+            opt_state,
+            update_key,
+            minibatch_size,
+            n_optim_epochs,
+            ppo_clip_eps,
+        )
+        n_episodes += jnp.sum(rollout.terminations).item()
+        reward_sum += jnp.sum(rollout.rewards).item()
+        if i > 0 and (i % return_reporting_interval == 0):
+            print(f"Mean episodic return: {reward_sum / n_episodes}")
+            n_episodes = 0.0
+            reward_sum = 0.0
+    return pponet
