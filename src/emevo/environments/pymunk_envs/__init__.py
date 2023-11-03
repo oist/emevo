@@ -1,1 +1,0 @@
-"""Environments based on PyMunk"""
