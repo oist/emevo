@@ -126,3 +126,21 @@ def test_sensor_obs(key: chex.PRNGKey) -> None:
 
 def test_encount(key: chex.PRNGKey) -> None:
     env, state = reset_env(key)
+    act1 = jnp.zeros((10, 2)).at[4, 1].set(1.0).at[2, 0].set(1.0)
+    step = jax.jit(env.step)
+    while True:
+        state, ts = step(state, act1)
+        assert jnp.all(jnp.logical_not(ts.encount))
+        if state.physics.circle.p.angle[4] >= jnp.pi * 0.5:
+            break
+    act2 = jnp.zeros((10, 2)).at[4].set(1.0).at[2].set(1.0)
+    for i in range(1000):
+        state, ts = step(state, act2)
+        p1 = state.physics.circle.p.xy[2]
+        p2 = state.physics.circle.p.xy[4]
+        if jnp.linalg.norm(p1 - p2) <= 20.0:
+            assert bool(ts.encount[2, 4])
+            break
+        else:
+            assert jnp.all(jnp.logical_not(ts.encount)), f"P1: {p1}, P2: {p2}"
+    assert i < 999
