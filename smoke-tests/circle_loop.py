@@ -1,24 +1,15 @@
 """Example of using circle foraging environment"""
 
 import datetime
-import enum
-from typing import Any, Optional, Tuple
 
-import chex
 import jax
 import numpy as np
 import typer
-from numpy.random import PCG64
 from tqdm import tqdm
 
 
 from emevo import make
 
-
-class FoodNum(str, enum.Enum):
-    CONSTANT = "constant"
-    LINEAR = "linear"
-    LOGISTIC = "logistic"
 
 
 def main(
@@ -26,9 +17,7 @@ def main(
     seed: int = 1,
     n_agents: int = 10,
     n_foods: int = 10,
-    forward_sensor: bool = False,
-    use_test_env: bool = False,
-    obstacles: bool = False,
+    obstacles: str = "none",
     render: bool = False,
     replace: bool = False,
     fixed_agent_loc: bool = False,
@@ -58,6 +47,7 @@ def main(
         food_num_fn=("constant", n_foods),
         food_loc_fn=food_loc_fn,
         foodloc_interval=20,
+        obstacles=obstacles,
         **additional_kwargs,
     )
     key = jax.random.PRNGKey(seed)

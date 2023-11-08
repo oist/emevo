@@ -455,11 +455,17 @@ class MglRenderer:
             stated.circle,
             self._circle_scaling,
         )
+        static_circles = _collect_circles(
+            self._space.shaped.static_circle,
+            stated.static_circle,
+            self._circle_scaling,
+        )
         if self._circles.update(*circles):
             self._circles.render()
+        if self._static_circles.update(*static_circles):
+            self._static_circles.render()
         if self._heads.update(_collect_heads(self._space.shaped.circle, stated.circle)):
             self._heads.render()
-        self._static_circles.render()
         self._static_lines.render()
 
 

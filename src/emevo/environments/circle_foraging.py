@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import functools
 import warnings
 from typing import Any, Callable, Literal, NamedTuple
@@ -48,6 +49,7 @@ MAX_VELOCITY: float = 10.0
 MAX_FORCE: float = 1.0
 AGENT_COLOR: Color = Color(2, 204, 254)
 FOOD_COLOR: Color = Color(254, 2, 162)
+NOWHERE: float = -100.0
 
 
 class CFObs(NamedTuple):
@@ -92,6 +94,44 @@ class CFState:
         return jnp.logical_not(jnp.any(self.profile.is_active())).item()
 
 
+class Obstacle(str, enum.Enum):
+    NONE = "none"
+    CENTER = "center"
+    CENTER_HALF = "center-half"
+    CENTER_SHORT = "center-short"
+
+    def as_list(
+        self,
+        width: float,
+        height: float,
+    ) -> list[tuple[Vec2d, Vec2d]]:
+        # xmin, xmax, ymin, ymax
+        if self == Obstacle.NONE:
+            return []
+        elif self == Obstacle.CENTER:
+            return [(Vec2d(width / 2, height / 4), Vec2d(width / 2, height))]
+        elif self == Obstacle.CENTER_HALF:
+            return [(Vec2d(width / 2, height / 2), Vec2d(width / 2, height))]
+        elif self == Obstacle.CENTER_SHORT:
+            return [(Vec2d(width / 2, height / 3), Vec2d(width / 2, height))]
+        else:
+            raise ValueError(f"Unsupported Obstacle: {self}")
+
+
+class SensorRange(str, enum.Enum):
+    NARROW = "narrow"
+    WIDE = "wide"
+    ALL = "all"
+
+    def as_tuple(self) -> tuple[float, float]:
+        if self == SensorRange.NARROW:
+            return -30.0, 30.0
+        elif self == SensorRange.WIDE:
+            return -60.0, 60.0
+        else:
+            return -180.0, 180.0
+
+
 def _get_num_or_loc_fn(
     arg: str | tuple | list | Callable[..., Any],
     enum_type: Callable[..., Callable[..., Any]],
@@ -119,6 +159,7 @@ def _make_physics(
     n_max_foods: int = 20,
     agent_radius: float = 10.0,
     food_radius: float = 4.0,
+    obstacles: list[tuple[Vec2d, Vec2d]] | None = None,
 ) -> tuple[Physics, State]:
     builder = SpaceBuilder(
         gravity=(0.0, 0.0),  # No gravity
@@ -132,15 +173,17 @@ def _make_physics(
     )
     # Set walls
     if isinstance(coordinate, CircleCoordinate):
-        outer_walls = make_approx_circle(coordinate.center, coordinate.radius)
+        walls = make_approx_circle(coordinate.center, coordinate.radius)
     else:
-        outer_walls = make_square(
+        walls = make_square(
             *coordinate.xlim,
             *coordinate.ylim,
             rounded_offset=np.floor(food_radius * 2 / (np.sqrt(2) - 1.0)),
         )
+    if obstacles is not None:
+        walls += obstacles
     segments = []
-    for wall in outer_walls:
+    for wall in walls:
         a2b = wall[1] - wall[0]
         angle = jnp.array(a2b.angle)
         xy = jnp.array(wall[0] + wall[1]) / 2
@@ -149,6 +192,7 @@ def _make_physics(
         builder.add_segment(length=a2b.length, friction=0.1, elasticity=0.2)
     seg_position = jax.tree_map(lambda *args: jnp.stack(args), *segments)
     seg_state = State.from_position(seg_position)
+    # Prepare agents
     for _ in range(n_max_agents):
         builder.add_circle(
             radius=agent_radius,
@@ -157,6 +201,7 @@ def _make_physics(
             density=0.04,
             color=AGENT_COLOR,
         )
+    # Prepare foods
     for _ in range(n_max_foods):
         builder.add_circle(
             radius=food_radius,
@@ -252,10 +297,10 @@ class CircleForaging(Env):
         ylim: tuple[float, float] = (0.0, 200.0),
         env_radius: float = 120.0,
         env_shape: Literal["square", "circle"] = "square",
-        obstacles: list[tuple[float, float, float, float]] | None = None,
+        obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         n_agent_sensors: int = 8,
         sensor_length: float = 10.0,
-        sensor_range: tuple[float, float] = (-120.0, 120.0),
+        sensor_range: tuple[float, float] | SensorRange = SensorRange.WIDE,
         agent_radius: float = 10.0,
         food_radius: float = 4.0,
         foodloc_interval: int = 1000,
@@ -300,6 +345,11 @@ class CircleForaging(Env):
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
         # Physics
+        if isinstance(obstacles, str):
+            obs_list = Obstacle(obstacles).as_list(self._x_range, self._y_range)
+        else:
+            obs_list = obstacles
+
         self._physics, self._segment_state = _make_physics(
             dt=dt,
             coordinate=self._coordinate,
@@ -311,6 +361,7 @@ class CircleForaging(Env):
             n_max_foods=n_max_foods,
             agent_radius=agent_radius,
             food_radius=food_radius,
+            obstacles=obs_list,
         )
         self._agent_indices = jnp.arange(n_max_agents)
         self._food_indices = jnp.arange(n_max_foods)
@@ -329,7 +380,7 @@ class CircleForaging(Env):
         # Obs
         self._n_sensors = n_agent_sensors
         # Some cached constants
-        self._invisible_xy = jnp.array([-100.0, -100.0], dtype=jnp.float32)
+        self._invisible_xy = jnp.ones(2) * NOWHERE
         act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
         act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
         N = self._n_max_agents
@@ -355,12 +406,16 @@ class CircleForaging(Env):
                 shaped=self._physics.shaped,
             )
         )
+        if isinstance(sensor_range, SensorRange):
+            sensor_range_tuple = SensorRange(sensor_range).as_tuple()
+        else:
+            sensor_range_tuple = sensor_range
         self._sensor_obs = jax.jit(
             functools.partial(
                 get_sensor_obs,
                 shaped=self._physics.shaped,
                 n_sensors=n_agent_sensors,
-                sensor_range=sensor_range,
+                sensor_range=sensor_range_tuple,
                 sensor_length=sensor_length,
             )
         )
@@ -452,14 +507,16 @@ class CircleForaging(Env):
         circle = circle.apply_force_local(self._act_p2, f2)
         stated = state.physics.replace(circle=circle)
         # Step physics simulator
-        stated, solver, contacts = nstep(
+        stated, solver, nstep_contacts = nstep(
             self._n_physics_iter,
             self._physics,
             stated,
             state.solver,
         )
-        contacts = jnp.max(contacts, axis=0)
+        # Gather circle contacts
+        contacts = jnp.max(nstep_contacts, axis=0)
         circle_contacts = self._physics.get_specific_contact("circle", contacts)
+        # Gather sensor obs
         sensor_obs = self._sensor_obs(stated=stated)
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, 3),
@@ -470,6 +527,27 @@ class CircleForaging(Env):
         )
         encount = self._physics.get_contact_mat("circle", "circle", contacts)
         timestep = TimeStep(encount=encount, obs=obs)
+        # Remove and reproduce foods
+        food_contacts = self._physics.get_contact_mat(
+            "circle",
+            "static_circle",
+            contacts,
+        )
+        key, food_key = jax.random.split(state.key)
+        stated, food_num, food_loc = self._remove_and_reproduce_foods(
+            food_key,
+            jnp.max(food_contacts, axis=0),
+            stated,
+            state.food_num,
+            state.food_loc,
+        )
+        state = state.replace(
+            physics=stated,
+            solver=solver,
+            food_num=food_num,
+            food_loc=food_loc,
+            key=key,
+        )
         return state.replace(physics=stated, solver=solver), timestep
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
@@ -567,11 +645,11 @@ class CircleForaging(Env):
         # Move all circle to the invisiable area
         stated = stated.nested_replace(
             "circle.p.xy",
-            jnp.ones_like(stated.circle.p.xy) * -100,
+            jnp.ones_like(stated.circle.p.xy) * NOWHERE,
         )
         stated = stated.nested_replace(
             "static_circle.p.xy",
-            jnp.ones_like(stated.static_circle.p.xy) * -100,
+            jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
         keys = jax.random.split(key, self._n_initial_agents + self._n_initial_foods)
         agent_failed = 0
@@ -608,6 +686,64 @@ class CircleForaging(Env):
 
         stated = stated.replace(segment=self._segment_state)
         return stated, agentloc_state, foodloc_state
+
+    def _remove_and_reproduce_foods(
+        self,
+        key: chex.PRNGKey,
+        eaten: jax.Array,
+        sd: StateDict,
+        food_num: FoodNumState,
+        food_loc: LocatingState,
+    ) -> tuple[StateDict, FoodNumState, LocatingState]:
+        def remove_food(eaten: jax.Array, sd: StateDict) -> StateDict:
+            xy = jnp.where(
+                jnp.expand_dims(eaten, axis=1),
+                sd.static_circle.p.xy,
+                jnp.ones_like(sd.static_circle.p.xy) * NOWHERE,
+            )
+            is_active = jnp.logical_and(
+                sd.static_circle.is_active,
+                jnp.logical_not(eaten),
+            )
+            sd = sd.nested_replace("static_circle.p.xy", xy)
+            return sd.nested_replace("static_circle.is_active", is_active)
+
+        n_eaten = jnp.sum(eaten)
+        sd = jax.lax.cond(n_eaten > 0, remove_food, lambda _, sd: sd, eaten, sd)
+        food_num = self._food_num_fn(food_num.eaten(n_eaten))
+
+        def try_place_food() -> tuple[StateDict, FoodNumState, LocatingState]:
+            (index,) = jnp.nonzero(
+                jnp.logical_not(sd.static_circle.is_active),
+                size=1,
+                fill_value=-1,
+            )
+            index = index[0]
+            xy = self._place_food(loc_state=food_loc, key=key, stated=sd)
+
+            def success(xy: jax.Array) -> tuple[StateDict, FoodNumState, LocatingState]:
+                xy = sd.static_circle.p.xy.at[index].set(xy)
+                angle = sd.static_circle.p.angle.at[index].set(0.0)
+                p = Position(angle=angle, xy=xy)
+                is_active = sd.static_circle.is_active.at[index].set(True)
+                static_circle = sd.static_circle.replace(p=p, is_active=is_active)
+                return (
+                    sd.replace(static_circle=static_circle),
+                    food_num.recover(1),
+                    food_loc.increment(),
+                )
+
+            def failure(xy: jax.Array) -> tuple[StateDict, FoodNumState, LocatingState]:
+                return sd, food_num, food_loc
+
+            ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
+            return jax.lax.cond(ok, success, failure, xy)
+
+        return jax.lax.cond(
+            food_num.appears(),
+            try_place_food,
+            lambda: (sd, food_num, food_loc),
+        )
 
     def visualizer(
         self,

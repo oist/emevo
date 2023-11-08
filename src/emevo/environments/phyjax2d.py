@@ -681,10 +681,12 @@ class Space:
                 has_contact = jnp.zeros(n, dtype=bool)
                 from_, to = contact_offset
                 cont = contact[from_:to]
-                if n1 == name:
-                    has_contact = has_contact.at[idx1[from_:to]].max(cont)
-                if n2 == name:
-                    has_contact = has_contact.at[idx2[from_:to]].max(cont)
+                if n1 == n2:
+                    has_contact = cont[idx1[from_:to]].at[idx2[from_:to]].max(cont)
+                elif n1 == name:
+                    has_contact = cont[idx1[from_:to]]
+                else:
+                    has_contact = cont[idx2[from_:to]]
                 has_contact_list.append(has_contact[offset : offset + size])
         return jnp.stack(has_contact_list, axis=1)
 
@@ -959,7 +961,7 @@ def solve_constraints(
     idx1, idx2 = space._ci_total.index1, space._ci_total.index2
 
     def gather(a: jax.Array, b: jax.Array, orig: jax.Array) -> jax.Array:
-        return orig.at[idx1].add(a, indices_are_sorted=True).at[idx2].add(b)
+        return orig.at[idx1].add(a).at[idx2].add(b)
 
     p1, p2 = p.get_slice(idx1), p.get_slice(idx2)
     v1, v2 = v.get_slice(idx1), v.get_slice(idx2)
