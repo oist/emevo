@@ -68,9 +68,6 @@ def init_profile(n: int, max_n: int) -> Profile:
 
 
 class StateProtocol(Protocol):
-    """Each state should have PRNG key"""
-
-    key: chex.PRNGKey
     step: jax.Array
     profile: Profile
     n_born_agents: jax.Array
@@ -87,6 +84,7 @@ class ObsProtocol(Protocol):
 
     def as_array(self) -> jax.Array:
         ...
+
 
 OBS = TypeVar("OBS", bound="ObsProtocol")
 
@@ -122,17 +120,26 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def activate(self, state: STATE, parent_gen: int | jax.Array) -> tuple[STATE, bool]:
-        """Mark an agent or some agents active."""
+    def activate(
+        self,
+        key: chex.PRNGKey,
+        state: STATE,
+        parent_gen: int | jax.Array,
+    ) -> tuple[STATE, bool]:
+        """
+        Mark an agent or some agents active.
+        This method fails if there isn't enough space, returning (STATE, False).
+        """
         pass
 
     @abc.abstractmethod
-    def deactivate(self, state: STATE, index: Index) -> tuple[STATE, bool]:
+    def deactivate(self, state: STATE, index: Index) -> STATE:
         """
         Deactivate an agent or some agents. The shape of observations should remain the
         same so that `Env.step` is compiled onle once. So, to represent that an agent is
         dead, it is recommended to mark that body is not active and reuse it after a new
         agent is born.
+        This method should not fail.
         """
         pass
 
