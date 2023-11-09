@@ -81,6 +81,7 @@ class CFState:
     food_num: FoodNumState
     agent_loc: LocatingState
     food_loc: LocatingState
+    key: chex.PRNGKey
     step: jax.Array
     profile: Profile
     n_born_agents: jax.Array
@@ -493,7 +494,6 @@ class CircleForaging(Env):
 
     def step(
         self,
-        key: chex.PRNGKey,
         state: CFState,
         action: ArrayLike,
     ) -> tuple[CFState, TimeStep[CFObs]]:
@@ -542,20 +542,15 @@ class CircleForaging(Env):
             state.food_loc,
         )
         state = state.replace(
+            key=key,
             physics=stated,
             solver=solver,
             food_num=food_num,
             food_loc=food_loc,
-            key=key,
         )
-        return state.replace(physics=stated, solver=solver), timestep
+        return state, timestep
 
-    def activate(
-        self,
-        key: chex.PRNGKey,
-        state: CFState,
-        parent_gen: jax.Array,
-    ) -> tuple[CFState, bool]:
+    def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
         (index,) = jnp.nonzero(
             jnp.logical_not(state.profile.is_active()),
             size=1,
@@ -614,6 +609,7 @@ class CircleForaging(Env):
             food_loc=food_loc,
             food_num=self._initial_foodnum_state,
             # Protocols
+            key=key,
             step=jnp.array(0, dtype=jnp.int32),
             profile=init_profile(self._n_initial_agents, self._n_max_agents),
             n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
@@ -694,53 +690,40 @@ class CircleForaging(Env):
         food_num: FoodNumState,
         food_loc: LocatingState,
     ) -> tuple[StateDict, FoodNumState, LocatingState]:
-        def remove_food() -> StateDict:
-            xy = jnp.where(
-                jnp.expand_dims(eaten, axis=1),
-                jnp.ones_like(sd.static_circle.p.xy) * NOWHERE,
-                sd.static_circle.p.xy,
-            )
-            is_active = jnp.logical_and(
-                sd.static_circle.is_active,
-                jnp.logical_not(eaten),
-            )
-            p = sd.static_circle.p.replace(xy=xy)
-            static_circle = sd.static_circle.replace(p=p, is_active=is_active)
-            sd = sd.nested_replace("static_circle.p.xy", xy)
-            return sd.nested_replace("static_circle.is_active", is_active)
+        xy = jnp.where(
+            jnp.expand_dims(eaten, axis=1),
+            jnp.ones_like(sd.static_circle.p.xy) * NOWHERE,
+            sd.static_circle.p.xy,
+        )
+        is_active = jnp.logical_and(sd.static_circle.is_active, jnp.logical_not(eaten))
+        p = sd.static_circle.p.replace(xy=xy)
+        sc = sd.static_circle.replace(p=p, is_active=is_active)
+        food_num = self._food_num_fn(food_num.eaten(jnp.sum(eaten)))
 
-        n_eaten = jnp.sum(eaten)
-        sd = jax.lax.cond(n_eaten > 0, remove_food, lambda _, sd: sd)
-        food_num = self._food_num_fn(food_num.eaten(n_eaten))
+        def dont_place(sc: State) -> tuple[State, int]:
+            return sc, 0
 
-        def try_place_food() -> tuple[StateDict, FoodNumState, LocatingState]:
-            (index,) = jnp.nonzero(
-                jnp.logical_not(sd.static_circle.is_active),
-                size=1,
-                fill_value=-1,
-            )
+        def try_place(sc: State) -> tuple[State, int]:
+            (index,) = jnp.nonzero(jnp.logical_not(sc.is_active), size=1, fill_value=-1)
             index = index[0]
             xy = self._place_food(loc_state=food_loc, key=key, stated=sd)
 
-            def success(xy: jax.Array) -> tuple[StateDict, FoodNumState, LocatingState]:
-                xy = sd.static_circle.p.xy.at[index].set(xy)
-                p = sd.static_circle.p.replace(xy=xy)
-                is_active = sd.static_circle.is_active.at[index].set(True)
-                static_circle = sd.static_circle.replace(p=p, is_active=is_active)
-                return (
-                    sd.replace(static_circle=static_circle),
-                    food_num.recover(1),
-                    food_loc.increment(),
-                )
+            def success(sc: State) -> tuple[State, int]:
+                p = sc.p.replace(xy=sc.p.xy.at[index].set(xy))
+                is_active = sc.is_active.at[index].set(True)
+                return sc.replace(p=p, is_active=is_active), 1
 
-            ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
-            return jax.lax.cond(ok, success, lambda _: (sd, food_num, food_loc), xy)
+            ok = jnp.logical_and(index >= 0, jnp.any(xy < jnp.inf))
+            return jax.lax.cond(ok, success, dont_place, sc)
 
-        return jax.lax.cond(
+        sc, incr = jax.lax.cond(
             food_num.appears(),
-            try_place_food,
-            lambda: (sd, food_num, food_loc),
+            try_place,
+            dont_place,
+            sc,
         )
+        sd = sd.replace(static_circle=sc)
+        return sd, food_num.recover(incr), food_loc.increment(incr)
 
     def visualizer(
         self,

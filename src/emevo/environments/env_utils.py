@@ -169,8 +169,8 @@ class SquareCoordinate(Coordinate):
 class LocatingState:
     n_produced: jax.Array
 
-    def increment(self) -> Self:
-        return self.replace(n_produced=self.n_produced + 1)
+    def increment(self, n: int = 1) -> Self:
+        return self.replace(n_produced=self.n_produced + n)
 
 
 LocatingFn = Callable[[chex.PRNGKey, LocatingState], jax.Array]

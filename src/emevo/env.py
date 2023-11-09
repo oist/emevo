@@ -68,6 +68,7 @@ def init_profile(n: int, max_n: int) -> Profile:
 
 
 class StateProtocol(Protocol):
+    key: chex.PRNGKey
     step: jax.Array
     profile: Profile
     n_born_agents: jax.Array
@@ -120,12 +121,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def activate(
-        self,
-        key: chex.PRNGKey,
-        state: STATE,
-        parent_gen: int | jax.Array,
-    ) -> tuple[STATE, bool]:
+    def activate(self, state: STATE, parent_gen: int | jax.Array) -> tuple[STATE, bool]:
         """
         Mark an agent or some agents active.
         This method fails if there isn't enough space, returning (STATE, False).
