@@ -59,6 +59,7 @@ def main(
 
     activate_index = n_agents
     jit_step = jax.jit(env.step)
+    # jit_step = env.step
     jit_sample = jax.jit(env.act_space.sample)
     elapsed_list = []
     for i in tqdm(range(steps)):

@@ -21,6 +21,7 @@ from emevo.environments.env_utils import (
     ReprNum,
     ReprNumFn,
     SquareCoordinate,
+    first_true,
     place,
 )
 from emevo.environments.phyjax2d import Circle, Position, Raycast, ShapeDict
@@ -650,8 +651,8 @@ class CircleForaging(Env):
         agent_failed = 0
         agentloc_state = self._initial_foodloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
-            xy = self._place_agent(loc_state=agentloc_state, key=key, stated=stated)
-            if jnp.all(xy < jnp.inf):
+            xy, ok = self._place_agent(loc_state=agentloc_state, key=key, stated=stated)
+            if ok:
                 stated = stated.nested_replace(
                     "circle.p.xy",
                     stated.circle.p.xy.at[i].set(xy),
@@ -666,8 +667,8 @@ class CircleForaging(Env):
         food_failed = 0
         foodloc_state = self._initial_foodloc_state
         for i, key in enumerate(keys[self._n_initial_agents :]):
-            xy = self._place_food(loc_state=foodloc_state, key=key, stated=stated)
-            if jnp.all(xy < jnp.inf):
+            xy, ok = self._place_food(loc_state=foodloc_state, key=key, stated=stated)
+            if ok:
                 stated = stated.nested_replace(
                     "static_circle.p.xy",
                     stated.static_circle.p.xy.at[i].set(xy),
@@ -690,39 +691,28 @@ class CircleForaging(Env):
         food_num: FoodNumState,
         food_loc: LocatingState,
     ) -> tuple[StateDict, FoodNumState, LocatingState]:
+        # Remove foods
         xy = jnp.where(
             jnp.expand_dims(eaten, axis=1),
             jnp.ones_like(sd.static_circle.p.xy) * NOWHERE,
             sd.static_circle.p.xy,
         )
         is_active = jnp.logical_and(sd.static_circle.is_active, jnp.logical_not(eaten))
+        food_num = self._food_num_fn(food_num.eaten(jnp.sum(eaten)))
+        # Generate new foods
+        first_inactive = first_true(jnp.logical_not(is_active))
+        new_food, ok = self._place_food(loc_state=food_loc, key=key, stated=sd)
+        place = jnp.logical_and(jnp.logical_and(ok, food_num.appears()), first_inactive)
+        xy = jnp.where(
+            jnp.expand_dims(place, axis=1),
+            jnp.expand_dims(new_food, axis=0),
+            xy,
+        )
+        is_active = jnp.logical_or(is_active, place)
         p = sd.static_circle.p.replace(xy=xy)
         sc = sd.static_circle.replace(p=p, is_active=is_active)
-        food_num = self._food_num_fn(food_num.eaten(jnp.sum(eaten)))
-
-        def dont_place(sc: State) -> tuple[State, int]:
-            return sc, 0
-
-        def try_place(sc: State) -> tuple[State, int]:
-            (index,) = jnp.nonzero(jnp.logical_not(sc.is_active), size=1, fill_value=-1)
-            index = index[0]
-            xy = self._place_food(loc_state=food_loc, key=key, stated=sd)
-
-            def success(sc: State) -> tuple[State, int]:
-                p = sc.p.replace(xy=sc.p.xy.at[index].set(xy))
-                is_active = sc.is_active.at[index].set(True)
-                return sc.replace(p=p, is_active=is_active), 1
-
-            ok = jnp.logical_and(index >= 0, jnp.any(xy < jnp.inf))
-            return jax.lax.cond(ok, success, dont_place, sc)
-
-        sc, incr = jax.lax.cond(
-            food_num.appears(),
-            try_place,
-            dont_place,
-            sc,
-        )
         sd = sd.replace(static_circle=sc)
+        incr = jnp.sum(place)
         return sd, food_num.recover(incr), food_loc.increment(incr)
 
     def visualizer(

@@ -265,6 +265,10 @@ class LocSwitching:
 _vmap_co = jax.vmap(circle_overwrap, in_axes=(None, None, 0, None))
 
 
+def first_true(boolean_array: jax.Array) -> jax.Array:
+    return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) == 1)
+
+
 def place(
     n_trial: int,
     radius: float,
@@ -274,7 +278,7 @@ def place(
     key: chex.PRNGKey,
     shaped: ShapeDict,
     stated: StateDict,
-) -> jax.Array:
+) -> tuple[jax.Array, bool]:
     """Returns `[inf, inf]` if it fails"""
     keys = jax.random.split(key, n_trial)
     vmap_loc_fn = jax.vmap(loc_fn, in_axes=(0, None))
@@ -284,10 +288,5 @@ def place(
         contains_fn(locations, radius),
         jnp.logical_not(_vmap_co(shaped, stated, locations, radius)),
     )
-    (ok_idx,) = jnp.nonzero(ok, size=1, fill_value=-1)
-    ok_idx = ok_idx[0]
-    return jax.lax.cond(
-        ok_idx < 0,
-        lambda: jnp.ones(2) * jnp.inf,
-        lambda: locations[ok_idx],
-    )
+    mask = jnp.expand_dims(first_true(ok), axis=1)
+    return jnp.sum(mask * locations, axis=0), jnp.any(ok)

@@ -39,7 +39,7 @@ def test_place_agents(key) -> None:
     initloc_fn, initloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     assert stated.circle is not None
     for i, key in enumerate(keys):
-        xy = place(
+        xy, ok = place(
             n_trial=10,
             radius=AGENT_RADIUS,
             coordinate=coordinate,
@@ -49,7 +49,7 @@ def test_place_agents(key) -> None:
             shaped=space.shaped,
             stated=stated,
         )
-        assert jnp.all(xy < jnp.inf), stated.circle.p.xy
+        assert ok, stated.circle.p.xy
         stated = stated.nested_replace("circle.p.xy", stated.circle.p.xy.at[i].set(xy))
 
     is_active = jnp.concatenate(
@@ -72,7 +72,7 @@ def test_place_foods(key) -> None:
     reprloc_fn, reprloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     assert stated.static_circle is not None
     for i, key in enumerate(keys):
-        xy = place(
+        xy, ok = place(
             n_trial=10,
             radius=FOOD_RADIUS,
             coordinate=coordinate,
@@ -82,7 +82,7 @@ def test_place_foods(key) -> None:
             shaped=space.shaped,
             stated=stated,
         )
-        assert jnp.all(xy < jnp.inf), stated.circle.p.xy
+        assert ok, stated.circle.p.xy
         stated = stated.nested_replace(
             "static_circle.p.xy",
             stated.static_circle.p.xy.at[i].set(xy),
