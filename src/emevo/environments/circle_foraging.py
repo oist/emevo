@@ -581,8 +581,8 @@ class CircleForaging(Env):
     def deactivate(self, state: CFState, index: Index) -> CFState:
         p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
         p = state.physics.circle.p.replace(xy=p_xy)
-        v_xy = state.physics.circle.v.xy.at[index].set(jnp.zeros(2))
-        v_angle = state.physics.circle.v.angle.at[index].set(0)
+        v_xy = state.physics.circle.v.xy.at[index].set(0.0)
+        v_angle = state.physics.circle.v.angle.at[index].set(0.0)
         v = Velocity(angle=v_angle, xy=v_xy)
         is_active = state.physics.circle.is_active.at[index].set(False)
         circle = state.physics.circle.replace(p=p, v=v, is_active=is_active)
