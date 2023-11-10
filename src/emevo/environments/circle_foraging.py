@@ -552,54 +552,43 @@ class CircleForaging(Env):
         return state, timestep
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
-        (index,) = jnp.nonzero(
-            jnp.logical_not(state.profile.is_active()),
-            size=1,
-            fill_value=-1,
+        circle = state.physics.circle
+        new_xy, ok = self._place_agent(key=key, stated=state.physics)
+        place = jnp.logical_or(first_true(jnp.logical_not(circle.is_active)), ok)
+        xy = jnp.where(
+            jnp.expand_dims(place, axis=1),
+            jnp.expand_dims(new_xy, axis=0),
+            circle.p.xy,
         )
-        index = index[0]
-        xy = self._place_agent(key=key, stated=state.physics)
-        ok = jnp.logical_and(index >= 0, jnp.all(xy < jnp.inf))
+        angle = jnp.where(place, 0.0, circle.p.angle)
+        p = Position(angle=angle, xy=xy)
+        is_active = jnp.logical_or(place, circle.is_active)
+        physics = state.physics.replace(circle=circle.replace(p=p, is_active=is_active))
+        profile = state.profile.activate(
+            index,
+            parent_gen,
+            state.n_born_agents,
+            state.step,
+        )
+        new_state = state.replace(
+            physics=physics,
+            profile=profile,
+            n_born_agents=state.n_born_agents + jnp.sum(place),
+            key=key,
+        )
+        return new_state, jnp.any(place)
 
-        def success(state: CFState) -> tuple[CFState, bool]:
-            circle_xy = state.physics.circle.p.xy.at[index].set(xy)
-            circle_angle = state.physics.circle.p.angle.at[index].set(0.0)
-            p = Position(angle=circle_angle, xy=circle_xy)
-            is_active = state.physics.circle.is_active.at[index].set(True)
-            circle = state.physics.circle.replace(p=p, is_active=is_active)
-            physics = state.physics.replace(circle=circle)
-            profile = state.profile.activate(
-                index,
-                parent_gen,
-                state.n_born_agents,
-                state.step,
-            )
-            new_state = state.replace(
-                physics=physics,
-                profile=profile,
-                n_born_agents=state.n_born_agents + 1,
-                key=key,
-            )
-            return new_state, True
-
-        return jax.lax.cond(ok, success, lambda: (state, False))
-
-    def deactivate(self, state: CFState, index: Index) -> tuple[CFState, bool]:
-        ok = state.profile.is_active()[index]
-
-        def success(state: CFState) -> tuple[CFState, bool]:
-            p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
-            p = state.physics.circle.p.replace(xy=p_xy)
-            v_xy = state.physics.circle.v.xy.at[index].set(jnp.zeros(2))
-            v_angle = state.physics.circle.v.angle.at[index].set(0)
-            v = Velocity(angle=v_angle, xy=v_xy)
-            is_active = state.physics.circle.is_active.at[index].set(False)
-            circle = state.physics.circle.replace(p=p, v=v, is_active=is_active)
-            physics = state.physics.replace(circle=circle)
-            profile = state.profile.deactivate(index)
-            return state.replace(physics=physics, profile=profile), True
-
-        return jax.lax.cond(ok, success, lambda state: (state, False))
+    def deactivate(self, state: CFState, index: Index) -> CFState:
+        p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
+        p = state.physics.circle.p.replace(xy=p_xy)
+        v_xy = state.physics.circle.v.xy.at[index].set(jnp.zeros(2))
+        v_angle = state.physics.circle.v.angle.at[index].set(0)
+        v = Velocity(angle=v_angle, xy=v_xy)
+        is_active = state.physics.circle.is_active.at[index].set(False)
+        circle = state.physics.circle.replace(p=p, v=v, is_active=is_active)
+        physics = state.physics.replace(circle=circle)
+        profile = state.profile.deactivate(index)
+        return state.replace(physics=physics, profile=profile)
 
     def reset(self, key: chex.PRNGKey) -> CFState:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
