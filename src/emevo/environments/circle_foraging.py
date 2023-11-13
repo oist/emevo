@@ -51,6 +51,7 @@ MAX_FORCE: float = 1.0
 AGENT_COLOR: Color = Color(2, 204, 254)
 FOOD_COLOR: Color = Color(254, 2, 162)
 NOWHERE: float = -100.0
+N_OBJECTS: int = 3
 
 
 class CFObs(NamedTuple):
@@ -66,10 +67,10 @@ class CFObs(NamedTuple):
         return jnp.concatenate(
             (
                 self.sensor.reshape(self.sensor.shape[0], -1),
-                self.collision.ravel(),
+                self.collision,
                 self.velocity,
-                self.angle,
-                self.angular_velocity,
+                jnp.expand_dims(self.angle, axis=1),
+                jnp.expand_dims(self.angular_velocity, axis=1),
             ),
             axis=1,
         )
@@ -368,15 +369,14 @@ class CircleForaging(Env):
         self._food_indices = jnp.arange(n_max_foods)
         self._n_physics_iter = n_physics_iter
         # Spaces
-        N = self._n_max_agents
-        self.act_space = BoxSpace(low=0.0, high=MAX_FORCE, shape=(N, 2))
+        self.act_space = BoxSpace(low=0.0, high=MAX_FORCE, shape=(2,))
         self.obs_space = NamedTupleSpace(
             CFObs,
-            sensor=BoxSpace(low=0.0, high=1.0, shape=(N, n_agent_sensors, 3)),
-            collision=BoxSpace(low=0.0, high=1.0, shape=(N, 3)),
-            velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(N, 2)),
-            angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=(N,)),
-            angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=(N,)),
+            sensor=BoxSpace(low=0.0, high=1.0, shape=(n_agent_sensors, N_OBJECTS)),
+            collision=BoxSpace(low=0.0, high=1.0, shape=(N_OBJECTS,)),
+            velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(2,)),
+            angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=()),
+            angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=()),
         )
         # Obs
         self._n_sensors = n_agent_sensors
@@ -384,9 +384,8 @@ class CircleForaging(Env):
         self._invisible_xy = jnp.ones(2) * NOWHERE
         act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
         act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
-        N = self._n_max_agents
-        self._act_p1 = jnp.tile(jnp.array(act_p1), (N, 1))
-        self._act_p2 = jnp.tile(jnp.array(act_p2), (N, 1))
+        self._act_p1 = jnp.tile(jnp.array(act_p1), (self._n_max_agents, 1))
+        self._act_p2 = jnp.tile(jnp.array(act_p2), (self._n_max_agents, 1))
         self._place_agent = jax.jit(
             functools.partial(
                 place,
@@ -499,7 +498,7 @@ class CircleForaging(Env):
         action: ArrayLike,
     ) -> tuple[CFState, TimeStep[CFObs]]:
         # Add force
-        act = self.act_space.clip(jnp.array(action))
+        act = jax.vmap(self.act_space.clip)(jnp.array(action))
         f1, f2 = act[:, 0], act[:, 1]
         f1 = jnp.stack((jnp.zeros_like(f1), f1), axis=1) * -self._act_p1
         f2 = jnp.stack((jnp.zeros_like(f2), f2), axis=1) * -self._act_p2
@@ -591,9 +590,9 @@ class CircleForaging(Env):
         profile = state.profile.deactivate(index)
         return state.replace(physics=physics, profile=profile)
 
-    def reset(self, key: chex.PRNGKey) -> CFState:
+    def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
-        return CFState(  # type: ignore
+        state = CFState(  # type: ignore
             physics=physics,
             solver=self._physics.init_solver(),
             agent_loc=agent_loc,
@@ -605,6 +604,16 @@ class CircleForaging(Env):
             profile=init_profile(self._n_initial_agents, self._n_max_agents),
             n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
         )
+        sensor_obs = self._sensor_obs(stated=physics)
+        obs = CFObs(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, N_OBJECTS),
+            collision=jnp.zeros((self._n_max_agents, N_OBJECTS), dtype=bool),
+            angle=physics.circle.p.angle,
+            velocity=physics.circle.v.xy,
+            angular_velocity=physics.circle.v.angle,
+        )
+        timestep = TimeStep(encount=None, obs=obs)
+        return state, timestep
 
     def _initialize_physics_state(
         self,

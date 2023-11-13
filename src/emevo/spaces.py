@@ -15,7 +15,7 @@ INSTANCE = TypeVar("INSTANCE")
 
 
 class Space(abc.ABC, Generic[INSTANCE]):
-    dtype: jnp.dtype
+    dtype: jnp.dtype | tuple[jnp.dtype, ...]
     shape: tuple[int, ...]
 
     @abc.abstractmethod
@@ -263,11 +263,7 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
             tuple((field, spaces_kwargs[field].__class__) for field in fields),
         )
         self.spaces = self._space_cls(**spaces_kwargs)
-        dtype = self.spaces[0].dtype
-        for space in self.spaces:
-            if space.dtype != dtype:
-                raise ValueError("All dtype of NamedTuple space must be the same")
-        self.dtype = dtype
+        self.dtype = tuple(s.dtype for s in self.spaces)
         self.shape = tuple(space.shape for space in self.spaces)
 
     def clip(self, x: tuple) -> Any:

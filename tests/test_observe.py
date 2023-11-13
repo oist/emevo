@@ -3,11 +3,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from emevo import Env, make
-from emevo.environments.circle_foraging import CFState, _observe_closest, get_sensor_obs
+from emevo import Env, make, TimeStep
+from emevo.environments.circle_foraging import CFState, _observe_closest, get_sensor_obs, CFObs
 
-N_MAX_AGENTS = 20
-N_MAX_FOODS = 10
+N_MAX_AGENTS = 10
 AGENT_RADIUS = 10
 FOOD_RADIUS = 4
 
@@ -17,14 +16,14 @@ def key() -> chex.PRNGKey:
     return jax.random.PRNGKey(43)
 
 
-def reset_env(key: chex.PRNGKey) -> tuple[Env, CFState]:
+def reset_env(key: chex.PRNGKey) -> tuple[Env, CFState, TimeStep[CFObs]]:
     #     x
     #   O x O
     # O x O  O  (O: agent, x: food)
     env = make(
         "CircleForaging-v0",
         env_shape="square",
-        n_max_agents=10,
+        n_max_agents=N_MAX_AGENTS,
         n_initial_agents=5,
         agent_loc_fn=(
             "periodic",
@@ -42,14 +41,15 @@ def reset_env(key: chex.PRNGKey) -> tuple[Env, CFState]:
         ),
         food_num_fn=("constant", 3),
         foodloc_interval=20,
-        agent_radius=10,
-        food_radius=4,
+        agent_radius=AGENT_RADIUS,
+        food_radius=FOOD_RADIUS,
     )
-    return env, env.reset(key)
+    state, timestep = env.reset(key)
+    return env, state, timestep
 
 
 def test_observe_closest(key: chex.PRNGKey) -> None:
-    env, state = reset_env(key)
+    env, state, _ = reset_env(key)
     obs = _observe_closest(
         env._physics.shaped,
         jnp.array([40.0, 10.0]),
@@ -81,7 +81,7 @@ def test_observe_closest(key: chex.PRNGKey) -> None:
 
 
 def test_sensor_obs(key: chex.PRNGKey) -> None:
-    env, state = reset_env(key)
+    env, state, _ = reset_env(key)
     sensor_obs = get_sensor_obs(
         env._physics.shaped,
         3,
@@ -125,7 +125,7 @@ def test_sensor_obs(key: chex.PRNGKey) -> None:
 
 
 def test_encount(key: chex.PRNGKey) -> None:
-    env, state = reset_env(key)
+    env, state, _ = reset_env(key)
     act1 = jnp.zeros((10, 2)).at[4, 1].set(1.0).at[2, 0].set(1.0)
     step = jax.jit(env.step)
     while True:
@@ -144,3 +144,10 @@ def test_encount(key: chex.PRNGKey) -> None:
         else:
             assert jnp.all(jnp.logical_not(ts.encount)), f"P1: {p1}, P2: {p2}"
     assert i < 999
+
+
+def test_asarray(key: chex.PRNGKey) -> None:
+    env, state, timestep = reset_env(key)
+    obs = timestep.obs.as_array()
+    obs_shape = env.obs_space.flatten().shape[0]
+    chex.assert_shape(obs, (N_MAX_AGENTS, obs_shape))

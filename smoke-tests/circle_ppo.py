@@ -2,17 +2,29 @@
 
 import datetime
 
+import equinox as eqx
 import jax
+import jax.numpy as jnp
 import numpy as np
 import optax
-import qeuinox as eqx
 import typer
 from tqdm import tqdm
 
 from emevo import Env, make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
-from emevo.rl.ppo import NormalPPONet, Rollout, make_inormal
+from emevo.rl.ppo_normal import (
+    NormalPPONet,
+    Rollout,
+    make_inormal,
+    vmap_apply,
+    vmap_batch,
+    vmap_net,
+    vmap_update,
+    vmap_value,
+)
+
+N_MAX_AGENTS: int = 10
 
 
 @eqx.filter_jit
@@ -27,29 +39,30 @@ def exec_rollout(
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
-    ) -> tuple[tuple[State, jax.Array], Rollout]:
+    ) -> tuple[tuple[State, Obs], Rollout]:
         state_t, obs_t = carried
-        obs_t = obs_t.as_array()
-        net_out = jax.vmap(network)(obs_t)
+        obs_t_array = obs_t.as_array()
+        net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=key)
-        state_t1, timestep = jax.vmap(env.step)(state_t, actions)
+        state_t1, timestep = env.step(state_t, actions)
+        rewards = obs_t.collision[:, 1]
         rollout = Rollout(
-            observations=obs_t,
+            observations=obs_t_array,
             actions=actions,
-            rewards=timestep.reward,
-            terminations=1.0 - timestep.discount,
+            rewards=rewards,
+            terminations=jnp.zeros_like(rewards),
             values=net_out.value,
             means=net_out.mean,
             logstds=net_out.logstd,
         )
-        return (state_t1, timestep.observation), rollout
+        return (state_t1, timestep.obs), rollout
 
     (state, obs), rollout = jax.lax.scan(
         step_rollout,
         (state, initial_obs),
         jax.random.split(prng_key, n_rollout_steps),
     )
-    next_value = jax.vmap(network.value)(obs.as_array())
+    next_value = vmap_value(network, obs.as_array()).ravel()
     return state, rollout, obs, next_value
 
 
@@ -58,20 +71,32 @@ def run_training(
     n_agents: int,
     env: Env,
     adam: optax.GradientTransformation,
-    n_total_steps: int,
+    gamma: float,
+    gae_lambda: float,
+    n_optim_epochs: int,
+    minibatch_size: int,
     n_rollout_steps: int,
+    n_total_steps: int,
+    ppo_clip_eps: float,
 ) -> NormalPPONet:
-    assert n_agents == 1
     key, net_key, reset_key = jax.random.split(key, 3)
-    pponet = jax.vmap(NormalPPONet)(jax.random.split(net_key, n_agents))
+    obs_space = env.obs_space.flatten()
+    input_size = np.prod(obs_space.shape)
+    act_size = np.prod(env.act_space.shape)
+    pponet = vmap_net(
+        input_size,
+        64,
+        act_size,
+        jax.random.split(net_key, N_MAX_AGENTS),
+    )
     adam_init, adam_update = adam
-    opt_state = adam_init(eqx.filter(pponet, eqx.is_array))
+    opt_state = jax.vmap(adam_init)(eqx.filter(pponet, eqx.is_array))
     env_state, timestep = env.reset(reset_key)
-    obs = timestep.observation
+    obs = timestep.obs
 
     n_loop = n_total_steps // n_rollout_steps
     return_reporting_interval = 1 if n_loop < 10 else n_loop // 10
-    n_episodes, reward_sum = 0.0, 0.0
+    rewards = jnp.zeros(N_MAX_AGENTS)
     for i in range(n_loop):
         key, rollout_key, update_key = jax.random.split(key, 3)
         env_state, rollout, obs, next_value = exec_rollout(
@@ -82,34 +107,29 @@ def run_training(
             rollout_key,
             n_rollout_steps,
         )
-        batch = make_batch(rollout, next_value, gamma, gae_lambda)
-        opt_state, pponet = update_network(
+        batch = jax.jit(vmap_batch)(rollout, next_value, gamma, gae_lambda)
+        opt_state, pponet = eqx.filter_jit(vmap_update)(
             batch,
             pponet,
             adam_update,
             opt_state,
-            update_key,
+            jax.random.split(update_key, N_MAX_AGENTS),
             minibatch_size,
             n_optim_epochs,
             ppo_clip_eps,
+            0.01,
         )
-        n_episodes += jnp.sum(rollout.terminations).item()
-        reward_sum += jnp.sum(rollout.rewards).item()
-        if i > 0 and (i % return_reporting_interval == 0):
-            print(f"Mean episodic return: {reward_sum / n_episodes}")
-            n_episodes = 0.0
-            reward_sum = 0.0
+        rewards += rollout.rewards
+    print(f"Sum of rewards {rewards}")
     return pponet
 
 
 def main(
-    steps: int = 100,
     seed: int = 1,
-    n_agents: int = 10,
+    n_agents: int = 2,
     n_foods: int = 10,
     obstacles: str = "none",
     render: bool = False,
-    replace: bool = False,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
     gamma: float = 0.99,
@@ -122,10 +142,11 @@ def main(
     food_loc_fn: str = "gaussian",
     env_shape: str = "circle",
 ) -> None:
+    assert n_agents < N_MAX_AGENTS
     env = make(
         "CircleForaging-v0",
         env_shape=env_shape,
-        n_max_agents=n_agents + 1,
+        n_max_agents=N_MAX_AGENTS,
         n_initial_agents=n_agents,
         food_num_fn=("constant", n_foods),
         food_loc_fn=food_loc_fn,
@@ -137,6 +158,13 @@ def main(
         n_agents,
         env,
         optax.adam(adam_lr, eps=adam_eps),
+        gamma,
+        gae_lambda,
+        n_optim_epochs,
+        minibatch_size,
+        n_rollout_steps,
+        n_total_steps,
+        ppo_clip_eps,
     )
 
 

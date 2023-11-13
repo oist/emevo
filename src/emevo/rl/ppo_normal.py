@@ -67,7 +67,7 @@ class NormalPPONet(eqx.Module):
     def value(self, x: jax.Array) -> jax.Array:
         for layer in self.torso:
             x = layer(x)
-        return self.value(x)
+        return self.value_head(x)
 
 
 @chex.dataclass
@@ -137,7 +137,7 @@ def make_batch(
         rollout.rewards,
         # Set γ = 0 when the episode terminates
         (1.0 - rollout.terminations) * gamma,
-        all_values,
+        all_values.ravel(),
         gae_lambda,
     )
     value_targets = advantages + all_values[:-1]
@@ -240,3 +240,25 @@ def update_network(
         minibatches,
     )
     return opt_state, eqx.combine(updated_dynet, static_net)
+
+
+# Convenient functions for model ensemble
+
+
+@eqx.filter_vmap(in_axes=(eqx.if_array(0), 0))
+def vmap_apply(net: NormalPPONet, obs: jax.Array) -> jax.Array:
+    return net(obs)
+
+
+@eqx.filter_vmap(in_axes=(eqx.if_array(0), 0))
+def vmap_value(net: NormalPPONet, obs: jax.Array) -> jax.Array:
+    return net.value(obs)
+
+
+vmap_net = eqx.filter_vmap(NormalPPONet, in_axes=(None, None, None, 0))
+# Suppose that rollout has (N_steps, N_models, ...) shape
+vmap_batch = jax.vmap(make_batch, in_axes=(1, 0, None, None))
+vmap_update = eqx.filter_vmap(
+    update_network,
+    in_axes=(0, eqx.if_array(0), None, 0, 0, None, None, None, None),
+)

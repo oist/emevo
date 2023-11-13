@@ -6,11 +6,15 @@ import optax
 import pytest
 
 from emevo.rl.ppo_normal import (
+    Batch,
     NormalPPONet,
     Rollout,
     get_minibatches,
     make_batch,
     update_network,
+    vmap_batch,
+    vmap_net,
+    vmap_update,
 )
 
 OBS_SIZE = 10
@@ -75,6 +79,42 @@ def test_update_network(key: chex.PRNGKey) -> None:
         adam_update,
         opt_state,
         key2,
+        64,
+        10,
+        0.1,
+        0.01,
+    )
+    before, _ = eqx.partition(pponet, eqx.is_array)
+    after, _ = eqx.partition(updated, eqx.is_array)
+    chex.assert_trees_all_equal_shapes(before, after)
+
+
+def test_ensemble(key: chex.PRNGKey) -> None:
+    n = 3
+    rollouts = jax.tree_map(
+        lambda *args: jnp.stack(args, axis=1),
+        *[_rollout() for _ in range(n)],
+    )
+    batch = vmap_batch(rollouts, jnp.zeros((n,)), 0.99, 0.95)
+    chex.assert_shape(batch.observations, (n, STEP_SIZE, OBS_SIZE))
+
+    key, net_key = jax.random.split(key)
+    pponet = vmap_net(OBS_SIZE, 5, ACT_SIZE, jax.random.split(net_key, n))
+    out = eqx.filter_vmap(lambda net, obs: jax.vmap(net)(obs))(
+        pponet,
+        batch.observations,
+    )
+    chex.assert_shape(out.mean, (n, STEP_SIZE, ACT_SIZE))
+
+    adam_init, adam_update = optax.adam(1e-3)
+    opt_state = jax.vmap(adam_init)(eqx.filter(pponet, eqx.is_array))
+
+    _, updated = vmap_update(
+        batch,
+        pponet,
+        adam_update,
+        opt_state,
+        jax.random.split(key, n),
         64,
         10,
         0.1,

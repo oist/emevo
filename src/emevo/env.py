@@ -108,7 +108,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def reset(self, key: chex.PRNGKey) -> STATE:
+    def reset(self, key: chex.PRNGKey) -> tuple[STATE, TimeStep[OBS]]:
         """Initialize environmental state."""
         pass
 

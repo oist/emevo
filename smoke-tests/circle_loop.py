@@ -37,10 +37,11 @@ def main(
     else:
         additional_kwargs = {}
 
+    n_max_agents = n_agents + 10
     env = make(
         "CircleForaging-v0",
         env_shape=env_shape,
-        n_max_agents=n_agents + 10,
+        n_max_agents=n_max_agents,
         n_initial_agents=n_agents,
         food_num_fn=("constant", n_foods),
         food_loc_fn=food_loc_fn,
@@ -50,7 +51,7 @@ def main(
     )
     key = jax.random.PRNGKey(seed)
     keys = jax.random.split(key, steps + 1)
-    state = env.reset(keys[0])
+    state, _ = env.reset(keys[0])
 
     if render:
         visualizer = env.visualizer(state)
@@ -60,7 +61,9 @@ def main(
     activate_index = n_agents
     jit_step = jax.jit(env.step)
     # jit_step = env.step
-    jit_sample = jax.jit(env.act_space.sample)
+    jit_sample = jax.jit(
+        lambda key: jax.vmap(env.act_space.sample)(jax.random.split(key, n_max_agents))
+    )
     elapsed_list = []
     for i in tqdm(range(steps)):
         before = datetime.datetime.now()

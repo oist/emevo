@@ -716,13 +716,14 @@ class Space:
 def update_velocity(space: Space, shape: Shape, state: State) -> State:
     # Expand (N, ) to (N, 1) because xy has a shape (N, 2)
     invm = jnp.expand_dims(shape.inv_mass(), axis=1)
-    gravity = jnp.where(
+    f_xy = jnp.where(
         jnp.logical_and(invm > 0, jnp.expand_dims(state.is_active, axis=1)),
-        space.gravity * jnp.ones_like(state.v.xy),
+        space.gravity * jnp.ones_like(state.v.xy) + state.f.xy * invm,
         jnp.zeros_like(state.v.xy),
     )
-    v_xy = state.v.xy + (gravity + state.f.xy * invm) * space.dt
-    v_ang = state.v.angle + state.f.angle * shape.inv_moment() * space.dt
+    v_xy = state.v.xy + f_xy * space.dt
+    f_ang = jnp.where(state.is_active, state.f.angle, 0.0)
+    v_ang = state.v.angle + f_ang * shape.inv_moment() * space.dt
     v_xy = jnp.clip(
         v_xy * space.linear_damping,
         a_max=space.max_velocity,
