@@ -553,7 +553,8 @@ class CircleForaging(Env):
 
     def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
         circle = state.physics.circle
-        new_xy, ok = self._place_agent(key=key, stated=state.physics)
+        key, place_key = jax.random.split(state.key)
+        new_xy, ok = self._place_agent(key=place_key, stated=state.physics)
         place = jnp.logical_or(first_true(jnp.logical_not(circle.is_active)), ok)
         xy = jnp.where(
             jnp.expand_dims(place, axis=1),
@@ -565,7 +566,7 @@ class CircleForaging(Env):
         is_active = jnp.logical_or(place, circle.is_active)
         physics = state.physics.replace(circle=circle.replace(p=p, is_active=is_active))
         profile = state.profile.activate(
-            index,
+            place,
             parent_gen,
             state.n_born_agents,
             state.step,

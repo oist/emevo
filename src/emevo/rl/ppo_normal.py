@@ -11,10 +11,18 @@ import optax
 from jax.nn.initializers import orthogonal
 
 
+def make_inormal(mean: jax.Array, logstd: jax.Array) -> distrax.Distribution:
+    normal = distrax.LogStddevNormal(loc=mean, log_scale=logstd)
+    return distrax.Independent(normal, reinterpreted_batch_ndims=1)
+
+
 class Output(NamedTuple):
     mean: jax.Array
     logstd: jax.Array
     value: jax.Array
+
+    def policy(self) -> distrax.Distribution:
+        return make_inormal(self.mean, self.logstd)
 
 
 class NormalPPONet(eqx.Module):
@@ -116,11 +124,6 @@ def compute_gae(
 
     advantage_t = jax.lax.fori_loop(0, n, update, jnp.zeros_like(values))
     return advantage_t[:-1]
-
-
-def make_inormal(mean: jax.Array, logstd: jax.Array) -> distrax.Distribution:
-    normal = distrax.LogStddevNormal(loc=mean, log_scale=logstd)
-    return distrax.Independent(normal, reinterpreted_batch_ndims=1)
 
 
 def make_batch(

@@ -4,22 +4,72 @@ import datetime
 
 import jax
 import numpy as np
+import optax
+import qeuinox as eqx
 import typer
 from tqdm import tqdm
 
-from emevo import make, env:
-from emevo.rl.ppo import NormalPPONet
+from emevo import Env, make
+from emevo.env import ObsProtocol as Obs
+from emevo.env import StateProtocol as State
+from emevo.rl.ppo import NormalPPONet, Rollout, make_inormal
 
 
-def run_training(key: jax.Array, n_agents: int, env: Env) -> NormalPPONet:
+@eqx.filter_jit
+def exec_rollout(
+    state: State,
+    initial_obs: Obs,
+    env: Env,
+    network: NormalPPONet,
+    prng_key: jax.Array,
+    n_rollout_steps: int,
+) -> tuple[State, Rollout, State, jax.Array]:
+    def step_rollout(
+        carried: tuple[State, Obs],
+        key: jax.Array,
+    ) -> tuple[tuple[State, jax.Array], Rollout]:
+        state_t, obs_t = carried
+        obs_t = obs_t.as_array()
+        net_out = jax.vmap(network)(obs_t)
+        actions = net_out.policy().sample(seed=key)
+        state_t1, timestep = jax.vmap(env.step)(state_t, actions)
+        rollout = Rollout(
+            observations=obs_t,
+            actions=actions,
+            rewards=timestep.reward,
+            terminations=1.0 - timestep.discount,
+            values=net_out.value,
+            means=net_out.mean,
+            logstds=net_out.logstd,
+        )
+        return (state_t1, timestep.observation), rollout
+
+    (state, obs), rollout = jax.lax.scan(
+        step_rollout,
+        (state, initial_obs),
+        jax.random.split(prng_key, n_rollout_steps),
+    )
+    next_value = jax.vmap(network.value)(obs.as_array())
+    return state, rollout, obs, next_value
+
+
+def run_training(
+    key: jax.Array,
+    n_agents: int,
+    env: Env,
+    adam: optax.GradientTransformation,
+    n_total_steps: int,
+    n_rollout_steps: int,
+) -> NormalPPONet:
+    assert n_agents == 1
     key, net_key, reset_key = jax.random.split(key, 3)
     pponet = jax.vmap(NormalPPONet)(jax.random.split(net_key, n_agents))
-    adam_init, adam_update = optax.adam(adam_lr, eps=adam_eps)
+    adam_init, adam_update = adam
     opt_state = adam_init(eqx.filter(pponet, eqx.is_array))
-    env_state, timestep = env.reset()
+    env_state, timestep = env.reset(reset_key)
     obs = timestep.observation
 
-    n_loop = n_total_steps // (n_agents * n_rollout_steps)
+    n_loop = n_total_steps // n_rollout_steps
     return_reporting_interval = 1 if n_loop < 10 else n_loop // 10
     n_episodes, reward_sum = 0.0, 0.0
     for i in range(n_loop):
@@ -70,6 +120,7 @@ def main(
     n_total_steps: int = 16 * 512 * 100,
     ppo_clip_eps: float = 0.2,
     food_loc_fn: str = "gaussian",
+    env_shape: str = "circle",
 ) -> None:
     env = make(
         "CircleForaging-v0",
@@ -81,46 +132,12 @@ def main(
         foodloc_interval=20,
         obstacles=obstacles,
     )
-    key = jax.random.PRNGKey(seed)
-    keys = jax.random.split(key, steps + 1)
-    state = env.reset(keys[0])
-
-    if render:
-        visualizer = env.visualizer(state)
-    else:
-        visualizer = None
-
-    activate_index = n_agents
-    jit_step = jax.jit(env.step)
-    jit_sample = jax.jit(env.act_space.sample)
-    elapsed_list = []
-    for i, key in tqdm(zip(range(steps), keys[1:])):
-        before = datetime.datetime.now()
-        state, _ = jit_step(state, jit_sample(key))
-        elapsed = datetime.datetime.now() - before
-        if i == 0:
-            print(f"Compile: {elapsed.total_seconds()}s")
-        elif i > 10:
-            elapsed_list.append(elapsed / datetime.timedelta(microseconds=1))
-        if replace and i % 1000 == 0:
-            if n_agents + 5 <= activate_index:
-                state, success = env.deactivate(state, activate_index)
-                if not success:
-                    print(f"Failed to deactivate agent! {activate_index}")
-                else:
-                    activate_index -= 1
-            else:
-                state, success = env.activate(state, 0)
-                if not success:
-                    print("Failed to activate agent!")
-                else:
-                    activate_index += 1
-
-        if visualizer is not None:
-            visualizer.render(state)
-            visualizer.show()
-
-    print(f"Avg. μs for step: {np.mean(elapsed_list)}")
+    network = run_training(
+        jax.random.PRNGKey(seed),
+        n_agents,
+        env,
+        optax.adam(adam_lr, eps=adam_eps),
+    )
 
 
 if __name__ == "__main__":
