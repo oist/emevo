@@ -246,14 +246,13 @@ def _observe_closest(
 _vmap_obs = jax.vmap(_observe_closest, in_axes=(None, 0, 0, None))
 
 
-def get_sensor_obs(
+def _get_sensors(
     shaped: ShapeDict,
     n_sensors: int,
     sensor_range: tuple[float, float],
     sensor_length: float,
     stated: StateDict,
-) -> None:
-    assert stated.circle is not None
+) -> tuple[jax.Array, jax.Array]:
     radius = shaped.circle.radius
     p1 = jnp.stack((jnp.zeros_like(radius), radius), axis=1)  # (N, 2)
     p1 = jnp.repeat(p1, n_sensors, axis=0)  # (N x M, 2)
@@ -265,6 +264,18 @@ def get_sensor_obs(
     )
     p1 = sensor_p.transform(p1)
     p2 = sensor_p.transform(p2)
+    return p1, p2
+
+
+def get_sensor_obs(
+    shaped: ShapeDict,
+    n_sensors: int,
+    sensor_range: tuple[float, float],
+    sensor_length: float,
+    stated: StateDict,
+) -> jax.Array:
+    assert stated.circle is not None
+    p1, p2 = _get_sensors(shaped, n_sensors, sensor_range, sensor_length, stated)
     return _vmap_obs(shaped, p1, p2, stated)
 
 
@@ -300,8 +311,8 @@ class CircleForaging(Env):
         env_radius: float = 120.0,
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
-        n_agent_sensors: int = 8,
-        sensor_length: float = 10.0,
+        n_agent_sensors: int = 16,
+        sensor_length: float = 100.0,
         sensor_range: tuple[float, float] | SensorRange = SensorRange.WIDE,
         agent_radius: float = 10.0,
         food_radius: float = 4.0,
@@ -413,6 +424,17 @@ class CircleForaging(Env):
         self._sensor_obs = jax.jit(
             functools.partial(
                 get_sensor_obs,
+                shaped=self._physics.shaped,
+                n_sensors=n_agent_sensors,
+                sensor_range=sensor_range_tuple,
+                sensor_length=sensor_length,
+            )
+        )
+
+        # For visualization
+        self._get_sensors = jax.jit(
+            functools.partial(
+                _get_sensors,
                 shaped=self._physics.shaped,
                 n_sensors=n_agent_sensors,
                 sensor_range=sensor_range_tuple,
@@ -731,5 +753,6 @@ class CircleForaging(Env):
             stated=state.physics,
             figsize=figsize,
             backend=mgl_backend,
+            sensor_fn=self._get_sensors,
             **kwargs,
         )

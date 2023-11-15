@@ -4,7 +4,7 @@ Currently, only supports circles and lines.
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar, Protocol
+from typing import Any, Callable, ClassVar, Protocol
 
 import moderngl as mgl
 import moderngl_window as mglw
@@ -267,7 +267,6 @@ def _collect_circles(
 
 
 def _collect_static_lines(segment: Segment, state: State) -> NDArray:
-    points = []
     a, b = segment.get_ab()
     a = state.p.transform(a)
     b = state.p.transform(b)
@@ -308,6 +307,7 @@ class MglRenderer:
         stated: StateDict,
         voffsets: tuple[int, ...] = (),
         hoffsets: tuple[int, ...] = (),
+        sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
     ) -> None:
         self._context = context
 
@@ -364,6 +364,27 @@ class MglRenderer:
             program=static_segment_program,
             segments=_collect_static_lines(space.shaped.segment, stated.segment),
         )
+        if sensor_fn is not None:
+            segment_program = self._make_gl_program(
+                vertex_shader=_LINE_VERTEX_SHADER,
+                geometry_shader=_LINE_GEOMETRY_SHADER,
+                fragment_shader=_LINE_FRAGMENT_SHADER,
+                color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
+                width=np.array([0.002], dtype=np.float32),
+            )
+
+            def collect_sensors(stated: StateDict) -> NDArray:
+                return np.concatenate(sensor_fn(stated=stated), axis=1).reshape(-1, 2)
+
+            self._sensors = SegmentVA(
+                ctx=context,
+                program=segment_program,
+                segments=collect_sensors(stated),
+            )
+            self._collect_sensors = collect_sensors
+        else:
+            self._sensors, self._collect_sensors = None, None
+
         head_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
@@ -464,6 +485,9 @@ class MglRenderer:
             self._circles.render()
         if self._static_circles.update(*static_circles):
             self._static_circles.render()
+        if self._sensors is not None and self._collect_sensors is not None:
+            if self._sensors.update(self._collect_sensors(stated)):
+                self._sensors.render()
         if self._heads.update(_collect_heads(self._space.shaped.circle, stated.circle)):
             self._heads.render()
         self._static_lines.render()
@@ -486,6 +510,7 @@ class MglVisualizer:
         hoffsets: tuple[int, ...] = (),
         vsync: bool = False,
         backend: str = "pyglet",
+        sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
         title: str = "EmEvo CircleForaging",
     ) -> None:
         self.pix_fmt = "rgba"
@@ -511,6 +536,7 @@ class MglVisualizer:
             stated=stated,
             voffsets=voffsets,
             hoffsets=hoffsets,
+            sensor_fn=sensor_fn,
         )
 
     def close(self) -> None:

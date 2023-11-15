@@ -2,6 +2,7 @@
 
 import datetime
 from pathlib import Path
+from typing import Optional
 
 import chex
 import equinox as eqx
@@ -18,22 +19,30 @@ from emevo.env import StateProtocol as State
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
-    make_inormal,
     vmap_apply,
     vmap_batch,
     vmap_net,
     vmap_update,
     vmap_value,
 )
+from emevo.visualizer import SaveVideoWrapper
 
 N_MAX_AGENTS: int = 10
 
 
-def visualize(key: chex.PRNGKey, env: Env, network: NormalPPONet, n_steps: int) -> None:
+def visualize(
+    key: chex.PRNGKey,
+    env: Env,
+    network: NormalPPONet,
+    n_steps: int,
+    videoname: Path | None,
+) -> None:
     keys = jax.random.split(key, n_steps + 1)
     state, ts = env.reset(keys[0])
     obs = ts.obs
     visualizer = env.visualizer(state, figsize=(640.0, 640.0))
+    if videoname is not None:
+        visualizer = SaveVideoWrapper(visualizer, videoname, fps=60)
 
     @eqx.filter_jit
     def step(key: chex.PRNGKey, state: State, obs: Obs) -> tuple[State, Obs]:
@@ -223,7 +232,7 @@ def train(
         n_total_steps,
     )
     if render:
-        visualize(eval_key, env, network, 1000)
+        visualize(eval_key, env, network, 1000, videoname)
     eqx.tree_serialise_leaves("trained.eqx", network)
 
 
@@ -237,6 +246,7 @@ def vis(
     food_loc_fn: str = "gaussian",
     env_shape: str = "square",
     obstacles: str = "none",
+    videoname: Optional[str] = None,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
     env = make(
@@ -260,7 +270,7 @@ def vis(
         jax.random.split(net_key, N_MAX_AGENTS),
     )
     pponet = eqx.tree_deserialise_leaves(modelpath, pponet)
-    visualize(eval_key, env, pponet, n_steps)
+    visualize(eval_key, env, pponet, n_steps, videoname)
 
 
 if __name__ == "__main__":
