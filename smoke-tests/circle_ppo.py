@@ -48,7 +48,7 @@ def visualize(
     def step(key: chex.PRNGKey, state: State, obs: Obs) -> tuple[State, Obs]:
         net_out = vmap_apply(network, obs.as_array())
         actions = net_out.policy().sample(seed=key)
-        next_state, timestep = env.step(state, actions)
+        next_state, timestep = env.step(state, env.act_space.sigmoid_scale(actions))
         return next_state, timestep.obs
 
     for key in keys[1:]:
@@ -73,7 +73,7 @@ def exec_rollout(
         obs_t_array = obs_t.as_array()
         net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=key)
-        state_t1, timestep = env.step(state_t, actions)
+        state_t1, timestep = env.step(state_t, env.act_space.sigmoid_scale(actions))
         rewards = obs_t.collision[:, 1].astype(jnp.float32)
         rollout = Rollout(
             observations=obs_t_array,

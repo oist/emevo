@@ -14,6 +14,7 @@ from emevo.types import DTypeLike
 INSTANCE = TypeVar("INSTANCE")
 
 
+
 class Space(abc.ABC, Generic[INSTANCE]):
     dtype: jnp.dtype | tuple[jnp.dtype, ...]
     shape: tuple[int, ...]
@@ -83,6 +84,7 @@ class BoxSpace(Space[jax.Array]):
 
         self.low = low.astype(self.dtype)
         self.high = high.astype(self.dtype)
+        self._range = self.high = self.low
 
         self.low_repr = _short_repr(self.low)
         self.high_repr = _short_repr(self.high)
@@ -140,9 +142,11 @@ class BoxSpace(Space[jax.Array]):
         else:
             return sample.astype(self.dtype)
 
-    def normalize(self, normalized: jax.Array) -> jax.Array:
-        range_ = self.high - self.low  # type: ignore
-        return (normalized - self.low) / range_  # type: ignore
+    def normalize(self, unnormalized: jax.Array) -> jax.Array:
+        return (unnormalized - self.low) / self._range
+
+    def sigmoid_scale(self, array: jax.Array) -> jax.Array:
+        return self._range * jax.nn.sigmoid(array) + self.low
 
     def __repr__(self) -> str:
         return f"Box({self.low_repr}, {self.high_repr}, {self.shape}, {self.dtype})"
