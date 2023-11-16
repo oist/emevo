@@ -73,6 +73,7 @@ def main(
             print(f"Compile: {elapsed.total_seconds()}s")
         elif i > 10:
             elapsed_list.append(elapsed / datetime.timedelta(microseconds=1))
+
         if replace and i % 1000 == 0:
             if n_agents + 5 <= activate_index:
                 state, success = env.deactivate(state, activate_index)

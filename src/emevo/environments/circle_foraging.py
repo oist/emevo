@@ -47,7 +47,7 @@ from emevo.vec2d import Vec2d
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
-MAX_FORCE: float = 1.0
+MAX_FORCE: float = 20.0
 AGENT_COLOR: Color = Color(2, 204, 254)
 FOOD_COLOR: Color = Color(254, 2, 162)
 NOWHERE: float = -100.0
@@ -153,14 +153,14 @@ def _get_num_or_loc_fn(
 def _make_physics(
     dt: float,
     coordinate: CircleCoordinate | SquareCoordinate,
-    linear_damping: float = 0.9,
-    angular_damping: float = 0.9,
-    n_velocity_iter: int = 6,
-    n_position_iter: int = 2,
-    n_max_agents: int = 40,
-    n_max_foods: int = 20,
-    agent_radius: float = 10.0,
-    food_radius: float = 4.0,
+    linear_damping: float,
+    angular_damping: float,
+    n_velocity_iter: int,
+    n_position_iter: int,
+    n_max_agents: int,
+    n_max_foods: int,
+    agent_radius: float,
+    food_radius: float,
     obstacles: list[tuple[Vec2d, Vec2d]] | None = None,
 ) -> tuple[Physics, State]:
     builder = SpaceBuilder(
@@ -191,16 +191,16 @@ def _make_physics(
         xy = jnp.array(wall[0] + wall[1]) / 2
         position = Position(angle=angle, xy=xy)
         segments.append(position)
-        builder.add_segment(length=a2b.length, friction=0.1, elasticity=0.2)
+        builder.add_segment(length=a2b.length, friction=0.2, elasticity=0.4)
     seg_position = jax.tree_map(lambda *args: jnp.stack(args), *segments)
     seg_state = State.from_position(seg_position)
     # Prepare agents
     for _ in range(n_max_agents):
         builder.add_circle(
             radius=agent_radius,
-            friction=0.1,
-            elasticity=0.2,
-            density=0.04,
+            friction=0.2,
+            elasticity=0.4,
+            density=0.1,
             color=AGENT_COLOR,
         )
     # Prepare foods
@@ -318,11 +318,11 @@ class CircleForaging(Env):
         food_radius: float = 4.0,
         foodloc_interval: int = 1000,
         dt: float = 0.1,
-        linear_damping: float = 0.9,
-        angular_damping: float = 0.8,
+        linear_damping: float = 0.8,
+        angular_damping: float = 0.6,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
-        n_physics_iter: int = 5,
+        n_physics_iter: int = 10,
         max_place_attempts: int = 10,
     ) -> None:
         # Coordinate and range
@@ -521,9 +521,10 @@ class CircleForaging(Env):
     ) -> tuple[CFState, TimeStep[CFObs]]:
         # Add force
         act = jax.vmap(self.act_space.clip)(jnp.array(action))
-        f1, f2 = act[:, 0], act[:, 1]
-        f1 = jnp.stack((jnp.zeros_like(f1), f1), axis=1) * -self._act_p1
-        f2 = jnp.stack((jnp.zeros_like(f2), f2), axis=1) * -self._act_p2
+        f1 = jax.lax.slice_in_dim(act, 0, 1, axis=-1)
+        f2 = jax.lax.slice_in_dim(act, 1, 2, axis=-1)
+        f1 = jnp.concatenate((jnp.zeros_like(f1), f1), axis=1)
+        f2 = jnp.concatenate((jnp.zeros_like(f2), f2), axis=1)
         circle = state.physics.circle
         circle = circle.apply_force_local(self._act_p1, f1)
         circle = circle.apply_force_local(self._act_p2, f2)
