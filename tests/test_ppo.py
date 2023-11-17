@@ -66,6 +66,16 @@ def test_minibatches(key: chex.PRNGKey) -> None:
     chex.assert_shape(minibatch.value_targets, (*prefix,))
 
 
+def test_output(key: chex.PRNGKey) -> None:
+    rollout = _rollout()
+    batch = make_batch(rollout, jnp.zeros((1,)), 0.99, 0.95)
+    pponet = NormalPPONet(OBS_SIZE, 5, ACT_SIZE, key)
+    output = jax.vmap(pponet)(batch.observations)
+    chex.assert_shape(output.value, (STEP_SIZE, 1))
+    chex.assert_shape(output.mean, (STEP_SIZE, ACT_SIZE))
+    chex.assert_shape(output.logstd, (STEP_SIZE, ACT_SIZE))
+
+
 def test_update_network(key: chex.PRNGKey) -> None:
     rollout = _rollout()
     batch = make_batch(rollout, jnp.zeros((1,)), 0.99, 0.95)

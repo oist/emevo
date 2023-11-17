@@ -44,15 +44,17 @@ def visualize(
     if videoname is not None:
         visualizer = SaveVideoWrapper(visualizer, videoname, fps=60)
 
+    # Returns action for debugging
     @eqx.filter_jit
-    def step(key: chex.PRNGKey, state: State, obs: Obs) -> tuple[State, Obs]:
+    def step(key: chex.PRNGKey, state: State, obs: Obs) -> tuple[State, Obs, jax.Array]:
         net_out = vmap_apply(network, obs.as_array())
         actions = net_out.policy().sample(seed=key)
         next_state, timestep = env.step(state, env.act_space.sigmoid_scale(actions))
-        return next_state, timestep.obs
+        return next_state, timestep.obs, actions
 
     for key in keys[1:]:
-        state, obs = step(key, state, obs)
+        state, obs, act = step(key, state, obs)
+        print(f"Act: {act[0]}")
         visualizer.render(state)
         visualizer.show()
 
@@ -74,7 +76,7 @@ def exec_rollout(
         net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=key)
         state_t1, timestep = env.step(state_t, env.act_space.sigmoid_scale(actions))
-        rewards = obs_t.collision[:, 1].astype(jnp.float32)
+        rewards = obs_t.collision[:, 1].astype(jnp.float32).reshape(-1, 1)
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -91,7 +93,7 @@ def exec_rollout(
         (state, initial_obs),
         jax.random.split(prng_key, n_rollout_steps),
     )
-    next_value = vmap_value(network, obs.as_array()).ravel()
+    next_value = vmap_value(network, obs.as_array())
     return state, rollout, obs, next_value
 
 
@@ -119,7 +121,8 @@ def training_step(
         keys[0],
         n_rollout_steps,
     )
-    batch = jax.jit(vmap_batch)(rollout, next_value, gamma, gae_lambda)
+    batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
+    output = vmap_apply(network, obs.as_array())
     opt_state, pponet = vmap_update(
         batch,
         network,
@@ -179,7 +182,7 @@ def run_training(
             minibatch_size,
             n_optim_epochs,
         )
-        ri = jnp.sum(rewards_i, axis=0)
+        ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
         rewards = rewards + ri
         print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
     print(f"Sum of rewards {[x.item() for x in rewards[: n_agents]]}")
@@ -206,6 +209,8 @@ def train(
     n_total_steps: int = 512 * 100,
     food_loc_fn: str = "gaussian",
     env_shape: str = "square",
+    xlim: int = 200,
+    ylim: int = 200,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
     env = make(
@@ -217,6 +222,8 @@ def train(
         food_loc_fn=food_loc_fn,
         foodloc_interval=20,
         obstacles=obstacles,
+        xlim=(0.0, float(xlim)),
+        ylim=(0.0, float(ylim)),
     )
     train_key, eval_key = jax.random.split(jax.random.PRNGKey(seed))
     network = run_training(
@@ -247,6 +254,8 @@ def vis(
     env_shape: str = "square",
     obstacles: str = "none",
     videoname: Optional[str] = None,
+    xlim: int = 200,
+    ylim: int = 200,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
     env = make(
@@ -258,6 +267,8 @@ def vis(
         food_loc_fn=food_loc_fn,
         foodloc_interval=20,
         obstacles=obstacles,
+        xlim=(0.0, float(xlim)),
+        ylim=(0.0, float(ylim)),
     )
     obs_space = env.obs_space.flatten()
     input_size = np.prod(obs_space.shape)

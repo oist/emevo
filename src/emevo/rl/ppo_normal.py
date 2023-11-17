@@ -137,7 +137,7 @@ def make_batch(
         rollout.rewards,
         # Set γ = 0 when the episode terminates
         (1.0 - rollout.terminations) * gamma,
-        all_values.ravel(),
+        all_values,
         gae_lambda,
     )
     value_targets = advantages + all_values[:-1]

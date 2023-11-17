@@ -47,7 +47,10 @@ from emevo.vec2d import Vec2d
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
-MAX_FORCE: float = 20.0
+MIN_ROT_FORCE: float = -10.0
+MAX_ROT_FORCE: float = 10.0
+MIN_PUSH_FORCE: float = -20.0
+MAX_PUSH_FORCE: float = 40.0
 AGENT_COLOR: Color = Color(2, 204, 254)
 FOOD_COLOR: Color = Color(254, 2, 162)
 NOWHERE: float = -100.0
@@ -380,7 +383,10 @@ class CircleForaging(Env):
         self._food_indices = jnp.arange(n_max_foods)
         self._n_physics_iter = n_physics_iter
         # Spaces
-        self.act_space = BoxSpace(low=0.0, high=MAX_FORCE, shape=(2,))
+        self.act_space = BoxSpace(
+            low=jnp.array([MIN_ROT_FORCE, MIN_PUSH_FORCE]),
+            high=jnp.array([MAX_ROT_FORCE, MAX_PUSH_FORCE]),
+        )
         self.obs_space = NamedTupleSpace(
             CFObs,
             sensor=BoxSpace(low=0.0, high=1.0, shape=(n_agent_sensors, N_OBJECTS)),
@@ -393,10 +399,8 @@ class CircleForaging(Env):
         self._n_sensors = n_agent_sensors
         # Some cached constants
         self._invisible_xy = jnp.ones(2) * NOWHERE
-        act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
-        act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
-        self._act_p1 = jnp.tile(jnp.array(act_p1), (self._n_max_agents, 1))
-        self._act_p2 = jnp.tile(jnp.array(act_p2), (self._n_max_agents, 1))
+        self._rot_p = jnp.tile(jnp.array([0.0, agent_radius]), (self._n_max_agents, 1))
+        self._push_p = jnp.zeros((self._n_max_agents, 2))
         self._place_agent = jax.jit(
             functools.partial(
                 place,
@@ -523,11 +527,11 @@ class CircleForaging(Env):
         act = jax.vmap(self.act_space.clip)(jnp.array(action))
         f1 = jax.lax.slice_in_dim(act, 0, 1, axis=-1)
         f2 = jax.lax.slice_in_dim(act, 1, 2, axis=-1)
-        f1 = jnp.concatenate((jnp.zeros_like(f1), f1), axis=1)
-        f2 = jnp.concatenate((jnp.zeros_like(f2), f2), axis=1)
+        rot = jnp.concatenate((f1, jnp.zeros_like(f1)), axis=1)
+        push = jnp.concatenate((jnp.zeros_like(f2), f2), axis=1)
         circle = state.physics.circle
-        circle = circle.apply_force_local(self._act_p1, f1)
-        circle = circle.apply_force_local(self._act_p2, f2)
+        circle = circle.apply_force_local(self._rot_p, rot)
+        circle = circle.apply_force_local(self._push_p, push)
         stated = state.physics.replace(circle=circle)
         # Step physics simulator
         stated, solver, nstep_contacts = nstep(

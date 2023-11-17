@@ -84,7 +84,7 @@ class BoxSpace(Space[jax.Array]):
 
         self.low = low.astype(self.dtype)
         self.high = high.astype(self.dtype)
-        self._range = self.high = self.low
+        self._range = self.high - self.low
 
         self.low_repr = _short_repr(self.low)
         self.high_repr = _short_repr(self.high)
