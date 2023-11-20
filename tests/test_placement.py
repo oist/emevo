@@ -64,7 +64,7 @@ def test_place_agents(key) -> None:
     )
     stated = stated.nested_replace("circle.is_active", is_active)
 
-    # test no overwrap each other
+    # test no overlap each other
     contact = space.check_contacts(stated)
     assert jnp.all(contact.penetration <= 0.0)
 
@@ -104,6 +104,6 @@ def test_place_foods(key) -> None:
     )
     stated = stated.nested_replace("static_circle.is_active", is_active)
 
-    # test no overwrap each other
+    # test no overlap each other
     contact = space.check_contacts(stated)
     assert jnp.all(contact.penetration <= 0.0)

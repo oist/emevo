@@ -11,7 +11,7 @@ import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from emevo.environments.phyjax2d import ShapeDict, StateDict
-from emevo.environments.phyjax2d_utils import circle_overwrap
+from emevo.environments.phyjax2d_utils import circle_overlap
 
 Self = Any
 
@@ -44,7 +44,7 @@ class ReprNumConstant:
 
     def __call__(self, state: FoodNumState) -> FoodNumState:
         # Do nothing here
-        return state.replace(internal=self.initial)
+        return state.replace(internal=jnp.array(self.initial, dtype=jnp.float32))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -264,9 +264,6 @@ class LocSwitching:
         return jax.lax.switch(index, self._locfn_list, key, state)
 
 
-_vmap_co = jax.vmap(circle_overwrap, in_axes=(None, None, 0, None))
-
-
 def first_true(boolean_array: jax.Array) -> jax.Array:
     return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) == 1)
 
@@ -286,9 +283,12 @@ def place(
     vmap_loc_fn = jax.vmap(loc_fn, in_axes=(0, None))
     locations = vmap_loc_fn(keys, loc_state)
     contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
-    ok = jnp.logical_and(
-        contains_fn(locations, radius),
-        jnp.logical_not(_vmap_co(shaped, stated, locations, radius)),
+    overlap = jax.vmap(circle_overlap, in_axes=(None, None, 0, None))(
+        shaped,
+        stated,
+        locations,
+        radius,
     )
+    ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
     mask = jnp.expand_dims(first_true(ok), axis=1)
     return jnp.sum(mask * locations, axis=0), jnp.any(ok)

@@ -280,34 +280,33 @@ def make_square(
     return lines
 
 
-def circle_overwrap(
+def circle_overlap(
     shaped: ShapeDict,
     stated: StateDict,
     xy: jax.Array,
     radius: jax.Array,
 ) -> jax.Array:
-    # Circle-circle overwrap
-
+    # Circle overlap
     if stated.circle is not None and shaped.circle is not None:
         cpos = stated.circle.p.xy
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
         dist = jnp.linalg.norm(cpos - jnp.expand_dims(xy, axis=0), axis=-1)
         penetration = shaped.circle.radius + radius - dist
-        has_overwrap = jnp.logical_and(stated.circle.is_active, penetration >= 0)
-        overwrap2cir = jnp.any(has_overwrap)
+        has_overlap = jnp.logical_and(stated.circle.is_active, penetration >= 0)
+        overlap = jnp.any(has_overlap)
     else:
-        overwrap2cir = jnp.array(False)
+        overlap = jnp.array(False)
 
-    # Circle-static_circle overwrap
+    # Static_circle overlap
     if stated.static_circle is not None and shaped.static_circle is not None:
         cpos = stated.static_circle.p.xy
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
         dist = jnp.linalg.norm(cpos - jnp.expand_dims(xy, axis=0), axis=-1)
         penetration = shaped.static_circle.radius + radius - dist
-        has_overwrap = jnp.logical_and(stated.static_circle.is_active, penetration >= 0)
-        overwrap2cir = jnp.logical_or(jnp.any(has_overwrap), overwrap2cir)
+        has_overlap = jnp.logical_and(stated.static_circle.is_active, penetration >= 0)
+        overlap = jnp.logical_or(jnp.any(has_overlap), overlap)
 
-    # Circle-segment overwrap
+    # Circle-segment overlap
 
     if stated.segment is not None and shaped.segment is not None:
         spos = stated.segment.p
@@ -322,9 +321,7 @@ def circle_overwrap(
         pa = jnp.where(in_segment, p1 + edge * s1 / ee, jnp.where(s1 < 0.0, p1, p2))
         dist = jnp.linalg.norm(pb - pa, axis=-1)
         penetration = radius - dist
-        has_overwrap = jnp.logical_and(stated.segment.is_active, penetration >= 0)
-        overwrap2seg = jnp.any(has_overwrap)
-    else:
-        overwrap2seg = jnp.array(False)
+        has_overlap = jnp.logical_and(stated.segment.is_active, penetration >= 0)
+        overlap = jnp.logical_or(jnp.any(has_overlap), overlap)
 
-    return jnp.logical_or(overwrap2cir, overwrap2seg)
+    return overlap

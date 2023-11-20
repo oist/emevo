@@ -558,11 +558,7 @@ class CircleForaging(Env):
             velocity=stated.circle.v.xy,
             angular_velocity=stated.circle.v.angle,
         )
-        timestep = TimeStep(
-            encount=c2c,
-            obs=obs,
-            info={"contacts": contacts, "foods": jnp.max(c2sc, axis=0)},
-        )
+        timestep = TimeStep(encount=c2c, obs=obs)
         # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)
         stated, food_num, food_loc = self._remove_and_reproduce_foods(
