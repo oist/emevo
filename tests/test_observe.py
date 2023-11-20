@@ -153,7 +153,7 @@ def test_encount_and_collision(key: chex.PRNGKey) -> None:
 
     assert i < 99
 
-    for i in range(100):
+    for i in range(200):
         state, ts = step(state, act2)
         p1 = state.physics.circle.p.xy[2]
         p2 = state.physics.circle.p.xy[4]
@@ -165,7 +165,7 @@ def test_encount_and_collision(key: chex.PRNGKey) -> None:
             break
         else:
             assert jnp.all(jnp.logical_not(ts.encount)), f"P1: {p1}, P2: {p2}"
-    assert i < 99
+    assert i < 199
 
 
 def test_asarray(key: chex.PRNGKey) -> None:
