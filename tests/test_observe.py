@@ -3,8 +3,13 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from emevo import Env, make, TimeStep
-from emevo.environments.circle_foraging import CFState, _observe_closest, get_sensor_obs, CFObs
+from emevo import Env, TimeStep, make
+from emevo.environments.circle_foraging import (
+    CFObs,
+    CFState,
+    _observe_closest,
+    get_sensor_obs,
+)
 
 N_MAX_AGENTS = 10
 AGENT_RADIUS = 10
@@ -124,26 +129,43 @@ def test_sensor_obs(key: chex.PRNGKey) -> None:
     )
 
 
-def test_encount(key: chex.PRNGKey) -> None:
+def test_encount_and_collision(key: chex.PRNGKey) -> None:
+    #     x
+    #   O x←3
+    # O x 2→ ←4
     env, state, _ = reset_env(key)
-    act1 = jnp.zeros((10, 2)).at[4, 1].set(1.0).at[2, 0].set(1.0)
     step = jax.jit(env.step)
+    act1 = jnp.zeros((10, 2)).at[2, 0].set(5.0).at[3, 0].set(-5.0).at[4, 0].set(-5.0)
     while True:
         state, ts = step(state, act1)
         assert jnp.all(jnp.logical_not(ts.encount))
-        if state.physics.circle.p.angle[4] >= jnp.pi * 0.5:
+        if state.physics.circle.p.angle[4] >= jnp.pi * 0.4:
             break
-    act2 = jnp.zeros((10, 2)).at[4].set(1.0).at[2].set(1.0)
-    for i in range(1000):
+    act2 = jnp.zeros((10, 2)).at[2, 1].set(10.0).at[3, 1].set(10.0).at[4, 1].set(10.0)
+    for i in range(100):
+        state, ts = step(state, act2)
+        p = state.physics.circle.p.xy[3]
+        if jnp.linalg.norm(p - jnp.array([80.0, 90.0])) <= AGENT_RADIUS + FOOD_RADIUS:
+            assert bool(ts.obs.collision[3, 1]), p
+            break
+        else:
+            assert not jnp.any(ts.obs.collision), ts.obs.collision[:5]
+
+    assert i < 99
+
+    for i in range(100):
         state, ts = step(state, act2)
         p1 = state.physics.circle.p.xy[2]
         p2 = state.physics.circle.p.xy[4]
-        if jnp.linalg.norm(p1 - p2) <= 20.0:
+        if jnp.linalg.norm(p1 - p2) <= 2 * AGENT_RADIUS:
             assert bool(ts.encount[2, 4])
+            assert bool(ts.encount[4, 2])
+            assert bool(ts.obs.collision[2, 0])
+            assert bool(ts.obs.collision[4, 0])
             break
         else:
             assert jnp.all(jnp.logical_not(ts.encount)), f"P1: {p1}, P2: {p2}"
-    assert i < 999
+    assert i < 99
 
 
 def test_asarray(key: chex.PRNGKey) -> None:

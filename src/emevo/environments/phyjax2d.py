@@ -669,36 +669,16 @@ class Space:
                     n += len1 * len2
         return n
 
-    def get_specific_contact(self, name: str, contact: jax.Array) -> jax.Array:
-        idx1, idx2 = self._ci_total.index1, self._ci_total.index2
-        offset = _offset(self.shaped, name)
-        size = self.shaped[name].batch_size()
-        n = self.shaped.n_shapes()
-        has_contact_list = []
-        for n1, n2 in _CONTACT_FUNCTIONS.keys():
-            contact_offset = self._contact_offset.get((n1, n2), None)
-            if contact_offset is not None:
-                has_contact = jnp.zeros(n, dtype=bool)
-                from_, to = contact_offset
-                cont = contact[from_:to]
-                if n1 == n2:
-                    has_contact = cont[idx1[from_:to]].at[idx2[from_:to]].max(cont)
-                elif n1 == name:
-                    has_contact = cont[idx1[from_:to]]
-                else:
-                    has_contact = cont[idx2[from_:to]]
-                has_contact_list.append(has_contact[offset : offset + size])
-        return jnp.stack(has_contact_list, axis=1)
-
     def get_contact_mat(self, n1: str, n2: str, contact: jax.Array) -> jax.Array:
         contact_offset = self._contact_offset.get((n1, n2), None)
         assert contact_offset is not None
         from_, to = contact_offset
         size1, size2 = self.shaped[n1].batch_size(), self.shaped[n2].batch_size()
+        cnt = contact[from_:to]
         if n1 == n2:
             ret = jnp.zeros((size1, size1), dtype=bool)
             idx1, idx2 = jnp.triu_indices(size1, k=1)
-            return ret.at[idx1, idx2].set(contact[from_:to])
+            return ret.at[idx1, idx2].set(cnt).at[idx2, idx1].set(cnt)
         else:
             return contact[from_:to].reshape(size1, size2)
 

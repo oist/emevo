@@ -542,28 +542,32 @@ class CircleForaging(Env):
         )
         # Gather circle contacts
         contacts = jnp.max(nstep_contacts, axis=0)
-        circle_contacts = self._physics.get_specific_contact("circle", contacts)
+        c2c = self._physics.get_contact_mat("circle", "circle", contacts)
+        c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
+        seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
+        collision = jnp.stack(
+            (jnp.max(c2c, axis=1), jnp.max(c2sc, axis=1), jnp.max(seg2c, axis=0)),
+            axis=1,
+        )
         # Gather sensor obs
         sensor_obs = self._sensor_obs(stated=stated)
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, 3),
-            collision=circle_contacts,
+            collision=collision,
             angle=stated.circle.p.angle,
             velocity=stated.circle.v.xy,
             angular_velocity=stated.circle.v.angle,
         )
-        encount = self._physics.get_contact_mat("circle", "circle", contacts)
-        timestep = TimeStep(encount=encount, obs=obs)
-        # Remove and reproduce foods
-        food_contacts = self._physics.get_contact_mat(
-            "circle",
-            "static_circle",
-            contacts,
+        timestep = TimeStep(
+            encount=c2c,
+            obs=obs,
+            info={"contacts": contacts, "foods": jnp.max(c2sc, axis=0)},
         )
+        # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)
         stated, food_num, food_loc = self._remove_and_reproduce_foods(
             food_key,
-            jnp.max(food_contacts, axis=0),
+            jnp.max(c2sc, axis=0),
             stated,
             state.food_num,
             state.food_loc,

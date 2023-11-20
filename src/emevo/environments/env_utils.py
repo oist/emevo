@@ -43,10 +43,8 @@ class ReprNumConstant:
     initial: int
 
     def __call__(self, state: FoodNumState) -> FoodNumState:
-        internal = jnp.fmax(state.current, state.internal)
-        diff = jnp.clip(self.initial - state.current, a_min=0)
-        state = state.replace(internal=internal + diff)
-        return state
+        # Do nothing here
+        return state.replace(internal=self.initial)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -168,9 +166,10 @@ class SquareCoordinate(Coordinate):
 @chex.dataclass
 class LocatingState:
     n_produced: jax.Array
+    n_trial: jax.Array
 
     def increment(self, n: int = 1) -> Self:
-        return self.replace(n_produced=self.n_produced + n)
+        return self.replace(n_produced=self.n_produced + n, n_trial=self.n_trial + 1)
 
 
 LocatingFn = Callable[[chex.PRNGKey, LocatingState], jax.Array]
@@ -186,7 +185,10 @@ class Locating(str, enum.Enum):
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> tuple[LocatingFn, LocatingState]:
-        state = LocatingState(n_produced=jnp.array(0, dtype=jnp.int32))
+        state = LocatingState(
+            n_produced=jnp.array(0, dtype=jnp.int32),
+            n_trial=jnp.array(0, dtype=jnp.int32),
+        )
         if self is Locating.GAUSSIAN:
             return loc_gaussian(*args, **kwargs), state
         elif self is Locating.GAUSSIAN_MIXTURE:
@@ -237,7 +239,7 @@ class LocPeriodic:
         self._n = self._locations.shape[0]
 
     def __call__(self, _key: chex.PRNGKey, state: LocatingState) -> jax.Array:
-        return self._locations[state.n_produced % self._n]
+        return self._locations[state.n_trial % self._n]
 
 
 class LocSwitching:

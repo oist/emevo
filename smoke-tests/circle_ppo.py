@@ -167,6 +167,7 @@ def run_training(
     n_loop = n_total_steps // n_rollout_steps
     rewards = jnp.zeros(N_MAX_AGENTS)
     keys = jax.random.split(key, n_loop)
+    visualizer = env.visualizer(env_state, figsize=(640.0, 640.0))
     for key in keys:
         env_state, obs, rewards_i, opt_state, pponet = training_step(
             env_state,
@@ -182,6 +183,8 @@ def run_training(
             minibatch_size,
             n_optim_epochs,
         )
+        visualizer.render(env_state)
+        visualizer.show()
         ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
         rewards = rewards + ri
         print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
