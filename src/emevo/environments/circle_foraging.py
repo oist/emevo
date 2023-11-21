@@ -646,7 +646,8 @@ class CircleForaging(Env):
         self,
         key: chex.PRNGKey,
     ) -> tuple[StateDict, LocatingState, LocatingState]:
-        stated = self._physics.shaped.zeros_state()
+        # Set segment
+        stated = self._physics.shaped.zeros_state().replace(segment=self._segment_state)
         assert stated.circle is not None
 
         # Set is_active
@@ -706,7 +707,6 @@ class CircleForaging(Env):
         if food_failed > 0:
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
-        stated = stated.replace(segment=self._segment_state)
         return stated, agentloc_state, foodloc_state
 
     def _remove_and_reproduce_foods(

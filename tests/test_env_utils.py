@@ -72,7 +72,6 @@ def test_loc_periodic(key: chex.PRNGKey) -> None:
     for i in range(10):
         loc = loc_p(key, state)
         state = state.increment()
-        print(loc)
         assert jnp.all(loc == jnp.array(points[i % 3]))
 
 

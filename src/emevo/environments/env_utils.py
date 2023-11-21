@@ -290,5 +290,7 @@ def place(
         radius,
     )
     ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
+    # print(locations)
+    # print(overlap)
     mask = jnp.expand_dims(first_true(ok), axis=1)
     return jnp.sum(mask * locations, axis=0), jnp.any(ok)
