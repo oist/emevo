@@ -1,6 +1,5 @@
 """Example of using circle foraging environment"""
 
-import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -11,9 +10,8 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import typer
-from tqdm import tqdm
 
-from emevo import Env, Visualizer, make
+from emevo import Env, make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
 from emevo.rl.ppo_normal import (
@@ -223,10 +221,9 @@ def train(
     n_agents: int = 2,
     n_foods: int = 10,
     obstacles: str = "none",
-    render: bool = False,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
-    gamma: float = 0.99,
+    gamma: float = 0.999,
     gae_lambda: float = 0.95,
     n_optim_epochs: int = 10,
     minibatch_size: int = 128,
@@ -277,8 +274,6 @@ def train(
         reset_interval,
         debug_vis,
     )
-    if render:
-        visualize(eval_key, env, network, 1000, videoname)
     eqx.tree_serialise_leaves(modelpath, network)
 
 
