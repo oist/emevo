@@ -30,19 +30,26 @@ from emevo.visualizer import SaveVideoWrapper
 N_MAX_AGENTS: int = 10
 
 
+def weight_summary(network):
+    params, _ = eqx.partition(network, eqx.is_inexact_array)
+    params_mean = jax.tree_map(jnp.mean, params)
+    for k, v in jax.tree_util.tree_leaves_with_path(params_mean):
+        print(k, v)
+
+
 def visualize(
     key: chex.PRNGKey,
     env: Env,
     network: NormalPPONet,
     n_steps: int,
-    videoname: Path | None,
+    videopath: Path | None,
 ) -> None:
     keys = jax.random.split(key, n_steps + 1)
     state, ts = env.reset(keys[0])
     obs = ts.obs
     visualizer = env.visualizer(state, figsize=(640.0, 640.0))
-    if videoname is not None:
-        visualizer = SaveVideoWrapper(visualizer, videoname, fps=60)
+    if videopath is not None:
+        visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
 
     # Returns action for debugging
     @eqx.filter_jit
@@ -111,6 +118,7 @@ def training_step(
     opt_state: optax.OptState,
     minibatch_size: int,
     n_optim_epochs: int,
+    reset: jax.Array,
 ) -> tuple[State, Obs, jax.Array, optax.OptState, NormalPPONet]:
     keys = jax.random.split(prng_key, N_MAX_AGENTS + 1)
     env_state, rollout, obs, next_value = exec_rollout(
@@ -121,6 +129,7 @@ def training_step(
         keys[0],
         n_rollout_steps,
     )
+    rollout = rollout.replace(terminations=rollout.terminations.at[-1].set(reset))
     batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
     output = vmap_apply(network, obs.as_array())
     opt_state, pponet = vmap_update(
@@ -132,7 +141,7 @@ def training_step(
         minibatch_size,
         n_optim_epochs,
         0.2,
-        0.01,
+        0.0,
     )
     return env_state, obs, rollout.rewards, opt_state, pponet
 
@@ -148,6 +157,8 @@ def run_training(
     minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
+    reset_interval: int | None = None,
+    debug_vis: bool = False,
 ) -> NormalPPONet:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -167,8 +178,12 @@ def run_training(
     n_loop = n_total_steps // n_rollout_steps
     rewards = jnp.zeros(N_MAX_AGENTS)
     keys = jax.random.split(key, n_loop)
-    visualizer = env.visualizer(env_state, figsize=(640.0, 640.0))
-    for key in keys:
+    if debug_vis:
+        visualizer = env.visualizer(env_state, figsize=(640.0, 640.0))
+    else:
+        visualizer = None
+    for i, key in enumerate(keys):
+        reset = reset_interval is not None and (i + 1) % reset_interval
         env_state, obs, rewards_i, opt_state, pponet = training_step(
             env_state,
             obs,
@@ -182,12 +197,18 @@ def run_training(
             opt_state,
             minibatch_size,
             n_optim_epochs,
+            jnp.array(reset),
         )
-        visualizer.render(env_state)
-        visualizer.show()
+        if visualizer is not None:
+            visualizer.render(env_state)
+            visualizer.show()
         ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
         rewards = rewards + ri
         print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
+        if reset:
+            env_state, timestep = env.reset(key)
+            obs = timestep.obs
+        # weight_summary(pponet)
     print(f"Sum of rewards {[x.item() for x in rewards[: n_agents]]}")
     return pponet
 
@@ -211,9 +232,11 @@ def train(
     n_rollout_steps: int = 512,
     n_total_steps: int = 512 * 100,
     food_loc_fn: str = "gaussian",
-    env_shape: str = "square",
+    env_shape: str = "circle",
+    reset_interval: Optional[int] = None,
     xlim: int = 200,
     ylim: int = 200,
+    debug_vis: bool = False,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
     env = make(
@@ -223,10 +246,12 @@ def train(
         n_initial_agents=n_agents,
         food_num_fn=("constant", n_foods),
         food_loc_fn=food_loc_fn,
+        agent_loc_fn="gaussian",
         foodloc_interval=20,
         obstacles=obstacles,
         xlim=(0.0, float(xlim)),
         ylim=(0.0, float(ylim)),
+        env_radius=min(xlim, ylim) * 0.5,
     )
     train_key, eval_key = jax.random.split(jax.random.PRNGKey(seed))
     network = run_training(
@@ -240,6 +265,8 @@ def train(
         minibatch_size,
         n_rollout_steps,
         n_total_steps,
+        reset_interval,
+        debug_vis,
     )
     if render:
         visualize(eval_key, env, network, 1000, videoname)
@@ -249,14 +276,14 @@ def train(
 @app.command()
 def vis(
     modelpath: Path = Path("trained.eqx"),
-    n_steps: int = 1000,
+    n_total_steps: int = 1000,
     seed: int = 1,
     n_agents: int = 2,
     n_foods: int = 10,
     food_loc_fn: str = "gaussian",
-    env_shape: str = "square",
+    env_shape: str = "circle",
     obstacles: str = "none",
-    videoname: Optional[str] = None,
+    videopath: Optional[str] = None,
     xlim: int = 200,
     ylim: int = 200,
 ) -> None:
@@ -272,6 +299,7 @@ def vis(
         obstacles=obstacles,
         xlim=(0.0, float(xlim)),
         ylim=(0.0, float(ylim)),
+        env_radius=min(xlim, ylim) * 0.5,
     )
     obs_space = env.obs_space.flatten()
     input_size = np.prod(obs_space.shape)
@@ -284,7 +312,7 @@ def vis(
         jax.random.split(net_key, N_MAX_AGENTS),
     )
     pponet = eqx.tree_deserialise_leaves(modelpath, pponet)
-    visualize(eval_key, env, pponet, n_steps, videoname)
+    visualize(eval_key, env, pponet, n_total_steps, videopath)
 
 
 if __name__ == "__main__":
