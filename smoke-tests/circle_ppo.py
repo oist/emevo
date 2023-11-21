@@ -218,6 +218,7 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 
 @app.command()
 def train(
+    modelpath: Path = Path("trained.eqx"),
     seed: int = 1,
     n_agents: int = 2,
     n_foods: int = 10,
@@ -229,13 +230,17 @@ def train(
     gae_lambda: float = 0.95,
     n_optim_epochs: int = 10,
     minibatch_size: int = 128,
-    n_rollout_steps: int = 512,
-    n_total_steps: int = 512 * 100,
+    n_rollout_steps: int = 1024,
+    n_total_steps: int = 1024 * 1000,
     food_loc_fn: str = "gaussian",
     env_shape: str = "circle",
     reset_interval: Optional[int] = None,
     xlim: int = 200,
     ylim: int = 200,
+    linear_damping: float = 0.8,
+    angular_damping: float = 0.6,
+    max_force: float = 40.0,
+    min_force: float = -20.0,
     debug_vis: bool = False,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
@@ -252,6 +257,10 @@ def train(
         xlim=(0.0, float(xlim)),
         ylim=(0.0, float(ylim)),
         env_radius=min(xlim, ylim) * 0.5,
+        linear_damping=linear_damping,
+        angular_damping=angular_damping,
+        max_force=max_force,
+        min_force=min_force,
     )
     train_key, eval_key = jax.random.split(jax.random.PRNGKey(seed))
     network = run_training(
@@ -270,7 +279,7 @@ def train(
     )
     if render:
         visualize(eval_key, env, network, 1000, videoname)
-    eqx.tree_serialise_leaves("trained.eqx", network)
+    eqx.tree_serialise_leaves(modelpath, network)
 
 
 @app.command()
@@ -286,6 +295,10 @@ def vis(
     videopath: Optional[str] = None,
     xlim: int = 200,
     ylim: int = 200,
+    linear_damping: float = 0.8,
+    angular_damping: float = 0.6,
+    max_force: float = 40.0,
+    min_force: float = -20.0,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
     env = make(
@@ -300,6 +313,10 @@ def vis(
         xlim=(0.0, float(xlim)),
         ylim=(0.0, float(ylim)),
         env_radius=min(xlim, ylim) * 0.5,
+        linear_damping=linear_damping,
+        angular_damping=angular_damping,
+        max_force=max_force,
+        min_force=min_force,
     )
     obs_space = env.obs_space.flatten()
     input_size = np.prod(obs_space.shape)

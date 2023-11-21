@@ -47,7 +47,6 @@ from emevo.vec2d import Vec2d
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
-MAX_FORCE: float = 40.0
 AGENT_COLOR: Color = Color(2, 204, 254)
 FOOD_COLOR: Color = Color(254, 2, 162)
 NOWHERE: float = -100.0
@@ -320,6 +319,8 @@ class CircleForaging(Env):
         dt: float = 0.1,
         linear_damping: float = 0.8,
         angular_damping: float = 0.6,
+        max_force: float = 40.0,
+        min_force: float = -20.0,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
@@ -380,7 +381,7 @@ class CircleForaging(Env):
         self._food_indices = jnp.arange(n_max_foods)
         self._n_physics_iter = n_physics_iter
         # Spaces
-        self.act_space = BoxSpace(low=-MAX_FORCE * 0.5, high=MAX_FORCE, shape=(2,))
+        self.act_space = BoxSpace(low=min_force, high=max_force, shape=(2,))
         self.obs_space = NamedTupleSpace(
             CFObs,
             sensor=BoxSpace(low=0.0, high=1.0, shape=(n_agent_sensors, N_OBJECTS)),
