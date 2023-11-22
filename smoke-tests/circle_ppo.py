@@ -41,11 +41,13 @@ def visualize(
     network: NormalPPONet,
     n_steps: int,
     videopath: Path | None,
+    headless: bool,
 ) -> None:
     keys = jax.random.split(key, n_steps + 1)
     state, ts = env.reset(keys[0])
     obs = ts.obs
-    visualizer = env.visualizer(state, figsize=(640.0, 640.0))
+    backend = "headless" if headless else "pyglet"
+    visualizer = env.visualizer(state, figsize=(640.0, 640.0), backend=backend)
     if videopath is not None:
         visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
 
@@ -59,7 +61,7 @@ def visualize(
 
     for key in keys[1:]:
         state, obs, act = step(key, state, obs)
-        print(f"Act: {act[0]}")
+        # print(f"Act: {act[0]}")
         visualizer.render(state)
         visualizer.show()
 
@@ -197,12 +199,12 @@ def run_training(
             n_optim_epochs,
             jnp.array(reset),
         )
+        ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
+        rewards = rewards + ri
         if visualizer is not None:
             visualizer.render(env_state)
             visualizer.show()
-        ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
-        rewards = rewards + ri
-        print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
+            print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
         if reset:
             env_state, timestep = env.reset(key)
             obs = timestep.obs
@@ -259,9 +261,8 @@ def train(
         max_force=max_force,
         min_force=min_force,
     )
-    train_key, eval_key = jax.random.split(jax.random.PRNGKey(seed))
     network = run_training(
-        train_key,
+        jax.random.PRNGKey(seed),
         n_agents,
         env,
         optax.adam(adam_lr, eps=adam_eps),
@@ -287,13 +288,14 @@ def vis(
     food_loc_fn: str = "gaussian",
     env_shape: str = "circle",
     obstacles: str = "none",
-    videopath: Optional[str] = None,
+    videopath: Optional[Path] = None,
     xlim: int = 200,
     ylim: int = 200,
     linear_damping: float = 0.8,
     angular_damping: float = 0.6,
     max_force: float = 40.0,
     min_force: float = -20.0,
+    headless: bool = False,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
     env = make(
@@ -324,7 +326,7 @@ def vis(
         jax.random.split(net_key, N_MAX_AGENTS),
     )
     pponet = eqx.tree_deserialise_leaves(modelpath, pponet)
-    visualize(eval_key, env, pponet, n_total_steps, videopath)
+    visualize(eval_key, env, pponet, n_total_steps, videopath, headless)
 
 
 if __name__ == "__main__":

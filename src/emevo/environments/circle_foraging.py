@@ -742,7 +742,7 @@ class CircleForaging(Env):
         self,
         state: CFState,
         figsize: tuple[float, float] | None = None,
-        mgl_backend: str = "pyglet",
+        backend: str = "pyglet",
         **kwargs,
     ) -> Visualizer:
         """Create a visualizer for the environment"""
@@ -754,7 +754,7 @@ class CircleForaging(Env):
             space=self._physics,
             stated=state.physics,
             figsize=figsize,
-            backend=mgl_backend,
+            backend=backend,
             sensor_fn=self._get_sensors,
             **kwargs,
         )
