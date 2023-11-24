@@ -72,10 +72,10 @@ class ConstantHazard(HazardFunction):
         return self.alpha_const + alpha_energy
 
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        return self._alpha(status)
+        return self._alpha(age, energy)
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        return self(status) * age
+        return self(age, energy) * age
 
 
 @dataclasses.dataclass
@@ -113,10 +113,10 @@ class GompertzHazard(ConstantHazard):
     beta: float = 1e-5
 
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        return self._alpha(status) * jnp.exp(self.beta * age)
+        return self._alpha(age, energy) * jnp.exp(self.beta * age)
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        alpha = self._alpha(status)
+        alpha = self._alpha(age, energy)
         ht = alpha / self.beta * jnp.exp(self.beta * age)
         h0 = alpha / self.beta
         return ht - h0
@@ -148,53 +148,13 @@ class ELGompertz(EnergyLogisticHazard):
 
 
 class BirthFunction(Protocol):
-    def asexual(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+    def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         """Birth function b(t)"""
         ...
 
-    def sexual(
-        self,
-        age_a: jax.Array,
-        energy_a: jax.Array,
-        age_b: jax.Array,
-        energy_b: jax.Array,
-    ) -> jax.Array:
-        """Birth function b(t)"""
+    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        """Cumulative birth function B(t) = ∫b(t)"""
         ...
-
-
-@dataclasses.dataclass
-class LogisticBirth(BirthFunction):
-    scale: float
-    alpha: float = 1.0
-    beta: float = 0.001
-    age_delay: float = 1000.0
-    energy_delay: float = 8.0
-
-    def _exp_age(self, age: jax.Array) -> jax.Array:
-        return jnp.exp(-self.beta * (age - self.age_delay))
-
-    def _exp_neg_energy(self, energy: jax.Array) -> jax.Array:
-        return jnp.exp(self.energy_delay - energy)
-
-    def asexual(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        exp_neg_age = self._exp_age(age)
-        exp_neg_energy = self._exp_neg_energy(energy)
-        return self.scale / (1.0 + self.alpha * (exp_neg_age + exp_neg_energy))
-
-    def sexual(
-        self,
-        age_a: jax.Array,
-        energy_a: jax.Array,
-        age_b: jax.Array,
-        energy_b: jax.Array,
-    ) -> jax.Array:
-        exp_neg_age_a = self._exp_age(age_a)
-        exp_neg_energy_a = self._exp_neg_energy(energy_a)
-        exp_neg_age_b = self._exp_age(age_b)
-        exp_neg_energy_b = self._exp_neg_energy(energy_b)
-        sum_exp = exp_neg_age_a + exp_neg_energy_a + exp_neg_age_b + exp_neg_energy_b
-        return self.scale / (1.0 + self.alpha * sum_exp)
 
 
 @dataclasses.dataclass
@@ -208,25 +168,14 @@ class EnergyLogisticBirth(BirthFunction):
     alpha: float = 1.0
     delay: float = 8.0
 
-    def _exp_neg_energy(self, energy: jax.Array) -> jax.Array:
-        return jnp.exp(self.delay - energy)
-
-    def asexual(self, _age: jax.Array, energy: jax.Array) -> jax.Array:
-        exp_neg_energy = self._exp_neg_energy(energy)
+    def __call__(self, _age: jax.Array, energy: jax.Array) -> jax.Array:
+        del _age
+        exp_neg_energy = jnp.exp(self.delay - energy)
         return self.scale / (1.0 + self.alpha * exp_neg_energy)
 
-    def sexual(
-        self,
-        _age_a: jax.Array,
-        energy_a: jax.Array,
-        _age_b: jax.Array,
-        energy_b: jax.Array,
-    ) -> jax.Array:
-        del _age_a, _age_b
-        exp_neg_energy_a = self._exp_neg_energy(energy_a)
-        exp_neg_energy_b = self._exp_neg_energy(energy_b)
-        sum_exp = exp_neg_energy_a + exp_neg_energy_b
-        return self.scale / (1.0 + self.alpha * sum_exp)
+    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        """Birth function b(t)"""
+        return age * self(age, energy)
 
 
 def compute_cumulative_hazard(
@@ -278,17 +227,13 @@ def expected_n_children(
     birth: BirthFunction,
     hazard: HazardFunction,
     max_age: float = 1e6,
-    asexual: bool = False,
     energy: float = 10.0,
 ) -> float:
     energy_arr = jnp.array(energy)
 
     def integrated(t: float) -> float:
         age_arr = jnp.array(t)
-        if asexual:
-            b = birth.asexual(age_arr, energy_arr).item()
-        else:
-            b = birth.sexual(age_arr, energy_arr, age_arr, energy_arr).item()
+        b = birth(age_arr, energy_arr).item()
         h = hazard.survival(age_arr, energy_arr).item()
         return h * b
 
@@ -298,7 +243,19 @@ def expected_n_children(
 
 def evaluate_hazard(
     hf: HazardFunction,
-    age_from: jax.Array,
-    age_to: jax.Array,
-):
-    assert False, "unimplemnted"
+    age_from: jax.Array,  # (M,)
+    age_to: jax.Array,  # (M,)
+    energies: jax.Array,  # (N, M)
+) -> jax.Array:
+    ages = jnp.linspace(age_from, age_to, energies.shape[0])
+    return jnp.sum(jax.vmap(hf)(ages, energies), axis=0)
+
+
+def evaluate_birth(
+    bf: BirthFunction,
+    age_from: jax.Array,  # (M,)
+    age_to: jax.Array,  # (M,)
+    energies: jax.Array,  # (N, M)
+) -> jax.Array:
+    ages = jnp.linspace(age_from, age_to, energies.shape[0])
+    return jnp.sum(jax.vmap(bf)(ages, energies), axis=0)
