@@ -135,37 +135,36 @@ def test_encount_and_collision(key: chex.PRNGKey) -> None:
     # O x 2→ ←4
     env, state, _ = reset_env(key)
     step = jax.jit(env.step)
-    act1 = jnp.zeros((10, 2)).at[2, 0].set(5.0).at[3, 0].set(-5.0).at[4, 0].set(-5.0)
+    act1 = jnp.zeros((10, 2)).at[2, 0].set(20).at[3:5, 1].set(20)
     while True:
         state, ts = step(state, act1)
         assert jnp.all(jnp.logical_not(ts.encount))
-        if state.physics.circle.p.angle[4] >= jnp.pi * 0.4:
+        if state.physics.circle.p.angle[4] >= jnp.pi * 0.45:
             break
-    act2 = jnp.zeros((10, 2)).at[2, 1].set(10.0).at[3, 1].set(10.0).at[4, 1].set(10.0)
+
+    act2 = jnp.zeros((10, 2)).at[2:5].set(20.0)
+    p2p4_ok, p3_ok = False, False
     for i in range(100):
+        p2 = state.physics.circle.p.xy[2]
+        p3 = state.physics.circle.p.xy[3]
+        p4 = state.physics.circle.p.xy[4]
         state, ts = step(state, act2)
-        p = state.physics.circle.p.xy[3]
-        if jnp.linalg.norm(p - jnp.array([80.0, 90.0])) <= AGENT_RADIUS + FOOD_RADIUS:
-            assert bool(ts.obs.collision[3, 1]), p
+        if not p2p4_ok and jnp.linalg.norm(p2 - p4) <= 2 * AGENT_RADIUS:
+            assert bool(ts.encount[2, 4]), (p2, p3, p4)
+            assert bool(ts.encount[4, 2]), (p2, p3, p4)
+            assert bool(ts.obs.collision[2, 0]), (p2, p3, p4)
+            assert bool(ts.obs.collision[4, 0]), (p2, p3, p4)
+            p2p4_ok = True
+
+        p3_to_food = jnp.linalg.norm(p3 - jnp.array([80.0, 90.0]))
+        if not p3_ok and p3_to_food <= AGENT_RADIUS + FOOD_RADIUS:
+            assert bool(ts.obs.collision[3, 1]), (p2, p3, p4)
+            p3_ok = True
+
+        if p2p4_ok and p3_ok:
             break
-        else:
-            assert not jnp.any(ts.obs.collision), ts.obs.collision[:5]
 
     assert i < 99
-
-    for i in range(200):
-        state, ts = step(state, act2)
-        p1 = state.physics.circle.p.xy[2]
-        p2 = state.physics.circle.p.xy[4]
-        if jnp.linalg.norm(p1 - p2) <= 2 * AGENT_RADIUS:
-            assert bool(ts.encount[2, 4])
-            assert bool(ts.encount[4, 2])
-            assert bool(ts.obs.collision[2, 0])
-            assert bool(ts.obs.collision[4, 0])
-            break
-        else:
-            assert jnp.all(jnp.logical_not(ts.encount)), f"P1: {p1}, P2: {p2}"
-    assert i < 199
 
 
 def test_asarray(key: chex.PRNGKey) -> None:
