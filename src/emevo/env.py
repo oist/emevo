@@ -94,6 +94,7 @@ OBS = TypeVar("OBS", bound="ObsProtocol")
 class TimeStep(Generic[OBS]):
     encount: jax.Array | None
     obs: OBS
+    energy_delta: jax.Array
     info: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 

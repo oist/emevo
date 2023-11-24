@@ -296,5 +296,9 @@ def expected_n_children(
     return result[0]
 
 
-def evaluate_hazard(hf: HazardFunction):
+def evaluate_hazard(
+    hf: HazardFunction,
+    age_from: jax.Array,
+    age_to: jax.Array,
+):
     assert False, "unimplemnted"

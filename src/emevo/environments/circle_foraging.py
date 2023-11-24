@@ -321,6 +321,7 @@ class CircleForaging(Env):
         angular_damping: float = 0.6,
         max_force: float = 40.0,
         min_force: float = -20.0,
+        force_energy_consumption: float = 0.01 / 40.0,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
@@ -350,6 +351,8 @@ class CircleForaging(Env):
         self._agent_loc_fn, self._initial_agentloc_state = self._make_agent_loc_fn(
             agent_loc_fn
         )
+        # Energy consumption
+        self._force_energy_consumption = force_energy_consumption
         # Initial numbers
         assert n_max_agents > n_initial_agents
         assert n_max_foods > self._food_num_fn.initial
@@ -522,10 +525,10 @@ class CircleForaging(Env):
     ) -> tuple[CFState, TimeStep[CFObs]]:
         # Add force
         act = jax.vmap(self.act_space.clip)(jnp.array(action))
-        f1 = jax.lax.slice_in_dim(act, 0, 1, axis=-1)
-        f2 = jax.lax.slice_in_dim(act, 1, 2, axis=-1)
-        f1 = jnp.concatenate((jnp.zeros_like(f1), f1), axis=1)
-        f2 = jnp.concatenate((jnp.zeros_like(f2), f2), axis=1)
+        f1_raw = jax.lax.slice_in_dim(act, 0, 1, axis=-1)
+        f2_raw = jax.lax.slice_in_dim(act, 1, 2, axis=-1)
+        f1 = jnp.concatenate((jnp.zeros_like(f1_raw), f1_raw), axis=1)
+        f2 = jnp.concatenate((jnp.zeros_like(f2_raw), f2_raw), axis=1)
         circle = state.physics.circle
         circle = circle.apply_force_local(self._act_p1, f1)
         circle = circle.apply_force_local(self._act_p2, f2)
@@ -542,8 +545,10 @@ class CircleForaging(Env):
         c2c = self._physics.get_contact_mat("circle", "circle", contacts)
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
+        # This is also used in computing energy_delta
+        food_collision = jnp.max(c2sc, axis=1)
         collision = jnp.stack(
-            (jnp.max(c2c, axis=1), jnp.max(c2sc, axis=1), jnp.max(seg2c, axis=0)),
+            (jnp.max(c2c, axis=1), food_collision, jnp.max(seg2c, axis=0)),
             axis=1,
         )
         # Gather sensor obs
@@ -555,7 +560,10 @@ class CircleForaging(Env):
             velocity=stated.circle.v.xy,
             angular_velocity=stated.circle.v.angle,
         )
-        timestep = TimeStep(encount=c2c, obs=obs)
+        # energy_delta = food - coef * force
+        force_sum = jnp.abs(f1_raw) + jnp.abs(f2_raw)
+        energy_delta = food_collision - self._force_energy_consumption * force_sum
+        timestep = TimeStep(encount=c2c, obs=obs, energy_delta=energy_delta)
         # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)
         stated, food_num, food_loc = self._remove_and_reproduce_foods(
@@ -636,7 +644,11 @@ class CircleForaging(Env):
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
         )
-        timestep = TimeStep(encount=None, obs=obs)
+        timestep = TimeStep(
+            encount=None,
+            obs=obs,
+            energy_delta=jnp.zeros(self._n_max_agents),
+        )
         return state, timestep
 
     def _initialize_physics_state(

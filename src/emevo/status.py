@@ -23,11 +23,6 @@ class Status:
         """Get older."""
         return self.replace(age=self.age + 1)
 
-    def share(self, ratio: float) -> tuple[Self, jax.Array]:
-        """Share some portion of energy."""
-        shared = self.energy * ratio
-        return self.update(energy_delta=-shared), shared
-
     def update(self, *, energy_delta: jax.Array) -> Self:
         """Update energy."""
         energy = self.energy + jnp.where(

@@ -26,7 +26,7 @@ def get_space_and_more() -> tuple[Space, StateDict, CircleCoordinate]:
         linear_damping=0.9,
         angular_damping=0.9,
         n_velocity_iter=4,
-        n_posiiton_iter=2,
+        n_position_iter=2,
         n_max_agents=N_MAX_AGENTS,
         n_max_foods=N_MAX_FOODS,
         agent_radius=AGENT_RADIUS,
