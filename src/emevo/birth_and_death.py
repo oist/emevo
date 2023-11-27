@@ -67,7 +67,8 @@ class ConstantHazard(HazardFunction):
     alpha_energy: float = 1e-6
     gamma: float = 1.0
 
-    def _alpha(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+    def _alpha(self, _age: jax.Array, energy: jax.Array) -> jax.Array:
+        del _age
         alpha_energy = self.alpha_energy * jnp.exp(-self.gamma * energy)
         return self.alpha_const + alpha_energy
 
@@ -86,14 +87,14 @@ class EnergyLogisticHazard(HazardFunction):
     """
 
     alpha: float = 1.0
-    hmax: float = 1.0
+    scale: float = 1.0
     e0: float = 3.0
 
     def _energy_death_rate(self, energy: jax.Array) -> jax.Array:
-        exp_neg_energy = self.alpha * jnp.exp(self.e0 - energy)
-        return self.hmax * (1.0 - 1.0 / (1.0 + self.alpha * exp_neg_energy))
+        return self.scale * (1.0 - 1.0 / (1.0 + self.alpha * jnp.exp(self.e0 - energy)))
 
-    def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+    def __call__(self, _age: jax.Array, energy: jax.Array) -> jax.Array:
+        del _age
         return self._energy_death_rate(energy)
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
@@ -123,7 +124,7 @@ class GompertzHazard(ConstantHazard):
 
 
 @dataclasses.dataclass
-class ELGompertz(EnergyLogisticHazard):
+class ELGompertzHazard(EnergyLogisticHazard):
     """
     Exponentially increasing with time + EnergyLogistic
     h(e) = h_max (1 - 1 / (1 + αexp(e0 - e))
@@ -164,14 +165,13 @@ class EnergyLogisticBirth(BirthFunction):
     b(t) = scale / (1.0 + α x exp(delay - e(t)))
     """
 
-    scale: float
     alpha: float = 1.0
-    delay: float = 8.0
+    scale: float = 0.1
+    e0: float = 8.0
 
     def __call__(self, _age: jax.Array, energy: jax.Array) -> jax.Array:
         del _age
-        exp_neg_energy = jnp.exp(self.delay - energy)
-        return self.scale / (1.0 + self.alpha * exp_neg_energy)
+        return self.scale / (1.0 + self.alpha * jnp.exp(self.e0 - energy))
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         """Birth function b(t)"""
@@ -239,23 +239,3 @@ def expected_n_children(
 
     result = integrate.quad(integrated, 0, max_age)
     return result[0]
-
-
-def evaluate_hazard(
-    hf: HazardFunction,
-    age_from: jax.Array,  # (M,)
-    age_to: jax.Array,  # (M,)
-    energies: jax.Array,  # (N, M)
-) -> jax.Array:
-    ages = jnp.linspace(age_from, age_to, energies.shape[0])
-    return jnp.sum(jax.vmap(hf)(ages, energies), axis=0)
-
-
-def evaluate_birth(
-    bf: BirthFunction,
-    age_from: jax.Array,  # (M,)
-    age_to: jax.Array,  # (M,)
-    energies: jax.Array,  # (N, M)
-) -> jax.Array:
-    ages = jnp.linspace(age_from, age_to, energies.shape[0])
-    return jnp.sum(jax.vmap(bf)(ages, energies), axis=0)
