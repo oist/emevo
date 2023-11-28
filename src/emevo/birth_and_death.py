@@ -5,7 +5,7 @@ from typing import Protocol
 
 import jax
 import jax.numpy as jnp
-from scipy import integrate
+from jax.scipy.integrate import trapezoid
 
 
 class HazardFunction(Protocol):
@@ -178,6 +178,9 @@ class EnergyLogisticBirth(BirthFunction):
         return age * self(age, energy)
 
 
+N = 100000
+
+
 def compute_cumulative_hazard(
     hazard: HazardFunction,
     *,
@@ -185,14 +188,8 @@ def compute_cumulative_hazard(
     max_age: float = 1e6,
 ) -> float:
     """Compute cumulative hazard using numeric integration"""
-    energy_arr = jnp.array(energy)
-    result = integrate.quad(
-        lambda t: hazard(jnp.array(t), energy_arr).item(),
-        0.0,
-        max_age,
-        limit=10000,
-    )
-    return result[0]
+    age = jnp.linspace(0.0, max_age, N)
+    return trapezoid(y=hazard(age, jnp.ones(N) * energy), x=age)
 
 
 def compute_cumulative_survival(
@@ -202,13 +199,8 @@ def compute_cumulative_survival(
     max_age: float = 1e6,
 ) -> float:
     """Compute cumulative survival rate using numeric integration"""
-    energy_arr = jnp.array(energy)
-    result = integrate.quad(
-        lambda t: hazard(jnp.array(t), energy_arr).item(),
-        0,
-        max_age,
-    )
-    return result[0]
+    age = jnp.linspace(0.0, max_age, N)
+    return trapezoid(y=hazard.survival(age, jnp.ones(N) * energy), x=age)
 
 
 def compute_stable_birth_rate(
@@ -222,20 +214,37 @@ def compute_stable_birth_rate(
     return 1.0 / cumsuv
 
 
-def expected_n_children(
+def compute_expected_n_children(
     *,
     birth: BirthFunction,
     hazard: HazardFunction,
     max_age: float = 1e6,
     energy: float = 10.0,
 ) -> float:
-    energy_arr = jnp.array(energy)
+    age = jnp.linspace(0.0, max_age, N)
+    energy_arr = jnp.ones(N) * energy
+    s = hazard.survival(age, energy_arr)
+    b = birth(age, energy_arr)
+    return trapezoid(y=s * b, x=age)
 
-    def integrated(t: float) -> float:
-        age_arr = jnp.array(t)
-        b = birth(age_arr, energy_arr).item()
-        h = hazard.survival(age_arr, energy_arr).item()
-        return h * b
 
-    result = integrate.quad(integrated, 0, max_age)
-    return result[0]
+def _step_survival(s_t: jax.Array, h_t1: jax.Array) -> tuple[jax.Array, None]:
+    return s_t * (1.0 - h_t1), None
+
+
+def evaluate_hazard_and_birth(
+    bf: BirthFunction,
+    hf: HazardFunction,
+    age_from: jax.Array,  # (M,)
+    age_to: jax.Array,  # (M,)
+    energy: jax.Array,  # (N, M)
+    dx: float = 1.0,
+) -> tuple[jax.Array, jax.Array]:
+    n, m = energy.shape
+    ages = jnp.linspace(age_from, age_to, n)
+    hazard = jax.vmap(hf)(ages, energy)
+    cumulative_hazard = trapezoid(y=hazard, x=ages, dx=dx, axis=0)
+    bitrh = jax.vmap(bf)(ages, energy)
+    survival = jnp.exp(-cumulative_hazard)
+    expected_n_children = trapezoid(y=hazard * birth, x=ages, dx=dx, axis=0)
+    return survival, 1.0 - jnp.exp(-expected_n_children)

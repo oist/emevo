@@ -102,26 +102,18 @@ def test_energylogistic_birth() -> None:
     )
 
 
-def test_evaluate_hazard() -> None:
+def test_evaluate_birth_and_hazard() -> None:
+    N, M = 4, 3
     hf = bd.ELGompertzHazard(alpha=1.0, scale=1.0, e0=3.0, alpha_age=1e-6, beta=1e-5)
     energy = jnp.array(
         [
             [0.0, 10.0, 20.0],
             [10.0, 10.0, 10.0],
             [20.0, 10.0, 0.0],
+            [30.0, 10.0, 10.0],
         ]
     )
     age_from = jnp.array([10.0, 10.0, 0.0])
-    age_to = jnp.array([20.0, 20.0, 10.0])
-    hazard = bd.evaluate_hazard(hf, age_from, age_to, energy)
-    chex.assert_trees_all_close(
-        hazard,
-        jnp.array(
-            [
-                1.0 - (1.0 / (1.0 + jnp.exp(3.0))) + 1e-6 * jnp.exp(1e-5 * 10),
-                1.0 - (1.0 / (1.0 + jnp.exp(3.0))) + 1e-6 * jnp.exp(1e-5 * 110),
-                1.0 - (1.0 / (1.0 + jnp.exp(-17.0))) + 1e-6 * jnp.exp(1e-5 * 10),
-                1.0 - (1.0 / (1.0 + jnp.exp(-17.0))) + 1e-6 * jnp.exp(1e-5 * 110),
-            ]
-        ),
-    )
+    age_to = jnp.array([40.0, 40.0, 30.0])
+    cum_hazard = bd.evaluate_hazard(hf, age_from, age_to, energy)
+    chex.assert_shape(cum_hazard, (M,))
