@@ -226,25 +226,3 @@ def compute_expected_n_children(
     s = hazard.survival(age, energy_arr)
     b = birth(age, energy_arr)
     return trapezoid(y=s * b, x=age)
-
-
-def _step_survival(s_t: jax.Array, h_t1: jax.Array) -> tuple[jax.Array, None]:
-    return s_t * (1.0 - h_t1), None
-
-
-def evaluate_hazard_and_birth(
-    bf: BirthFunction,
-    hf: HazardFunction,
-    age_from: jax.Array,  # (M,)
-    age_to: jax.Array,  # (M,)
-    energy: jax.Array,  # (N, M)
-    dx: float = 1.0,
-) -> tuple[jax.Array, jax.Array]:
-    n, m = energy.shape
-    ages = jnp.linspace(age_from, age_to, n)
-    hazard = jax.vmap(hf)(ages, energy)
-    cumulative_hazard = trapezoid(y=hazard, x=ages, dx=dx, axis=0)
-    bitrh = jax.vmap(bf)(ages, energy)
-    survival = jnp.exp(-cumulative_hazard)
-    expected_n_children = trapezoid(y=hazard * birth, x=ages, dx=dx, axis=0)
-    return survival, 1.0 - jnp.exp(-expected_n_children)
