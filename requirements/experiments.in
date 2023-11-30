@@ -1,4 +1,4 @@
 -e .[video,pyside6]
-py-spy  # for profiling
+fastavro
 tqdm
 typer
