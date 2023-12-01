@@ -131,7 +131,6 @@ def training_step(
     )
     rollout = rollout.replace(terminations=rollout.terminations.at[-1].set(reset))
     batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
-    output = vmap_apply(network, obs.as_array())
     opt_state, pponet = vmap_update(
         batch,
         network,
