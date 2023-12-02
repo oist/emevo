@@ -267,7 +267,7 @@ def _collect_circles(
 
 
 def _collect_static_lines(segment: Segment, state: State) -> NDArray:
-    a, b = segment.get_ab()
+    a, b = segment.point1, segment.point2
     a = state.p.transform(a)
     b = state.p.transform(b)
     return np.concatenate((a, b), axis=1).reshape(-1, 2)

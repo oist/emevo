@@ -324,19 +324,15 @@ def _effective_mass(
 
 @chex.dataclass
 class Capsule(Shape):
-    length: jax.Array
+    point1: jax.Array
+    point2: jax.Array
     radius: jax.Array
-
-
-def _length_to_points(length: jax.Array) -> tuple[jax.Array, jax.Array]:
-    a = jnp.stack((length * -0.5, length * 0.0), axis=-1)
-    b = jnp.stack((length * 0.5, length * 0.0), axis=-1)
-    return a, b
 
 
 @chex.dataclass
 class Segment(Shape):
-    length: jax.Array
+    point1: jax.Array
+    point2: jax.Array
 
     def to_capsule(self) -> Capsule:
         return Capsule(
@@ -345,12 +341,10 @@ class Segment(Shape):
             elasticity=self.elasticity,
             friction=self.friction,
             rgba=self.rgba,
-            length=self.length,
-            radius=jnp.zeros_like(self.length),
+            point1=self.point1,
+            point2=self.point2,
+            radius=jnp.zeros(self.point1.shape[0]),
         )
-
-    def get_ab(self) -> tuple[jax.Array, jax.Array]:
-        return _length_to_points(self.length)
 
 
 @jax.vmap
@@ -363,7 +357,7 @@ def _capsule_to_circle_impl(
 ) -> Contact:
     # Move b_pos to capsule's coordinates
     pb = a_pos.inv_transform(b_pos.xy)
-    p1, p2 = _length_to_points(a.length)
+    p1, p2 = a.point1, a.point2
     edge = p2 - p1
     s1 = jnp.dot(pb - p1, edge)
     s2 = jnp.dot(p2 - pb, edge)
@@ -1075,7 +1069,7 @@ def segment_raycast(
     state: State,
 ) -> Raycast:
     d = p2 - p1
-    v1, v2 = _length_to_points(segment.length)
+    v1, v2 = segment.point1, segment.point2
     v1, v2 = state.p.transform(v1), state.p.transform(v2)
     e = v2 - v1
     eunit, length = normalize(e)

@@ -190,7 +190,7 @@ def _make_physics(
         xy = jnp.array(wall[0] + wall[1]) / 2
         position = Position(angle=angle, xy=xy)
         segments.append(position)
-        builder.add_segment(length=a2b.length, friction=0.2, elasticity=0.4)
+        builder.add_segment(p1=wall[0], p2=wall[1], friction=0.2, elasticity=0.4)
     seg_position = jax.tree_map(lambda *args: jnp.stack(args), *segments)
     seg_state = State.from_position(seg_position)
     # Prepare agents

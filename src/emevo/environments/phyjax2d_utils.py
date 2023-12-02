@@ -14,7 +14,6 @@ from emevo.environments.phyjax2d import (
     ShapeDict,
     Space,
     StateDict,
-    _length_to_points,
     _vmap_dot,
 )
 from emevo.vec2d import Vec2d, Vec2dLike
@@ -140,8 +139,9 @@ class SpaceBuilder:
     def add_capsule(
         self,
         *,
+        p1: Vec2d,
+        p2: Vec2d,
         radius: float,
-        length: float,
         density: float = 1.0,
         is_static: bool = False,
         friction: float = 0.8,
@@ -151,16 +151,16 @@ class SpaceBuilder:
         _check_params_positive(
             friction=friction,
             radius=radius,
-            length=length,
             density=density,
             elasticity=elasticity,
         )
         mass, moment = _mass_and_moment(
-            *_capsule_mass(radius, length, density),
+            *_capsule_mass(radius, (p2 - p1).length, density),
             is_static,
         )
         capsule = Capsule(
-            length=jnp.array([length]),
+            point1=jnp.array(p1).reshape(1, 2),
+            point2=jnp.array(p2).reshape(1, 2),
             radius=jnp.array([radius]),
             mass=mass,
             moment=moment,
@@ -176,19 +176,20 @@ class SpaceBuilder:
     def add_segment(
         self,
         *,
-        length: float,
+        p1: Vec2d,
+        p2: Vec2d,
         friction: float = 0.8,
         elasticity: float = 0.8,
         rgba: Color = _BLACK,
     ) -> None:
         _check_params_positive(
             friction=friction,
-            length=length,
             elasticity=elasticity,
         )
         mass, moment = _mass_and_moment(is_static=True)
         segment = Segment(
-            length=jnp.array([length]),
+            point1=jnp.array(p1).reshape(1, 2),
+            point2=jnp.array(p2).reshape(1, 2),
             mass=mass,
             moment=moment,
             elasticity=jnp.array([elasticity]),
@@ -307,12 +308,11 @@ def circle_overlap(
         overlap = jnp.logical_or(jnp.any(has_overlap), overlap)
 
     # Circle-segment overlap
-
     if stated.segment is not None and shaped.segment is not None:
         spos = stated.segment.p
         # Suppose that cpos.shape == (N, 2) and xy.shape == (2,)
         pb = spos.inv_transform(jnp.expand_dims(xy, axis=0))
-        p1, p2 = _length_to_points(shaped.segment.length)
+        p1, p2 = shaped.segment.point1, shaped.segment.point2
         edge = p2 - p1
         s1 = jnp.expand_dims(_vmap_dot(pb - p1, edge), axis=1)
         s2 = jnp.expand_dims(_vmap_dot(p2 - pb, edge), axis=1)
