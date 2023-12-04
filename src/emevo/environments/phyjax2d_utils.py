@@ -187,9 +187,15 @@ class SpaceBuilder:
             elasticity=elasticity,
         )
         mass, moment = _mass_and_moment(is_static=True)
+        point1 = jnp.array(p1).reshape(1, 2)
+        point2 = jnp.array(p2).reshape(1, 2)
         segment = Segment(
             point1=jnp.array(p1).reshape(1, 2),
             point2=jnp.array(p2).reshape(1, 2),
+            is_smooth=jnp.array([False]),
+            # Fake ghosts
+            ghost1=point1,
+            ghost2=point2,
             mass=mass,
             moment=moment,
             elasticity=jnp.array([elasticity]),
@@ -197,6 +203,39 @@ class SpaceBuilder:
             rgba=jnp.array(rgba).reshape(1, 4),
         )
         self.segments.append(segment)
+
+    def add_chain_segments(
+        self,
+        *,
+        chain_points: list[tuple[Vec2d, Vec2d]],
+        friction: float = 0.8,
+        elasticity: float = 0.8,
+        rgba: Color = _BLACK,
+    ) -> None:
+        _check_params_positive(
+            friction=friction,
+            elasticity=elasticity,
+        )
+        mass, moment = _mass_and_moment(is_static=True)
+        n_points = len(chain_points)
+        for i in range(n_points):
+            g1 = chain_points[i - 1][0]
+            p1, p2 = chain_points[i]
+            g2 = chain_points[(i + 1) % n_points][1]
+            segment = Segment(
+                point1=jnp.array(p1).reshape(1, 2),
+                point2=jnp.array(p2).reshape(1, 2),
+                is_smooth=jnp.array([True]),
+                # Fake ghosts
+                ghost1=jnp.array(g1).reshape(1, 2),
+                ghost2=jnp.array(g2).reshape(1, 2),
+                mass=mass,
+                moment=moment,
+                elasticity=jnp.array([elasticity]),
+                friction=jnp.array([friction]),
+                rgba=jnp.array(rgba).reshape(1, 4),
+            )
+            self.segments.append(segment)
 
     def build(self) -> Space:
         def concat_or(sl: list[Shape]) -> Shape | None:
@@ -241,12 +280,13 @@ def make_approx_circle(
     radius: float,
     n_lines: int = 32,
 ) -> list[tuple[Vec2d, Vec2d]]:
+    """Make circle. Points are ordered clockwith."""
     unit = np.pi * 2 / n_lines
     lines = []
     t0 = Vec2d(radius, 0.0)
-    for i in range(n_lines):
-        start = center + t0.rotated(unit * i)
-        end = center + t0.rotated(unit * (i + 1))
+    for i in reversed(range(n_lines)):
+        start = center + t0.rotated(unit * (i + 1))
+        end = center + t0.rotated(unit * i)
         lines.append((start, end))
     return lines
 
@@ -258,6 +298,7 @@ def make_square(
     ymax: float,
     rounded_offset: float | None = None,
 ) -> list[tuple[Vec2d, Vec2d]]:
+    """Make square. Points are ordered clockwith."""
     p1 = Vec2d(xmin, ymin)
     p2 = Vec2d(xmin, ymax)
     p3 = Vec2d(xmax, ymax)
@@ -269,12 +310,12 @@ def make_square(
             offset = s2end.normalized() * rounded_offset
             stop = end - offset
             lines.append((start + offset, stop))
-            stop2end = end - stop
-            center = stop + stop2end.rotated(-np.pi / 2)
-            for i in range(4):
-                start = center + stop2end.rotated(np.pi / 8 * i)
-                end = center + stop2end.rotated(np.pi / 8 * (i + 1))
-                lines.append((start, end))
+            # Center of the rounded corner
+            center = stop + offset.rotated(-np.pi / 2)
+            for i in reversed(range(4)):
+                r_start = center + offset.rotated(np.pi / 8 * (i + 1))
+                r_end = center + offset.rotated(np.pi / 8 * i)
+                lines.append((r_start, r_end))
     else:
         for start, end in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)]:
             lines.append((start, end))

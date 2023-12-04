@@ -161,7 +161,7 @@ def _make_physics(
     agent_radius: float,
     food_radius: float,
     obstacles: list[tuple[Vec2d, Vec2d]] | None = None,
-) -> tuple[Physics, State]:
+) -> Physics:
     builder = SpaceBuilder(
         gravity=(0.0, 0.0),  # No gravity
         dt=dt,
@@ -181,18 +181,9 @@ def _make_physics(
             *coordinate.ylim,
             rounded_offset=np.floor(food_radius * 2 / (np.sqrt(2) - 1.0)),
         )
-    if obstacles is not None:
-        walls += obstacles
-    segments = []
-    for wall in walls:
-        a2b = wall[1] - wall[0]
-        angle = jnp.array(a2b.angle)
-        xy = jnp.array(wall[0] + wall[1]) / 2
-        position = Position(angle=angle, xy=xy)
-        segments.append(position)
-        builder.add_segment(p1=wall[0], p2=wall[1], friction=0.2, elasticity=0.4)
-    seg_position = jax.tree_map(lambda *args: jnp.stack(args), *segments)
-    seg_state = State.from_position(seg_position)
+    builder.add_chain_segments(chain_points=walls, friction=0.2, elasticity=0.4)
+    for obs in obstacles:
+        builder.add_segment(p1=obs[0], p2=obs[1], friction=0.2, elasticity=0.4)
     # Prepare agents
     for _ in range(n_max_agents):
         builder.add_circle(
@@ -211,7 +202,7 @@ def _make_physics(
             color=FOOD_COLOR,
             is_static=True,
         )
-    return builder.build(), seg_state
+    return builder.build()
 
 
 def _observe_closest(
@@ -367,7 +358,7 @@ class CircleForaging(Env):
         else:
             obs_list = obstacles
 
-        self._physics, self._segment_state = _make_physics(
+        self._physics = _make_physics(
             dt=dt,
             coordinate=self._coordinate,
             linear_damping=linear_damping,
@@ -656,7 +647,7 @@ class CircleForaging(Env):
         key: chex.PRNGKey,
     ) -> tuple[StateDict, LocatingState, LocatingState]:
         # Set segment
-        stated = self._physics.shaped.zeros_state().replace(segment=self._segment_state)
+        stated = self._physics.shaped.zeros_state()
         assert stated.circle is not None
 
         # Set is_active

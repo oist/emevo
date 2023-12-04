@@ -2,7 +2,8 @@ import dataclasses
 import functools
 import uuid
 from collections.abc import Sequence
-from typing import Any, Callable, Protocol
+from dataclasses import replace
+from typing import Any, Callable, NamedTuple, Protocol
 
 import chex
 import jax
@@ -98,7 +99,7 @@ class _PositionLike(Protocol):
         return cls(angle=jnp.zeros((n,)), xy=jnp.zeros((n, 2)))
 
     @classmethod
-    def from_axy(cls: type[Self], axy: int) -> Self:
+    def from_axy(cls: type[Self], axy: jax.Array) -> Self:
         angle = jax.lax.squeeze(jax.lax.slice_in_dim(axy, 0, 1, axis=-1), (-1,))
         xy = jax.lax.slice_in_dim(axy, 1, 3, axis=-1)
         return cls(angle=angle, xy=xy)
@@ -124,6 +125,12 @@ def _get_xy(xy: jax.Array) -> tuple[jax.Array, jax.Array]:
     x = jax.lax.slice_in_dim(xy, 0, 1, axis=-1)
     y = jax.lax.slice_in_dim(xy, 1, 2, axis=-1)
     return jax.lax.squeeze(x, (-1,)), jax.lax.squeeze(y, (-1,))
+
+
+def _right_perp(xy: jax.Array) -> jax.Array:
+    x = jax.lax.slice_in_dim(xy, 0, 1, axis=-1)
+    y = jax.lax.slice_in_dim(xy, 1, 2, axis=-1)
+    return jnp.concatenate((y, -x))
 
 
 @chex.dataclass
@@ -216,8 +223,8 @@ class State(PyTreeOps):
         chex.assert_equal_shape((self.f.xy, force))
         xy = self.f.xy + force
         angle = self.f.angle + jnp.cross(point - self.p.xy, force)
-        f = self.f.replace(xy=xy, angle=angle)
-        return self.replace(f=f)
+        f = replace(self.f, xy=xy, angle=angle)
+        return replace(self, f=f)
 
     def apply_force_local(self, point: jax.Array, force: jax.Array) -> Self:
         chex.assert_equal_shape((self.p.xy, point))
@@ -253,8 +260,7 @@ def _circle_to_circle_impl(
     a_contact = a_pos.xy + a2b_normal * a.radius
     b_contact = b_pos.xy - a2b_normal * b.radius
     pos = (a_contact + b_contact) * 0.5
-    # Filter penetration
-    penetration = jnp.where(isactive, penetration, jnp.ones_like(penetration) * -1)
+    penetration = jnp.where(isactive, penetration, -1.0)
     return Contact(
         pos=pos,
         normal=a2b_normal,
@@ -294,7 +300,7 @@ class VelocitySolver:
         continuing_contact = jnp.logical_and(self.contact, new_contact)
         pn = jnp.where(continuing_contact, self.pn, 0.0)
         pt = jnp.where(continuing_contact, self.pt, 0.0)
-        return self.replace(pn=pn, pt=pt, contact=new_contact)
+        return replace(self, pn=pn, pt=pt, contact=new_contact)
 
 
 def _vmap_dot(xy1: jax.Array, xy2: jax.Array) -> jax.Array:
@@ -333,18 +339,9 @@ class Capsule(Shape):
 class Segment(Shape):
     point1: jax.Array
     point2: jax.Array
-
-    def to_capsule(self) -> Capsule:
-        return Capsule(
-            mass=self.mass,
-            moment=self.moment,
-            elasticity=self.elasticity,
-            friction=self.friction,
-            rgba=self.rgba,
-            point1=self.point1,
-            point2=self.point2,
-            radius=jnp.zeros(self.point1.shape[0]),
-        )
+    is_smooth: jax.Array
+    ghost1: jax.Array
+    ghost2: jax.Array
 
 
 @jax.vmap
@@ -378,13 +375,67 @@ def _capsule_to_circle_impl(
     b_contact = pb - a2b_normal * b.radius
     pos = a_pos.transform((a_contact + b_contact) * 0.5)
     xy_zeros = jnp.zeros_like(b_pos.xy)
-    a2b_normal_rotated = a_pos.replace(xy=xy_zeros).transform(a2b_normal)
+    a2b_normal_rotated = replace(a_pos, xy=xy_zeros).transform(a2b_normal)
     # Filter penetration
-    penetration = jnp.where(isactive, penetration, jnp.ones_like(penetration) * -1)
     return Contact(
         pos=pos,
         normal=a2b_normal_rotated,
-        penetration=penetration,
+        penetration=jnp.where(isactive, penetration, -1.0),
+        elasticity=(a.elasticity + b.elasticity) * 0.5,
+        friction=(a.friction + b.friction) * 0.5,
+    )
+
+
+@jax.vmap
+def _segment_to_circle_impl(
+    a: Segment,
+    b: Circle,
+    a_pos: Position,
+    b_pos: Position,
+    isactive: jax.Array,
+) -> Contact:
+    # Move b_pos to segment's coordinates
+    pb = a_pos.inv_transform(b_pos.xy)
+    p1, p2 = a.point1, a.point2
+    edge = p2 - p1
+    s1 = jnp.dot(pb - p1, edge)
+    s2 = jnp.dot(p2 - pb, edge)
+    in_segment = jnp.logical_and(s1 > 0.0, s2 > 0.0)
+    ee = jnp.sum(jnp.square(edge), axis=-1, keepdims=True)
+    # Closest point
+    # s1 < 0: pb is left to the capsule
+    # s2 < 0: pb is right to the capsule
+    # else: pb is in between capsule
+    pa = jax.lax.select(
+        in_segment,
+        p1 + edge * s1 / ee,
+        jax.lax.select(s1 <= 0.0, p1, p2),
+    )
+    a2b_normal, dist = normalize(pb - pa)
+    penetration = b.radius - dist
+    a_contact = pa
+    b_contact = pb - a2b_normal * b.radius
+    pos = a_pos.transform((a_contact + b_contact) * 0.5)
+    xy_zeros = jnp.zeros_like(b_pos.xy)
+    a2b_normal_rotated = replace(a_pos, xy=xy_zeros).transform(a2b_normal)
+    # Filter penetration
+    collidable = jnp.dot(_right_perp(edge), pb - p1) >= 0.0
+    not_in_voronoi = jnp.logical_or(
+        jnp.logical_and(s1 <= 0.0, jnp.dot(a.ghost2 - p2, pb - p2) > 0.0),
+        jnp.logical_and(s2 <= 0.0, jnp.dot(p1 - a.ghost1, pb - p1) <= 0.0),
+    )
+    is_penetration_possible = jnp.logical_and(
+        isactive,
+        jnp.logical_or(
+            jnp.logical_not(a.is_smooth),
+            # collidable
+            jnp.logical_and(collidable, jnp.logical_not(not_in_voronoi)),
+        ),
+    )
+    return Contact(
+        pos=pos,
+        normal=a2b_normal_rotated,
+        penetration=jnp.where(is_penetration_possible, penetration, -1.0),
         elasticity=(a.elasticity + b.elasticity) * 0.5,
         friction=(a.friction + b.friction) * 0.5,
     )
@@ -402,16 +453,17 @@ class StateDict:
     static_capsule: State | None = None
 
     def concat(self) -> Self:
-        states = [s for s in self.values() if s is not None]
+        states = [s for s in self.values() if s is not None]  # type: ignore
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
 
-    def _get(self, name: str, state: State) -> State | None:
-        if self[name] is None:
+    def _get(self, name: str, statec: State) -> State | None:
+        state: State | None = self[name]  # type: ignore
+        if state is None:
             return None
         else:
             start = _offset(self, name)
-            end = start + self[name].p.batch_size()
-            return state.get_slice(jnp.arange(start, end))
+            end = start + state.p.batch_size()
+            return statec.get_slice(jnp.arange(start, end))
 
     def update(self, statec: State) -> Self:
         circle = self._get("circle", statec)
@@ -567,8 +619,8 @@ def _segment_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
     pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.segment.is_active[ci.index1]
     is_active2 = stated.circle.is_active[ci.index2]
-    return _capsule_to_circle_impl(
-        ci.shape1.to_capsule(),
+    return _segment_to_circle_impl(
+        ci.shape1,
         ci.shape2,
         pos1,
         pos2,
@@ -576,7 +628,8 @@ def _segment_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
     )
 
 
-_CONTACT_FUNCTIONS = {
+_CONTACT_FN = Callable[[ContactIndices, StateDict], Contact]
+_CONTACT_FUNCTIONS: dict[tuple[str, str], _CONTACT_FN] = {
     ("circle", "circle"): _circle_to_circle,
     ("circle", "static_circle"): _circle_to_static_circle,
     ("capsule", "circle"): _capsule_to_circle,
@@ -595,6 +648,7 @@ class Space:
     n_velocity_iter: int = 6
     n_position_iter: int = 2
     linear_slop: float = 0.005
+    speculative_distance: float = 0.02
     max_linear_correction: float = 0.2
     allowed_penetration: float = 0.005
     bounce_threshold: float = 1.0
@@ -649,7 +703,8 @@ class Space:
         for (n1, n2), fn in _CONTACT_FUNCTIONS.items():
             ci = self._ci.get((n1, n2), None)
             if ci is not None:
-                contacts.append(fn(ci, stated))
+                contact = fn(ci, stated)
+                contacts.append(contact)
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *contacts)
 
     def n_possible_contacts(self) -> int:
@@ -1012,7 +1067,7 @@ def step(
     contact = space.check_contacts(stated.update(state))
     v, p, solver = solve_constraints(
         space,
-        solver.update(contact.penetration >= 0),
+        solver.update(contact.penetration >= space.speculative_distance),
         state.p,
         state.v,
         contact,
