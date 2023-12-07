@@ -25,7 +25,7 @@ dependencies = [
     "moderngl >= 5.6",
     "moderngl-window >= 2.4",
     "jax >= 0.4",
-    "pyserde >= 0.12",
+    "pyserde[toml] >= 0.12",
     "optax >= 0.1",
 ]
 dynamic = ["version"]

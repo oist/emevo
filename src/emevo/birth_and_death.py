@@ -169,8 +169,8 @@ class EnergyLogisticBirth(BirthFunction):
     scale: float = 0.1
     e0: float = 8.0
 
-    def __call__(self, _age: jax.Array, energy: jax.Array) -> jax.Array:
-        del _age
+    def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        del age
         return self.scale / (1.0 + self.alpha * jnp.exp(self.e0 - energy))
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
@@ -178,18 +178,16 @@ class EnergyLogisticBirth(BirthFunction):
         return age * self(age, energy)
 
 
-N = 100000
-
-
 def compute_cumulative_hazard(
     hazard: HazardFunction,
     *,
     energy: float = 10.0,
     max_age: float = 1e6,
+    n: int = 100000,
 ) -> float:
     """Compute cumulative hazard using numeric integration"""
-    age = jnp.linspace(0.0, max_age, N)
-    return trapezoid(y=hazard(age, jnp.ones(N) * energy), x=age)
+    age = jnp.linspace(0.0, max_age, n)
+    return trapezoid(y=hazard(age, jnp.ones(n) * energy), x=age)
 
 
 def compute_cumulative_survival(
@@ -197,10 +195,11 @@ def compute_cumulative_survival(
     *,
     energy: float = 10.0,
     max_age: float = 1e6,
+    n: int = 100000,
 ) -> float:
     """Compute cumulative survival rate using numeric integration"""
-    age = jnp.linspace(0.0, max_age, N)
-    return trapezoid(y=hazard.survival(age, jnp.ones(N) * energy), x=age)
+    age = jnp.linspace(0.0, max_age, n)
+    return trapezoid(y=hazard.survival(age, jnp.ones(n) * energy), x=age)
 
 
 def compute_stable_birth_rate(
@@ -208,9 +207,10 @@ def compute_stable_birth_rate(
     *,
     energy: float = 10.0,
     max_age: float = 1e6,
+    n: int = 100000,
 ) -> float:
     """Compute cumulative survival rate using numeric integration"""
-    cumsuv = compute_cumulative_survival(hazard, energy=energy, max_age=max_age)
+    cumsuv = compute_cumulative_survival(hazard, energy=energy, max_age=max_age, n=n)
     return 1.0 / cumsuv
 
 
@@ -220,9 +220,10 @@ def compute_expected_n_children(
     hazard: HazardFunction,
     max_age: float = 1e6,
     energy: float = 10.0,
+    n: int = 100000,
 ) -> float:
-    age = jnp.linspace(0.0, max_age, N)
-    energy_arr = jnp.ones(N) * energy
+    age = jnp.linspace(0.0, max_age, n)
+    energy_arr = jnp.ones(n) * energy
     s = hazard.survival(age, energy_arr)
     b = birth(age, energy_arr)
     return trapezoid(y=s * b, x=age)

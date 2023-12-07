@@ -89,8 +89,19 @@ def ipython(session: nox.Session) -> None:
 
 
 @nox.session(reuse_venv=True)
+def script(session: nox.Session) -> None:
+    """Run scripts"""
+    _sync(session, "requirements/scripts.txt")
+    DEFAULT = "scripts/plot_bd_models.py"
+    if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):
+        session.run("python", *session.posargs)
+    else:
+        session.run("python", DEFAULT, *session.posargs)
+
+
+@nox.session(reuse_venv=True)
 def smoke(session: nox.Session) -> None:
-    """Run a smoke test"""
+    """Run smoke tests"""
     _sync(session, "requirements/smoke.txt")
     DEFAULT = "smoke-tests/circle_loop.py"
     if 0 < len(session.posargs) and session.posargs[0].endswith(".py"):

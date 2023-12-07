@@ -1,0 +1,14 @@
+birth_fn = "emevo.birth_and_death.EnergyLogisticBirth"
+hazard_fn = "emevo.birth_and_death.ELGompertzHazard"
+
+[hazard_params]
+alpha = 0.35
+alpha_age = 1e-6
+beta = 3e-5
+scale = 0.1
+e0 = 0.0
+
+[birth_params]
+alpha = 0.1
+scale = 2e-4
+e0 = 20.0.
