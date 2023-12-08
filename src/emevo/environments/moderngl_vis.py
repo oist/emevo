@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, ClassVar, Protocol
 
+import jax.numpy as jnp
 import moderngl as mgl
 import moderngl_window as mglw
 import numpy as np
@@ -274,9 +275,9 @@ def _collect_static_lines(segment: Segment, state: State) -> NDArray:
 
 
 def _collect_heads(circle: Circle, state: State) -> NDArray:
-    y = np.array(circle.radius)
-    x = np.zeros_like(y)
-    p1, p2 = np.stack((x, y * 0.8), axis=1), np.stack((x, y * 1.2), axis=1)
+    y = jnp.array(circle.radius)
+    x = jnp.zeros_like(y)
+    p1, p2 = jnp.stack((x, y * 0.8), axis=1), jnp.stack((x, y * 1.2), axis=1)
     p1, p2 = state.p.transform(p1), state.p.transform(p2)
     return np.concatenate((p1, p2), axis=1).reshape(-1, 2)
 
@@ -374,7 +375,11 @@ class MglRenderer:
             )
 
             def collect_sensors(stated: StateDict) -> NDArray:
-                return np.concatenate(sensor_fn(stated=stated), axis=1).reshape(-1, 2)
+                sensors = np.concatenate(
+                    sensor_fn(stated=stated),  # type: ignore
+                    axis=1,
+                )
+                return sensors.reshape(-1, 2).astype(jnp.float32)
 
             self._sensors = SegmentVA(
                 ctx=context,
@@ -410,7 +415,6 @@ class MglRenderer:
         **kwargs: NDArray,
     ) -> mgl.Program:
         self._context.enable(mgl.PROGRAM_POINT_SIZE | mgl.BLEND)
-        self._context.blend_func = mgl.DEFAULT_BLENDING
         prog = self._context.program(
             vertex_shader=vertex_shader,
             geometry_shader=geometry_shader,

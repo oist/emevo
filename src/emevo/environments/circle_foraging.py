@@ -3,6 +3,8 @@ from __future__ import annotations
 import enum
 import functools
 import warnings
+from collections.abc import Iterable
+from dataclasses import replace
 from typing import Any, Callable, Literal, NamedTuple
 
 import chex
@@ -160,7 +162,7 @@ def _make_physics(
     n_max_foods: int,
     agent_radius: float,
     food_radius: float,
-    obstacles: list[tuple[Vec2d, Vec2d]] | None = None,
+    obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
 ) -> Physics:
     builder = SpaceBuilder(
         gravity=(0.0, 0.0),  # No gravity
@@ -211,10 +213,6 @@ def _observe_closest(
     p2: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
-    assert shaped.circle is not None and stated.circle is not None
-    assert shaped.static_circle is not None and stated.static_circle is not None
-    assert shaped.segment is not None and stated.segment is not None
-
     def cr(shape: Circle, state: State) -> Raycast:
         return circle_raycast(0.0, 1.0, p1, p2, shape, state)
 
@@ -243,6 +241,7 @@ def _get_sensors(
     sensor_length: float,
     stated: StateDict,
 ) -> tuple[jax.Array, jax.Array]:
+    assert shaped.circle is not None and stated.circle is not None
     radius = shaped.circle.radius
     p1 = jnp.stack((jnp.zeros_like(radius), radius), axis=1)  # (N, 2)
     p1 = jnp.repeat(p1, n_sensors, axis=0)  # (N x M, 2)
@@ -278,7 +277,7 @@ def nstep(
 ) -> tuple[StateDict, VelocitySolver, jax.Array]:
     def body(
         stated_and_solver: tuple[StateDict, VelocitySolver],
-        _zero: jax.Array,
+        _: jax.Array,
     ) -> tuple[tuple[StateDict, VelocitySolver], jax.Array]:
         state, solver, contact = physics_step(space, *stated_and_solver)
         return (state, solver), contact.penetration >= 0.0
@@ -500,15 +499,6 @@ class CircleForaging(Env):
             },
         )
 
-    def set_food_num_fn(self, food_num_fn: str | tuple | ReprNumFn) -> None:
-        self._food_num_fn = self._make_food_num_fn(food_num_fn)
-
-    def set_food_loc_fn(self, food_loc_fn: str | tuple | LocatingFn) -> None:
-        self._food_loc_fn = self._make_food_loc_fn(food_loc_fn)
-
-    def set_agent_loc_fn(self, agent_loc_fn: str | tuple | LocatingFn) -> None:
-        self._agent_loc_fn = self._make_agent_loc_fn(agent_loc_fn)
-
     def step(
         self,
         state: CFState,
@@ -523,7 +513,7 @@ class CircleForaging(Env):
         circle = state.physics.circle
         circle = circle.apply_force_local(self._act_p1, f1)
         circle = circle.apply_force_local(self._act_p2, f2)
-        stated = state.physics.replace(circle=circle)
+        stated = replace(state.physics, circle=circle)
         # Step physics simulator
         stated, solver, nstep_contacts = nstep(
             self._n_physics_iter,
@@ -564,16 +554,24 @@ class CircleForaging(Env):
             state.food_num,
             state.food_loc,
         )
-        state = state.replace(
-            key=key,
+        state = CFState(
             physics=stated,
             solver=solver,
             food_num=food_num,
+            agent_loc=state.agent_loc,
             food_loc=food_loc,
+            key=key,
+            step=state.step + 1,
+            profile=state.profile,
+            n_born_agents=state.n_born_agents,
         )
         return state, timestep
 
-    def activate(self, state: CFState, parent_gen: jax.Array) -> tuple[CFState, bool]:
+    def activate(
+        self,
+        state: CFState,
+        parent_gen: jax.Array,
+    ) -> tuple[CFState, jax.Array]:
         circle = state.physics.circle
         key, place_key = jax.random.split(state.key)
         new_xy, ok = self._place_agent(key=place_key, stated=state.physics)
@@ -586,14 +584,18 @@ class CircleForaging(Env):
         angle = jnp.where(place, 0.0, circle.p.angle)
         p = Position(angle=angle, xy=xy)
         is_active = jnp.logical_or(place, circle.is_active)
-        physics = state.physics.replace(circle=circle.replace(p=p, is_active=is_active))
+        physics = replace(
+            state.physics,
+            circle=replace(circle, p=p, is_active=is_active),
+        )
         profile = state.profile.activate(
             place,
             parent_gen,
             state.n_born_agents,
             state.step,
         )
-        new_state = state.replace(
+        new_state = replace(
+            state,
             physics=physics,
             profile=profile,
             n_born_agents=state.n_born_agents + jnp.sum(place),
@@ -603,15 +605,15 @@ class CircleForaging(Env):
 
     def deactivate(self, state: CFState, index: Index) -> CFState:
         p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
-        p = state.physics.circle.p.replace(xy=p_xy)
+        p = replace(state.physics.circle.p, xy=p_xy)
         v_xy = state.physics.circle.v.xy.at[index].set(0.0)
         v_angle = state.physics.circle.v.angle.at[index].set(0.0)
         v = Velocity(angle=v_angle, xy=v_xy)
         is_active = state.physics.circle.is_active.at[index].set(False)
-        circle = state.physics.circle.replace(p=p, v=v, is_active=is_active)
-        physics = state.physics.replace(circle=circle)
+        circle = replace(state.physics.circle, p=p, v=v, is_active=is_active)
+        physics = replace(state.physics, circle=circle)
         profile = state.profile.deactivate(index)
-        return state.replace(physics=physics, profile=profile)
+        return replace(state, physics=physics, profile=profile)
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
@@ -735,9 +737,9 @@ class CircleForaging(Env):
             xy,
         )
         is_active = jnp.logical_or(is_active, place)
-        p = sd.static_circle.p.replace(xy=xy)
-        sc = sd.static_circle.replace(p=p, is_active=is_active)
-        sd = sd.replace(static_circle=sc)
+        p = replace(sd.static_circle.p, xy=xy)
+        sc = replace(sd.static_circle, p=p, is_active=is_active)
+        sd = replace(sd, static_circle=sc)
         incr = jnp.sum(place)
         return sd, food_num.recover(incr), food_loc.increment(incr)
 

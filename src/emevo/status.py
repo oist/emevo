@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import chex
@@ -21,7 +22,7 @@ class Status:
 
     def step(self) -> Self:
         """Get older."""
-        return self.replace(age=self.age + 1)
+        return replace(self, age=self.age + 1)
 
     def update(self, *, energy_delta: jax.Array) -> Self:
         """Update energy."""
@@ -30,7 +31,7 @@ class Status:
             energy_delta,
             jnp.zeros_like(energy_delta),
         )
-        return self.replace(energy=jnp.clip(energy, a_min=0.0, a_max=self.capacity))
+        return replace(self, energy=jnp.clip(energy, a_min=0.0, a_max=self.capacity))
 
 
 def init_status(
@@ -50,7 +51,7 @@ def init_status(
         )
     return Status(
         age=jnp.zeros(max_n, dtype=jnp.int32),
-        energy=jnp.ones(max_n, dtype=jnp.float32),
+        energy=jnp.ones(max_n, dtype=jnp.float32) * init_energy,
         is_alive=is_alive,
         capacity=capacity,
         metadata=metadata,

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import abc
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, Generic, NamedTuple, TypeVar
 
 import chex
@@ -12,19 +12,19 @@ import jax.numpy as jnp
 from emevo.types import DTypeLike
 
 INSTANCE = TypeVar("INSTANCE")
+DTYPE = TypeVar("DTYPE")
 
 
-
-class Space(abc.ABC, Generic[INSTANCE]):
-    dtype: jnp.dtype | tuple[jnp.dtype, ...]
+class Space(abc.ABC, Generic[INSTANCE, DTYPE]):
+    dtype: DTYPE
     shape: tuple[int, ...]
 
     @abc.abstractmethod
-    def clip(self, x: jax.Array) -> jax.Array:
+    def clip(self, x: INSTANCE) -> INSTANCE:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def contains(self, x: INSTANCE) -> bool:
+    def contains(self, x: INSTANCE) -> jax.Array:
         pass
 
     @abc.abstractmethod
@@ -42,7 +42,7 @@ def _short_repr(arr: jax.Array) -> str:
     return str(arr)
 
 
-class BoxSpace(Space[jax.Array]):
+class BoxSpace(Space[jax.Array, jnp.dtype]):
     """gym.spaces.Box, but without RNG"""
 
     def __init__(
@@ -104,10 +104,10 @@ class BoxSpace(Space[jax.Array]):
     def clip(self, x: jax.Array) -> jax.Array:
         return jnp.clip(x, a_min=self.low, a_max=self.high)
 
-    def contains(self, x: jax.Array) -> bool:
+    def contains(self, x: jax.Array) -> jax.Array:
         type_ok = jnp.can_cast(x.dtype, self.dtype) and x.shape == self.shape
         value_ok = jnp.logical_and(jnp.all(x >= self.low), jnp.all(x <= self.high))
-        return type_ok and value_ok.item()
+        return jnp.logical_and(type_ok, value_ok)
 
     def flatten(self) -> BoxSpace:
         return BoxSpace(low=self.low.flatten(), high=self.high.flatten())
@@ -150,15 +150,6 @@ class BoxSpace(Space[jax.Array]):
 
     def __repr__(self) -> str:
         return f"Box({self.low_repr}, {self.high_repr}, {self.shape}, {self.dtype})"
-
-    def __eq__(self, other) -> bool:
-        """Check whether `other` is equivalent to this instance."""
-        return (
-            isinstance(other, self.__class__)
-            and (self.shape == other.shape)
-            and jnp.allclose(self.low, other.low)
-            and jnp.allclose(self.high, other.high)
-        )
 
 
 def get_inf(dtype, sign: str) -> int | float:
@@ -204,7 +195,7 @@ def _broadcast(
     return value
 
 
-class DiscreteSpace(Space[int]):
+class DiscreteSpace(Space[jax.Array, jnp.dtype]):
     """gym.spaces.Discrete, but without RNG"""
 
     def __init__(self, n: int, start: int = 0) -> None:
@@ -215,18 +206,17 @@ class DiscreteSpace(Space[int]):
         self.n = n
         self.start = start
 
-    def clip(self, x: int) -> int:
-        return min(max(0, x), self.n - 1)
+    def clip(self, x: jax.Array) -> jax.Array:
+        return jnp.clip(x, a_min=self.start, a_max=self.start + self.n)
 
-    def contains(self, x: int) -> bool:
+    def contains(self, x: jax.Array) -> jax.Array:
         """Return boolean specifying if x is a valid member of this space."""
-        as_int = x
-        return self.start <= as_int < self.start + self.n
+        return jnp.logical_and(self.start <= x, x < self.start + self.n)
 
     def flatten(self) -> BoxSpace:
         return BoxSpace(low=jnp.zeros(self.n), high=jnp.ones(self.n))
 
-    def sample(self, key: chex.PRNGKey) -> int:
+    def sample(self, key: chex.PRNGKey) -> jax.Array:
         rn = jax.random.randint(key, shape=self.shape, minval=0, maxval=self.n)
         return rn.item() + self.start
 
@@ -245,7 +235,7 @@ class DiscreteSpace(Space[int]):
         )
 
 
-class NamedTupleSpace(Space[NamedTuple], Iterable):
+class NamedTupleSpace(Space[NamedTuple, tuple[jnp.dtype, ...]], Iterable):
     """Space that returns namedtuple of other spaces"""
 
     def __init__(self, cls: type[tuple], **spaces_kwargs: Space) -> None:
@@ -274,13 +264,10 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         clipped = [space.clip(value) for value, space in zip(x, self.spaces)]
         return self._cls(*clipped)
 
-    def contains(self, x: tuple) -> bool:
+    def contains(self, x: NamedTuple) -> jax.Array:
         """Return boolean specifying if x is a valid member of this space."""
-        for instance, space in zip(x, self.spaces):
-            if not space.contains(instance):
-                return False
-
-        return True
+        contains = [space.contains(instance) for instance, space in zip(x, self.spaces)]
+        return jnp.all(jnp.array(contains))
 
     def flatten(self) -> BoxSpace:
         spaces = [space.flatten() for space in self.spaces]
@@ -288,7 +275,7 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         high = jnp.concatenate([space.high for space in spaces])
         return BoxSpace(low=low, high=high)
 
-    def sample(self, key: chex.PRNGKey) -> int:
+    def sample(self, key: chex.PRNGKey) -> Any:
         keys = jax.random.split(key, len(self.spaces))
         samples = [space.sample(key) for space, key in zip(self.spaces, keys)]
         return self._cls(*samples)
@@ -297,7 +284,7 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
         """Get the space that is associated to `key`."""
         return getattr(self.spaces, key)
 
-    def __iter__(self) -> Iterable[Space]:
+    def __iter__(self) -> Iterator[Space]:
         """Iterator through the keys of the subspaces."""
         yield from self.spaces
 

@@ -3,7 +3,7 @@ import functools
 import uuid
 from collections.abc import Sequence
 from dataclasses import replace
-from typing import Any, Callable, NamedTuple, Protocol
+from typing import Any, Callable, Generic, Protocol, TypeVar
 
 import chex
 import jax
@@ -24,6 +24,14 @@ def normalize(x: jax.Array, axis: Axis | None = None) -> tuple[jax.Array, jax.Ar
     norm = jnp.linalg.norm(x, axis=axis)
     n = x / jnp.clip(norm, a_min=1e-6)
     return n, norm
+
+
+T = TypeVar("T")
+
+
+def empty(cls: type[T]) -> Callable[[], T]:
+    all_fields = {f.name: jnp.empty(0) for f in dataclasses.fields(cls)}  # type: ignore
+    return lambda: cls(**all_fields)
 
 
 class PyTreeOps:
@@ -199,6 +207,15 @@ class State(PyTreeOps):
     v: Velocity
     f: Force
     is_active: jax.Array
+
+    @staticmethod
+    def empty() -> Self:
+        return State(
+            p=Position.zeros(0),
+            v=Velocity.zeros(0),
+            f=Force.zeros(0),
+            is_active=jnp.empty(0),
+        )
 
     @staticmethod
     def from_position(p: Position) -> Self:
@@ -446,20 +463,20 @@ _ALL_SHAPES = ["circle", "static_circle", "capsule", "static_capsule", "segment"
 
 @chex.dataclass
 class StateDict:
-    circle: State | None = None
-    static_circle: State | None = None
-    segment: State | None = None
-    capsule: State | None = None
-    static_capsule: State | None = None
+    circle: State = dataclasses.field(default_factory=State.empty)
+    static_circle: State = dataclasses.field(default_factory=State.empty)
+    segment: State = dataclasses.field(default_factory=State.empty)
+    capsule: State = dataclasses.field(default_factory=State.empty)
+    static_capsule: State = dataclasses.field(default_factory=State.empty)
 
     def concat(self) -> Self:
-        states = [s for s in self.values() if s is not None]  # type: ignore
+        states = [s for s in self.values() if s.batch_size() > 0]  # type: ignore
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
 
-    def _get(self, name: str, statec: State) -> State | None:
-        state: State | None = self[name]  # type: ignore
-        if state is None:
-            return None
+    def _get(self, name: str, statec: State) -> State:
+        state = self[name]  # type: ignore
+        if state.batch_size() == 0:
+            return state  # empty state
         else:
             start = _offset(self, name)
             end = start + state.p.batch_size()
@@ -479,33 +496,34 @@ class StateDict:
             static_capsule=static_capsule,
         )
 
-    @functools.partial(jax.jit, static_argnums=(1,))
     def nested_replace(self, query: str, value: Any) -> Self:
         """Convenient method for nested replace"""
         queries = query.split(".")
         objects = [self]
         for q in queries[:-1]:
             objects.append(objects[-1][q])  # type: ignore
-        obj = objects[-1].replace(**{queries[-1]: value})  # type: ignore
+        obj = replace(objects[-1], **{queries[-1]: value})
         for o, q in zip(objects[-2::-1], queries[-2::-1]):
-            obj = o.replace(**{q: obj})  # type: ignore
+            obj = replace(o, **{q: obj})
         return obj
 
 
 @chex.dataclass
 class ShapeDict:
-    circle: Circle | None = None
-    static_circle: Circle | None = None
-    capsule: Capsule | None = None
-    static_capsule: Capsule | None = None
-    segment: Segment | None = None
+    circle: Circle = dataclasses.field(default_factory=empty(Circle))
+    static_circle: Circle = dataclasses.field(default_factory=empty(Circle))
+    capsule: Capsule = dataclasses.field(default_factory=empty(Capsule))
+    static_capsule: Capsule = dataclasses.field(default_factory=empty(Capsule))
+    segment: Segment = dataclasses.field(default_factory=empty(Segment))
 
     def concat(self) -> Shape:
-        shapes = [s.to_shape() for s in self.values() if s is not None]
+        shapes = [
+            s.to_shape() for s in self.values() if s.batch_size() > 0  # type: ignore
+        ]
         return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *shapes)
 
     def n_shapes(self) -> int:
-        return sum([s.batch_size() for s in self.values() if s is not None])
+        return sum([s.batch_size() for s in self.values()])  # type: ignore
 
     def zeros_state(self) -> StateDict:
         circle = then(self.circle, lambda s: State.zeros(len(s.mass)))
@@ -527,16 +545,20 @@ def _offset(sd: ShapeDict | StateDict, name: str) -> int:
     for key in _ALL_SHAPES:
         if key == name:
             return total
-        s = sd[key]
+        s = sd[key]  # type: ignore
         if s is not None:
             total += s.batch_size()
     raise RuntimeError("Unreachable")
 
 
+S1 = TypeVar("S1", bound=Shape)
+S2 = TypeVar("S2", bound=Shape)
+
+
 @chex.dataclass
-class ContactIndices:
-    shape1: Shape
-    shape2: Shape
+class ContactIndices(Generic[S1, S2]):
+    shape1: S1
+    shape2: S2
     index1: jax.Array
     index2: jax.Array
 
@@ -572,7 +594,7 @@ def _pair_ci(shape1: Shape, shape2: Shape) -> ContactIndices:
     )
 
 
-def _circle_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
+def _circle_to_circle(ci: ContactIndices[Circle, Circle], stated: StateDict) -> Contact:
     pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
     pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.circle.is_active[ci.index1]
@@ -586,7 +608,10 @@ def _circle_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
     )
 
 
-def _circle_to_static_circle(ci: ContactIndices, stated: StateDict) -> Contact:
+def _circle_to_static_circle(
+    ci: ContactIndices[Circle, Circle],
+    stated: StateDict,
+) -> Contact:
     pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
     pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.static_circle.p)
     is_active1 = stated.circle.is_active[ci.index1]
@@ -600,12 +625,15 @@ def _circle_to_static_circle(ci: ContactIndices, stated: StateDict) -> Contact:
     )
 
 
-def _capsule_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
+def _capsule_to_circle(
+    ci: ContactIndices[Capsule, Circle],
+    stated: StateDict,
+) -> Contact:
     pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.capsule.p)
     pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.capsule.is_active[ci.index1]
     is_active2 = stated.circle.is_active[ci.index2]
-    return _circle_to_circle_impl(
+    return _capsule_to_circle_impl(
         ci.shape1,
         ci.shape2,
         pos1,
@@ -614,7 +642,10 @@ def _capsule_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
     )
 
 
-def _segment_to_circle(ci: ContactIndices, stated: StateDict) -> Contact:
+def _segment_to_circle(
+    ci: ContactIndices[Segment, Circle],
+    stated: StateDict,
+) -> Contact:
     pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.segment.p)
     pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.segment.is_active[ci.index1]
@@ -662,24 +693,25 @@ class Space:
         default_factory=dict,
         init=False,
     )
-    _ci_total: ContactIndices | None = dataclasses.field(default=None, init=False)
+    _ci_total: ContactIndices = dataclasses.field(init=False)
     _hash_key: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4, init=False)
 
     def __hash__(self) -> int:
         return hash(self._hash_key)
 
-    def __eq__(self, other: Any) -> int:
+    def __eq__(self, other: Any) -> bool:
         return self._hash_key == other._hash_key
 
     def __post_init__(self) -> None:
         ci_slided_list = []
         offset = 0
         for n1, n2 in _CONTACT_FUNCTIONS.keys():
-            if self.shaped[n1] is not None and self.shaped[n2] is not None:
+            shape1, shape2 = self.shaped[n1], self.shaped[n2]  # type: ignore
+            if shape1.batch_size() > 0 and shape2.batch_size() > 0:
                 if n1 == n2:
-                    ci = _self_ci(self.shaped[n1])
+                    ci = _self_ci(shape1)  # Type
                 else:
-                    ci = _pair_ci(self.shaped[n1], self.shaped[n2])
+                    ci = _pair_ci(shape1, shape2)
                 self._ci[n1, n2] = ci
                 offset_start = offset
                 offset += ci.shape1.batch_size()
@@ -710,19 +742,20 @@ class Space:
     def n_possible_contacts(self) -> int:
         n = 0
         for n1, n2 in _CONTACT_FUNCTIONS.keys():
-            if self.shaped[n1] is not None and self.shaped[n2] is not None:
-                len1, len2 = len(self.shaped[n1].mass), len(self.shaped[n2].mass)
-                if n1 == n2:
-                    n += len1 * (len1 - 1) // 2
-                else:
-                    n += len1 * len2
+            shape1, shape2 = self.shaped[n1], self.shaped[n2]  # type: ignore
+            len1, len2 = shape1.batch_size(), shape2.batch_size()
+            if n1 == n2:
+                n += len1 * (len1 - 1) // 2
+            else:
+                n += len1 * len2
         return n
 
     def get_contact_mat(self, n1: str, n2: str, contact: jax.Array) -> jax.Array:
         contact_offset = self._contact_offset.get((n1, n2), None)
         assert contact_offset is not None
         from_, to = contact_offset
-        size1, size2 = self.shaped[n1].batch_size(), self.shaped[n2].batch_size()
+        size1 = self.shaped[n1].batch_size()  # type: ignore
+        size2 = self.shaped[n2].batch_size()  # type: ignore
         cnt = contact[from_:to]
         if n1 == n2:
             ret = jnp.zeros((size1, size1), dtype=bool)
@@ -766,14 +799,14 @@ def update_velocity(space: Space, shape: Shape, state: State) -> State:
     # Damping: dv/dt + vc = 0 -> v(t) = v0 * exp(-tc)
     # v(t + dt) = v0 * exp(-tc - dtc) = v0 * exp(-tc) * exp(-dtc) = v(t)exp(-dtc)
     # Thus, linear/angular damping factors are actually exp(-dtc)
-    return state.replace(v=Velocity(angle=v_ang, xy=v_xy), f=state.f.zeros_like())
+    return replace(state, v=Velocity(angle=v_ang, xy=v_xy), f=state.f.zeros_like())
 
 
 def update_position(space: Space, state: State) -> State:
     v_dt = state.v * space.dt
     xy = state.p.xy + v_dt.xy
     angle = (state.p.angle + v_dt.angle + TWO_PI) % TWO_PI
-    return state.replace(p=Position(angle=angle, xy=xy))
+    return replace(state, p=Position(angle=angle, xy=xy))
 
 
 def init_contact_helper(
@@ -838,7 +871,7 @@ def apply_initial_impulse(
         angle=helper.inv_moment2 * jnp.cross(helper.r2, p),
         xy=p * helper.inv_mass2,
     )
-    return solver.replace(v1=v1, v2=v2)
+    return replace(solver, v1=v1, v2=v2)
 
 
 def _rv_a2b(a: jax.Array, ra: jax.Array, b: jax.Array, rb: jax.Array):
@@ -977,7 +1010,7 @@ def correct_position(
     # Filter p1/p2
     dp1 = jnp.where(solver.contact, dp1, 0.0)
     dp2 = jnp.where(solver.contact, dp2, 0.0)
-    return solver.replace(p1=dp1, p2=dp2, min_separation=min_sep)
+    return replace(solver, p1=dp1, p2=dp2, min_separation=min_sep)
 
 
 def solve_constraints(
@@ -1006,31 +1039,31 @@ def solve_constraints(
         v2,
     )
     # Warm up the velocity solver
-    solver = solver.replace(v1=v1.into_axy(), v2=v2.into_axy())
+    solver = replace(solver, v1=v1.into_axy(), v2=v2.into_axy())
     solver = apply_initial_impulse(contact, helper, solver)
 
     def vstep(
-        _n_iter: int,
-        vs: tuple[Velocity, VelocitySolver],
-    ) -> tuple[Velocity, VelocitySolver]:
+        _: int,
+        vs: tuple[jax.Array, VelocitySolver],
+    ) -> tuple[jax.Array, VelocitySolver]:
         v_i, solver_i = vs
         solver_i1 = apply_velocity_normal(contact, helper, solver_i)
         v_i1 = gather(solver_i1.v1, solver_i1.v2, v_i)
-        return v_i1, solver_i1.replace(v1=v_i1[idx1], v2=v_i1[idx2])
+        return v_i1, replace(solver_i1, v1=v_i1[idx1], v2=v_i1[idx2])
 
-    v, solver = jax.lax.fori_loop(
+    v_axy, solver = jax.lax.fori_loop(
         0,
         space.n_velocity_iter,
         vstep,
         (v.into_axy(), solver),
     )
     bv1, bv2 = apply_bounce(contact, helper, solver)
-    v = gather(bv1, bv2, v)
+    v_axy = gather(bv1, bv2, v_axy)
 
     def pstep(
-        _n_iter: int,
-        ps: tuple[Position, PositionSolver],
-    ) -> tuple[Position, PositionSolver]:
+        _: int,
+        ps: tuple[jax.Array, PositionSolver],
+    ) -> tuple[jax.Array, PositionSolver]:
         p_i, solver_i = ps
         solver_i1 = correct_position(
             space.bias_factor,
@@ -1041,7 +1074,7 @@ def solve_constraints(
             solver_i,
         )
         p_i1 = gather(solver_i1.p1, solver_i1.p2, p_i)
-        return p_i1, solver_i1.replace(p1=p_i1[idx1], p2=p_i1[idx2])
+        return p_i1, replace(solver_i1, p1=p_i1[idx1], p2=p_i1[idx2])
 
     pos_solver = PositionSolver(
         p1=p1.into_axy(),
@@ -1049,13 +1082,13 @@ def solve_constraints(
         contact=solver.contact,
         min_separation=jnp.zeros_like(p1.angle),
     )
-    p, pos_solver = jax.lax.fori_loop(
+    p_axy, pos_solver = jax.lax.fori_loop(
         0,
         space.n_position_iter,
         pstep,
         (p.into_axy(), pos_solver),
     )
-    return Velocity.from_axy(v), Position.from_axy(p), solver
+    return Velocity.from_axy(v_axy), Position.from_axy(p_axy), solver
 
 
 def step(
@@ -1072,7 +1105,7 @@ def step(
         state.v,
         contact,
     )
-    state = update_position(space, state.replace(v=v, p=p))
+    state = update_position(space, replace(state, v=v, p=p))
     return stated.update(state), solver, contact
 
 

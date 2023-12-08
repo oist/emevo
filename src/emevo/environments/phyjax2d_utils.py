@@ -1,10 +1,11 @@
 import dataclasses
 import warnings
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax._src.numpy.lax_numpy import TypeVar
 
 from emevo.environments.phyjax2d import (
     Capsule,
@@ -15,6 +16,7 @@ from emevo.environments.phyjax2d import (
     Space,
     StateDict,
     _vmap_dot,
+    empty,
 )
 from emevo.vec2d import Vec2d, Vec2dLike
 
@@ -40,8 +42,8 @@ _BLACK = Color.black()
 
 
 def _mass_and_moment(
-    mass: float = 1.0,
-    moment: float = 1.0,
+    mass: jax.Array,
+    moment: jax.Array,
     is_static: bool = False,
 ) -> tuple[jax.Array, jax.Array]:
     if is_static:
@@ -68,6 +70,16 @@ def _capsule_mass(
     box_moment = (4 * rr + ll) / 12
     moment = mass * (circle_moment + box_moment)
     return jnp.array([mass]), jnp.array([moment])
+
+
+S = TypeVar("S", bound=Shape)
+
+
+def _concat_or(sl: list[S], default_fn: Callable[[], S]) -> S:
+    if len(sl) > 0:
+        return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *sl)
+    else:
+        return default_fn()
 
 
 def _check_params_positive(friction: float, **kwargs) -> None:
@@ -186,7 +198,7 @@ class SpaceBuilder:
             friction=friction,
             elasticity=elasticity,
         )
-        mass, moment = _mass_and_moment(is_static=True)
+        mass, moment = jnp.array([jnp.inf]), jnp.array([jnp.inf])
         point1 = jnp.array(p1).reshape(1, 2)
         point2 = jnp.array(p2).reshape(1, 2)
         segment = Segment(
@@ -216,7 +228,7 @@ class SpaceBuilder:
             friction=friction,
             elasticity=elasticity,
         )
-        mass, moment = _mass_and_moment(is_static=True)
+        mass, moment = jnp.array([jnp.inf]), jnp.array([jnp.inf])
         n_points = len(chain_points)
         for i in range(n_points):
             g1 = chain_points[i - 1][0]
@@ -238,18 +250,12 @@ class SpaceBuilder:
             self.segments.append(segment)
 
     def build(self) -> Space:
-        def concat_or(sl: list[Shape]) -> Shape | None:
-            if len(sl) > 0:
-                return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *sl)
-            else:
-                return None
-
         shaped = ShapeDict(
-            circle=concat_or(self.circles),
-            static_circle=concat_or(self.static_circles),
-            segment=concat_or(self.segments),
-            capsule=concat_or(self.capsules),
-            static_capsule=concat_or(self.static_capsules),
+            circle=_concat_or(self.circles, empty(Circle)),
+            static_circle=_concat_or(self.static_circles, empty(Circle)),
+            segment=_concat_or(self.segments, empty(Segment)),
+            capsule=_concat_or(self.capsules, empty(Capsule)),
+            static_capsule=_concat_or(self.static_capsules, empty(Capsule)),
         )
         dt = self.dt
         linear_damping = jnp.exp(-dt * self.linear_damping).item()
@@ -326,7 +332,7 @@ def circle_overlap(
     shaped: ShapeDict,
     stated: StateDict,
     xy: jax.Array,
-    radius: jax.Array,
+    radius: jax.Array | float,
 ) -> jax.Array:
     # Circle overlap
     if stated.circle is not None and shaped.circle is not None:

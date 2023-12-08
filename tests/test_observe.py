@@ -1,12 +1,15 @@
+import typing
+
 import chex
 import jax
 import jax.numpy as jnp
 import pytest
 
-from emevo import Env, TimeStep, make
+from emevo import TimeStep, make
 from emevo.environments.circle_foraging import (
     CFObs,
     CFState,
+    CircleForaging,
     _observe_closest,
     get_sensor_obs,
 )
@@ -21,7 +24,7 @@ def key() -> chex.PRNGKey:
     return jax.random.PRNGKey(43)
 
 
-def reset_env(key: chex.PRNGKey) -> tuple[Env, CFState, TimeStep[CFObs]]:
+def reset_env(key: chex.PRNGKey) -> tuple[CircleForaging, CFState, TimeStep[CFObs]]:
     #     x
     #   O x O
     # O x O  O  (O: agent, x: food)
@@ -50,7 +53,7 @@ def reset_env(key: chex.PRNGKey) -> tuple[Env, CFState, TimeStep[CFObs]]:
         food_radius=FOOD_RADIUS,
     )
     state, timestep = env.reset(key)
-    return env, state, timestep
+    return typing.cast(CircleForaging, env), state, timestep
 
 
 def test_observe_closest(key: chex.PRNGKey) -> None:
@@ -144,7 +147,8 @@ def test_encount_and_collision(key: chex.PRNGKey) -> None:
 
     act2 = jnp.zeros((10, 2)).at[2:5].set(20.0)
     p2p4_ok, p3_ok = False, False
-    for i in range(100):
+    n_iter = 0
+    for _ in range(100):
         p2 = state.physics.circle.p.xy[2]
         p3 = state.physics.circle.p.xy[3]
         p4 = state.physics.circle.p.xy[4]
@@ -163,12 +167,13 @@ def test_encount_and_collision(key: chex.PRNGKey) -> None:
 
         if p2p4_ok and p3_ok:
             break
+        n_iter += 1
 
-    assert i < 99
+    assert n_iter < 99
 
 
 def test_asarray(key: chex.PRNGKey) -> None:
-    env, state, timestep = reset_env(key)
+    env, _, timestep = reset_env(key)
     obs = timestep.obs.as_array()
     obs_shape = env.obs_space.flatten().shape[0]
     chex.assert_shape(obs, (N_MAX_AGENTS, obs_shape))

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, cast
 
 import chex
 import jax
@@ -25,10 +25,10 @@ class FoodNumState:
         return (self.internal - self.current) >= 1.0
 
     def eaten(self, n: int | jax.Array) -> Self:
-        return self.replace(current=self.current - n, internal=self.internal - n)
+        return FoodNumState(current=self.current - n, internal=self.internal - n)
 
     def recover(self, n: int | jax.Array = 1) -> Self:
-        return self.replace(current=self.current + n)
+        return dataclasses.replace(self, current=self.current + n)
 
 
 class ReprNumFn(Protocol):
@@ -44,7 +44,10 @@ class ReprNumConstant:
 
     def __call__(self, state: FoodNumState) -> FoodNumState:
         # Do nothing here
-        return state.replace(internal=jnp.array(self.initial, dtype=jnp.float32))
+        return dataclasses.replace(
+            state,
+            internal=jnp.array(self.initial, dtype=jnp.float32),
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,7 +59,7 @@ class ReprNumLinear:
         # Increase the number of foods by dn_dt
         internal = jnp.fmax(state.current, state.internal)
         internal = jnp.clip(internal + self.dn_dt, a_max=float(self.initial))
-        return state.replace(internal=internal)
+        return dataclasses.replace(state, internal=internal)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -68,7 +71,7 @@ class ReprNumLogistic:
     def __call__(self, state: FoodNumState) -> FoodNumState:
         internal = jnp.fmax(state.current, state.internal)
         dn_dt = self.growth_rate * internal * (1 - internal / self.capacity)
-        return state.replace(internal=internal + dn_dt)
+        return dataclasses.replace(state, internal=internal + dn_dt)
 
 
 class ReprNum(str, enum.Enum):
@@ -97,14 +100,16 @@ class ReprNum(str, enum.Enum):
             fn = ReprNumLogistic(*args, **kwargs)
         else:
             raise AssertionError("Unreachable")
-        return fn, state
+        return cast(ReprNumFn, fn), state
 
 
 class Coordinate(Protocol):
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
         ...
 
-    def contains_circle(self, center: jax.Array, radius: jax.Array) -> jax.Array:
+    def contains_circle(
+        self, center: jax.Array, radius: jax.Array | float
+    ) -> jax.Array:
         ...
 
     def uniform(self, key: chex.PRNGKey) -> jax.Array:
@@ -121,7 +126,9 @@ class CircleCoordinate(Coordinate):
         r = self.radius
         return (cx - r, cx + r), (cy - r, cy + r)
 
-    def contains_circle(self, center: jax.Array, radius: jax.Array) -> jax.Array:
+    def contains_circle(
+        self, center: jax.Array, radius: jax.Array | float
+    ) -> jax.Array:
         a2b = center - jnp.array(self.center)
         distance = jnp.linalg.norm(a2b, ord=2)
         return distance + radius <= self.radius
@@ -148,7 +155,9 @@ class SquareCoordinate(Coordinate):
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
         return self.xlim, self.ylim
 
-    def contains_circle(self, center: jax.Array, radius: jax.Array) -> jax.Array:
+    def contains_circle(
+        self, center: jax.Array, radius: jax.Array | float
+    ) -> jax.Array:
         xmin, xmax = self.xlim
         ymin, ymax = self.ylim
         low = jnp.array([xmin, ymin]) + radius
@@ -168,8 +177,8 @@ class LocatingState:
     n_produced: jax.Array
     n_trial: jax.Array
 
-    def increment(self, n: int = 1) -> Self:
-        return self.replace(n_produced=self.n_produced + n, n_trial=self.n_trial + 1)
+    def increment(self, n: jax.Array | int = 1) -> Self:
+        return LocatingState(n_produced=self.n_produced + n, n_trial=self.n_trial + 1)
 
 
 LocatingFn = Callable[[chex.PRNGKey, LocatingState], jax.Array]
@@ -207,7 +216,7 @@ def loc_gaussian(mean: ArrayLike, stddev: ArrayLike) -> LocatingFn:
     mean_a = jnp.array(mean)
     std_a = jnp.array(stddev)
     shape = mean_a.shape
-    return lambda key, _state: jax.random.normal(key, shape=shape) * std_a + mean_a
+    return lambda key, _: jax.random.normal(key, shape=shape) * std_a + mean_a
 
 
 def loc_gaussian_mixture(
@@ -220,7 +229,7 @@ def loc_gaussian_mixture(
     probs_a = jnp.array(probs)
     n = probs_a.shape[0]
 
-    def sample(key: chex.PRNGKey, _state: LocatingState) -> jax.Array:
+    def sample(key: chex.PRNGKey, _: LocatingState) -> jax.Array:
         k1, k2 = jax.random.split(key)
         i = jax.random.choice(k1, n, p=probs_a)
         mi, si = mean_a[i], stddev_a[i]
@@ -230,7 +239,7 @@ def loc_gaussian_mixture(
 
 
 def loc_uniform(coordinate: Coordinate) -> LocatingFn:
-    return lambda key, _state: coordinate.uniform(key)
+    return lambda key, _: coordinate.uniform(key)
 
 
 class LocPeriodic:
@@ -238,7 +247,7 @@ class LocPeriodic:
         self._locations = jnp.array(locations)
         self._n = self._locations.shape[0]
 
-    def __call__(self, _key: chex.PRNGKey, state: LocatingState) -> jax.Array:
+    def __call__(self, _: chex.PRNGKey, state: LocatingState) -> jax.Array:
         return self._locations[state.n_trial % self._n]
 
 
@@ -277,7 +286,7 @@ def place(
     key: chex.PRNGKey,
     shaped: ShapeDict,
     stated: StateDict,
-) -> tuple[jax.Array, bool]:
+) -> tuple[jax.Array, jax.Array]:
     """Returns `[inf, inf]` if it fails"""
     keys = jax.random.split(key, n_trial)
     vmap_loc_fn = jax.vmap(loc_fn, in_axes=(0, None))
@@ -290,7 +299,5 @@ def place(
         radius,
     )
     ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
-    # print(locations)
-    # print(overlap)
     mask = jnp.expand_dims(first_true(ok), axis=1)
     return jnp.sum(mask * locations, axis=0), jnp.any(ok)

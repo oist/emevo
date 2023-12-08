@@ -35,7 +35,7 @@ class Profile:
         unique_id = self.unique_id.at[index].set(uid)
         birthtime = self.birthtime.at[index].set(step)
         generation = self.generation.at[index].set(parent_gen + 1)
-        return self.replace(
+        return Profile(
             birthtime=birthtime,
             generation=generation,
             unique_id=unique_id,
@@ -45,7 +45,7 @@ class Profile:
         unique_id = self.unique_id.at[index].set(-1)
         birthtime = self.birthtime.at[index].set(-1)
         generation = self.generation.at[index].set(-1)
-        return self.replace(
+        return Profile(
             birthtime=birthtime,
             generation=generation,
             unique_id=unique_id,
@@ -122,7 +122,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def activate(self, state: STATE, parent_gen: int | jax.Array) -> tuple[STATE, bool]:
+    def activate(self, state: STATE, parent_gen: jax.Array) -> tuple[STATE, jax.Array]:
         """
         Mark an agent or some agents active.
         This method fails if there isn't enough space, returning (STATE, False).
@@ -141,6 +141,6 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def visualizer(self, headless: bool = False, **kwargs) -> Visualizer:
+    def visualizer(self, state: STATE, **kwargs) -> Visualizer:
         """Create a visualizer for the environment"""
         pass

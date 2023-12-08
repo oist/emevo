@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import cast, NamedTuple
 
 import chex
 import distrax
@@ -26,10 +26,10 @@ class Output(NamedTuple):
 
 
 class NormalPPONet(eqx.Module):
-    torso: list[eqx.Module]
+    torso: list
     value_head: eqx.nn.Linear
     mean_head: eqx.nn.Linear
-    logstd_param: eqx.nn.Linear
+    logstd_param: jax.Array
 
     def __init__(
         self,
@@ -83,7 +83,7 @@ class Rollout:
     logstds: jax.Array
 
 
-@chex.dataclass(frozen=True, mappable_dataclass=False)
+@chex.dataclass
 class Batch:
     """Batch for PPO, indexable to get a minibatch."""
 
@@ -150,7 +150,7 @@ def make_batch(
         rewards=rollout.rewards.ravel(),
         advantages=advantages.ravel(),
         value_targets=value_targets.ravel(),
-        log_action_probs=log_action_probs,
+        log_action_probs=cast(jax.Array, log_action_probs),
     )
 
 
@@ -228,8 +228,8 @@ def update_network(
             entropy_weight,
         )
         updates, new_opt_state = optax_update(grad, opt_state)
-        dynamic_net = optax.apply_updates(dynamic_net, updates)
-        return (new_opt_state, dynamic_net), None
+        dynamic_net = optax.apply_updates(dynamic_net, updates)  # type: ignore
+        return (new_opt_state, cast(NormalPPONet, dynamic_net)), None
 
     # Prepare minibatches
     minibatches = get_minibatches(batch, key, minibatch_size, n_epochs)
@@ -246,7 +246,7 @@ def update_network(
 
 
 @eqx.filter_vmap(in_axes=(eqx.if_array(0), 0))
-def vmap_apply(net: NormalPPONet, obs: jax.Array) -> jax.Array:
+def vmap_apply(net: NormalPPONet, obs: jax.Array) -> Output:
     return net(obs)
 
 

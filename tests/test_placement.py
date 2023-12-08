@@ -5,7 +5,7 @@ import pytest
 
 from emevo.environments.circle_foraging import _make_physics
 from emevo.environments.env_utils import CircleCoordinate, Locating, place
-from emevo.environments.phyjax2d import Space, StateDict
+from emevo.environments.phyjax2d import Space
 
 N_MAX_AGENTS = 20
 N_MAX_FOODS = 10
@@ -18,9 +18,9 @@ def key() -> chex.PRNGKey:
     return jax.random.PRNGKey(43)
 
 
-def get_space_and_more() -> tuple[Space, StateDict, CircleCoordinate]:
+def get_space_and_coordinate() -> tuple[Space, CircleCoordinate]:
     coordinate = CircleCoordinate((100.0, 100.0), 100.0)
-    space, seg_state = _make_physics(
+    space = _make_physics(
         0.1,
         coordinate,
         linear_damping=0.9,
@@ -32,16 +32,15 @@ def get_space_and_more() -> tuple[Space, StateDict, CircleCoordinate]:
         agent_radius=AGENT_RADIUS,
         food_radius=FOOD_RADIUS,
     )
-    stated = space.shaped.zeros_state().replace(segment=seg_state)
-    return space, stated, coordinate
+    return space, coordinate
 
 
 def test_place_agents(key) -> None:
     n = N_MAX_AGENTS // 2
     keys = jax.random.split(key, n)
-    space, stated, coordinate = get_space_and_more()
+    space, coordinate = get_space_and_coordinate()
     initloc_fn, initloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
-    assert stated.circle is not None
+    stated = space.shaped.zeros_state()
     for i, key in enumerate(keys):
         xy, ok = place(
             n_trial=10,
@@ -53,6 +52,7 @@ def test_place_agents(key) -> None:
             shaped=space.shaped,
             stated=stated,
         )
+        assert stated.circle is not None
         assert ok, stated.circle.p.xy
         stated = stated.nested_replace("circle.p.xy", stated.circle.p.xy.at[i].set(xy))
 
@@ -72,9 +72,9 @@ def test_place_agents(key) -> None:
 def test_place_foods(key) -> None:
     n = N_MAX_FOODS // 2
     keys = jax.random.split(key, n)
-    space, stated, coordinate = get_space_and_more()
+    space, coordinate = get_space_and_coordinate()
     reprloc_fn, reprloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
-    assert stated.static_circle is not None
+    stated = space.shaped.zeros_state()
     for i, key in enumerate(keys):
         xy, ok = place(
             n_trial=10,
@@ -86,7 +86,8 @@ def test_place_foods(key) -> None:
             shaped=space.shaped,
             stated=stated,
         )
-        assert ok, stated.circle.p.xy
+        assert stated.static_circle is not None
+        assert ok, stated.static_circle.p.xy
         stated = stated.nested_replace(
             "static_circle.p.xy",
             stated.static_circle.p.xy.at[i].set(xy),
