@@ -3,6 +3,7 @@
 import datetime
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import typer
 from tqdm import tqdm
@@ -58,13 +59,14 @@ def main(
     else:
         visualizer = None
 
-    activate_index = n_agents
     jit_step = jax.jit(env.step)
-    # jit_step = env.step
     jit_sample = jax.jit(
         lambda key: jax.vmap(env.act_space.sample)(jax.random.split(key, n_max_agents))
     )
     elapsed_list = []
+
+    replace_interval = steps // 10
+    deactivate_index = n_agents - 1
     for i in tqdm(range(steps)):
         before = datetime.datetime.now()
         state, _ = jit_step(state, jit_sample(keys[i + 1]))
@@ -74,19 +76,14 @@ def main(
         elif i > 10:
             elapsed_list.append(elapsed / datetime.timedelta(microseconds=1))
 
-        if replace and i % 1000 == 0:
-            if n_agents + 5 <= activate_index:
-                state, success = env.deactivate(state, activate_index)
-                if not success:
-                    print(f"Failed to deactivate agent! {activate_index}")
-                else:
-                    activate_index -= 1
+        if replace and i % replace_interval == 0:
+            if i < steps // 2:
+                state = env.deactivate(state, deactivate_index)
+                deactivate_index -= 1
             else:
-                state, success = env.activate(state, 0)
+                state, success = env.activate(state, jnp.array(0))
                 if not success:
                     print("Failed to activate agent!")
-                else:
-                    activate_index += 1
 
         if visualizer is not None:
             visualizer.render(state)

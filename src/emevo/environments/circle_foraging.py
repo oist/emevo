@@ -574,8 +574,13 @@ class CircleForaging(Env):
     ) -> tuple[CFState, jax.Array]:
         circle = state.physics.circle
         key, place_key = jax.random.split(state.key)
-        new_xy, ok = self._place_agent(key=place_key, stated=state.physics)
-        place = jnp.logical_or(first_true(jnp.logical_not(circle.is_active)), ok)
+        new_xy, ok = self._place_agent(
+            loc_state=state.agent_loc,
+            key=place_key,
+            stated=state.physics,
+        )
+        first_inactive = first_true(jnp.logical_not(circle.is_active))
+        place = jnp.logical_and(first_inactive, ok)
         xy = jnp.where(
             jnp.expand_dims(place, axis=1),
             jnp.expand_dims(new_xy, axis=0),
@@ -598,6 +603,7 @@ class CircleForaging(Env):
             state,
             physics=physics,
             profile=profile,
+            agent_loc=state.agent_loc.increment(jnp.sum(place)),
             n_born_agents=state.n_born_agents + jnp.sum(place),
             key=key,
         )
@@ -617,13 +623,12 @@ class CircleForaging(Env):
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
-        state = CFState(  # type: ignore
+        state = CFState(
             physics=physics,
             solver=self._physics.init_solver(),
             agent_loc=agent_loc,
             food_loc=food_loc,
             food_num=self._initial_foodnum_state,
-            # Protocols
             key=key,
             step=jnp.array(0, dtype=jnp.int32),
             profile=init_profile(self._n_initial_agents, self._n_max_agents),
