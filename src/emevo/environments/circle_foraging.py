@@ -547,9 +547,9 @@ class CircleForaging(Env):
             velocity=stated.circle.v.xy,
             angular_velocity=stated.circle.v.angle,
         )
-        # energy_delta = food - coef * force
-        force_sum = jnp.abs(f1_raw) + jnp.abs(f2_raw)
-        energy_delta = food_collision - self._force_energy_consumption * force_sum
+        # energy_delta = food - coef * |force|
+        force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2)
+        energy_delta = food_collision - self._force_energy_consumption * force_norm
         timestep = TimeStep(encount=c2c, obs=obs)
         # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)

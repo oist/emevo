@@ -11,12 +11,12 @@ import numpy as np
 import optax
 import typer
 
-from emevo import Env, Profile, make
+from emevo import Env, make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
+from emevo.rl.ppo_normal import NormalPPONet
+from emevo.rl.ppo_normal import Rollout as OriginalRollout
 from emevo.rl.ppo_normal import (
-    NormalPPONet,
-    Rollout,
     vmap_apply,
     vmap_batch,
     vmap_net,
@@ -26,6 +26,24 @@ from emevo.rl.ppo_normal import (
 from emevo.visualizer import SaveVideoWrapper
 
 N_MAX_AGENTS: int = 10
+
+
+@chex.dataclass
+class Rollout(OriginalRollout):
+    collision: jax.Array
+
+
+class LinearReward(eqx.Module):
+    weight: jax.Array
+    max_action_norm: float
+
+    def __init__(self, max_action_norm: float, key: chex.PRNGKey) -> None:
+        self.weight = jax.random.normal(key, (1, 4))
+        self.max_action_norm = max_action_norm
+
+    def __call__(self, collision: jax.Array, action: jax.Array) -> jax.Array:
+        action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
+        return jnp.concatenate((collision, action_norm), axis=1) @ self.weight.T
 
 
 def weight_summary(network):
@@ -70,16 +88,16 @@ def exec_rollout(
     state: State,
     initial_obs: Obs,
     env: Env,
-    network: NormalPPONet
+    network: NormalPPONet,
     reward_fn: RewardFn,
     prng_key: jax.Array,
     n_rollout_steps: int,
 ) -> tuple[State, Rollout, Obs, jax.Array]:
     def step_rollout(
-        carried: tuple[State, Obs, Profile],
+        carried: tuple[State, Obs],
         key: jax.Array,
-    ) -> tuple[tuple[State, Obs, Profile], Rollout]:
-        state_t, obs_t, profile = carried
+    ) -> tuple[tuple[State, Obs], Rollout]:
+        state_t, obs_t = carried
         obs_t_array = obs_t.as_array()
         net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=key)

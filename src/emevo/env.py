@@ -59,7 +59,19 @@ def init_profile(n: int, max_n: int) -> Profile:
     )
 
 
+class ObsProtocol(Protocol):
+    """Abstraction for agent's observation"""
+
+    def as_array(self) -> jax.Array:
+        ...
+
+
+OBS = TypeVar("OBS", bound="ObsProtocol")
+
+
 class StateProtocol(Protocol):
+    """Environment's internal state"""
+
     key: chex.PRNGKey
     step: jax.Array
     profile: Profile
@@ -73,20 +85,10 @@ class StateProtocol(Protocol):
 STATE = TypeVar("STATE", bound="StateProtocol")
 
 
-class ObsProtocol(Protocol):
-    """Each state should have PRNG key"""
-
-    def as_array(self) -> jax.Array:
-        ...
-
-
-OBS = TypeVar("OBS", bound="ObsProtocol")
-
-
 @chex.dataclass
 class TimeStep(Generic[OBS]):
-    encount: jax.Array | None
     obs: OBS
+    encount: jax.Array
     info: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
