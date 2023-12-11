@@ -81,7 +81,7 @@ def main(
                 state = env.deactivate(state, deactivate_index)
                 deactivate_index -= 1
             else:
-                state, success = env.activate(state, jnp.array(0))
+                state, success = env.activate(state, jnp.array(0), jnp.array(10.0))
                 if not success:
                     print("Failed to activate agent!")
 

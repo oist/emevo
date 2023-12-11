@@ -44,6 +44,7 @@ from emevo.environments.phyjax2d_utils import (
     make_square,
 )
 from emevo.spaces import BoxSpace, NamedTupleSpace
+from emevo.status import Status, init_status
 from emevo.types import Index
 from emevo.vec2d import Vec2d
 
@@ -87,6 +88,7 @@ class CFState:
     key: chex.PRNGKey
     step: jax.Array
     profile: Profile
+    status: Status
     n_born_agents: jax.Array
 
     @property
@@ -311,6 +313,8 @@ class CircleForaging(Env):
         angular_damping: float = 0.6,
         max_force: float = 40.0,
         min_force: float = -20.0,
+        init_energy: float = 20.0,
+        energy_capacity: float = 100.0,
         force_energy_consumption: float = 0.01 / 40.0,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
@@ -351,6 +355,8 @@ class CircleForaging(Env):
         self._n_initial_foods = self._food_num_fn.initial
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
+        self._init_energy = init_energy
+        self._energy_capacity = energy_capacity
         # Physics
         if isinstance(obstacles, str):
             obs_list = Obstacle(obstacles).as_list(self._x_range, self._y_range)
@@ -544,7 +550,7 @@ class CircleForaging(Env):
         # energy_delta = food - coef * force
         force_sum = jnp.abs(f1_raw) + jnp.abs(f2_raw)
         energy_delta = food_collision - self._force_energy_consumption * force_sum
-        timestep = TimeStep(encount=c2c, obs=obs, energy_delta=energy_delta)
+        timestep = TimeStep(encount=c2c, obs=obs)
         # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)
         stated, food_num, food_loc = self._remove_and_reproduce_foods(
@@ -554,6 +560,7 @@ class CircleForaging(Env):
             state.food_num,
             state.food_loc,
         )
+        status = state.status.update(energy_delta=energy_delta)
         state = CFState(
             physics=stated,
             solver=solver,
@@ -563,6 +570,7 @@ class CircleForaging(Env):
             key=key,
             step=state.step + 1,
             profile=state.profile,
+            status=status,
             n_born_agents=state.n_born_agents,
         )
         return state, timestep
@@ -571,6 +579,7 @@ class CircleForaging(Env):
         self,
         state: CFState,
         parent_gen: jax.Array,
+        init_energy: jax.Array,
     ) -> tuple[CFState, jax.Array]:
         circle = state.physics.circle
         key, place_key = jax.random.split(state.key)
@@ -599,10 +608,12 @@ class CircleForaging(Env):
             state.n_born_agents,
             state.step,
         )
+        status = state.status.activate(place, init_energy=init_energy)
         new_state = replace(
             state,
             physics=physics,
             profile=profile,
+            status=status,
             agent_loc=state.agent_loc.increment(jnp.sum(place)),
             n_born_agents=state.n_born_agents + jnp.sum(place),
             key=key,
@@ -619,10 +630,18 @@ class CircleForaging(Env):
         circle = replace(state.physics.circle, p=p, v=v, is_active=is_active)
         physics = replace(state.physics, circle=circle)
         profile = state.profile.deactivate(index)
-        return replace(state, physics=physics, profile=profile)
+        status = state.status.deactivate(index)
+        return replace(state, physics=physics, profile=profile, status=status)
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
+        profile = init_profile(self._n_initial_agents, self._n_max_agents)
+        status = init_status(
+            self._n_initial_agents,
+            self._n_max_agents,
+            self._init_energy,
+            self._energy_capacity,
+        )
         state = CFState(
             physics=physics,
             solver=self._physics.init_solver(),
@@ -631,7 +650,8 @@ class CircleForaging(Env):
             food_num=self._initial_foodnum_state,
             key=key,
             step=jnp.array(0, dtype=jnp.int32),
-            profile=init_profile(self._n_initial_agents, self._n_max_agents),
+            profile=profile,
+            status=status,
             n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
         )
         sensor_obs = self._sensor_obs(stated=physics)
@@ -642,11 +662,7 @@ class CircleForaging(Env):
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
         )
-        timestep = TimeStep(
-            encount=None,
-            obs=obs,
-            energy_delta=jnp.zeros(self._n_max_agents),
-        )
+        timestep = TimeStep(encount=None, obs=obs)
         return state, timestep
 
     def _initialize_physics_state(

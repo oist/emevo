@@ -70,7 +70,8 @@ def exec_rollout(
     state: State,
     initial_obs: Obs,
     env: Env,
-    network: NormalPPONet,
+    network: NormalPPONet
+    reward_fn: RewardFn,
     prng_key: jax.Array,
     n_rollout_steps: int,
 ) -> tuple[State, Rollout, Obs, jax.Array]:
@@ -78,12 +79,12 @@ def exec_rollout(
         carried: tuple[State, Obs, Profile],
         key: jax.Array,
     ) -> tuple[tuple[State, Obs, Profile], Rollout]:
-        state_t, obs_t = carried
+        state_t, obs_t, profile = carried
         obs_t_array = obs_t.as_array()
         net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=key)
         state_t1, timestep = env.step(state_t, env.act_space.sigmoid_scale(actions))
-        rewards = obs_t.collision[:, 1].astype(jnp.float32).reshape(-1, 1)
+        rewards = reward_fn()
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,

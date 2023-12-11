@@ -11,6 +11,7 @@ import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from emevo.spaces import Space
+from emevo.status import Status
 from emevo.types import Index
 from emevo.visualizer import Visualizer
 
@@ -32,23 +33,17 @@ class Profile:
         uid: jax.Array,
         step: jax.Array,
     ) -> Self:
-        unique_id = self.unique_id.at[index].set(uid)
-        birthtime = self.birthtime.at[index].set(step)
-        generation = self.generation.at[index].set(parent_gen + 1)
         return Profile(
-            birthtime=birthtime,
-            generation=generation,
-            unique_id=unique_id,
+            birthtime=self.birthtime.at[index].set(step),
+            generation=self.generation.at[index].set(parent_gen + 1),
+            unique_id=self.unique_id.at[index].set(uid),
         )
 
     def deactivate(self, index: Index) -> Self:
-        unique_id = self.unique_id.at[index].set(-1)
-        birthtime = self.birthtime.at[index].set(-1)
-        generation = self.generation.at[index].set(-1)
         return Profile(
-            birthtime=birthtime,
-            generation=generation,
-            unique_id=unique_id,
+            birthtime=self.birthtime.at[index].set(-1),
+            generation=self.generation.at[index].set(-1),
+            unique_id=self.unique_id.at[index].set(-1),
         )
 
     def is_active(self) -> jax.Array:
@@ -57,13 +52,10 @@ class Profile:
 
 def init_profile(n: int, max_n: int) -> Profile:
     minus_1 = jnp.ones(max_n - n, dtype=jnp.int32) * -1
-    birthtime = jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1))
-    generation = jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1))
-    unique_id = jnp.concatenate((jnp.arange(n, dtype=jnp.int32), minus_1))
     return Profile(
-        birthtime=birthtime,
-        generation=generation,
-        unique_id=unique_id,
+        birthtime=jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1)),
+        generation=jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1)),
+        unique_id=jnp.concatenate((jnp.arange(n, dtype=jnp.int32), minus_1)),
     )
 
 
@@ -71,6 +63,7 @@ class StateProtocol(Protocol):
     key: chex.PRNGKey
     step: jax.Array
     profile: Profile
+    status: Status
     n_born_agents: jax.Array
 
     def is_extinct(self) -> bool:
@@ -94,7 +87,6 @@ OBS = TypeVar("OBS", bound="ObsProtocol")
 class TimeStep(Generic[OBS]):
     encount: jax.Array | None
     obs: OBS
-    energy_delta: jax.Array
     info: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
@@ -122,7 +114,12 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def activate(self, state: STATE, parent_gen: jax.Array) -> tuple[STATE, jax.Array]:
+    def activate(
+        self,
+        state: STATE,
+        parent_gen: jax.Array,
+        init_energy: jax.Array,
+    ) -> tuple[STATE, jax.Array]:
         """
         Mark an agent or some agents active.
         This method fails if there isn't enough space, returning (STATE, False).
