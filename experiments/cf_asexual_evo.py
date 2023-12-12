@@ -14,9 +14,9 @@ import typer
 from emevo import Env, make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
-from emevo.rl.ppo_normal import NormalPPONet
-from emevo.rl.ppo_normal import Rollout as OriginalRollout
 from emevo.rl.ppo_normal import (
+    NormalPPONet,
+    Rollout,
     vmap_apply,
     vmap_batch,
     vmap_net,
@@ -28,29 +28,23 @@ from emevo.visualizer import SaveVideoWrapper
 N_MAX_AGENTS: int = 10
 
 
-@chex.dataclass
-class Rollout(OriginalRollout):
-    collision: jax.Array
-
-
 class LinearReward(eqx.Module):
     weight: jax.Array
     max_action_norm: float
 
-    def __init__(self, max_action_norm: float, key: chex.PRNGKey) -> None:
-        self.weight = jax.random.normal(key, (1, 4))
+    def __init__(
+        self,
+        max_action_norm: float,
+        n_agents: int,
+        key: chex.PRNGKey,
+    ) -> None:
+        self.weight = jax.random.normal(key, (n_agents, 4))
         self.max_action_norm = max_action_norm
 
     def __call__(self, collision: jax.Array, action: jax.Array) -> jax.Array:
         action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
-        return jnp.concatenate((collision, action_norm), axis=1) @ self.weight.T
-
-
-def weight_summary(network):
-    params, _ = eqx.partition(network, eqx.is_inexact_array)
-    params_mean = jax.tree_map(jnp.mean, params)
-    for k, v in jax.tree_util.tree_leaves_with_path(params_mean):
-        print(k, v)
+        input_ = jnp.concatenate((collision, action_norm), axis=1)
+        return jax.vmap(jnp.dot)(input_, self.weight)
 
 
 def visualize(
@@ -89,7 +83,7 @@ def exec_rollout(
     initial_obs: Obs,
     env: Env,
     network: NormalPPONet,
-    reward_fn: RewardFn,
+    reward_fn: LinearReward,
     prng_key: jax.Array,
     n_rollout_steps: int,
 ) -> tuple[State, Rollout, Obs, jax.Array]:
@@ -97,12 +91,13 @@ def exec_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
     ) -> tuple[tuple[State, Obs], Rollout]:
+        act_key, hazard_key, birth_key = jax.random.split(key, 3)
         state_t, obs_t = carried
         obs_t_array = obs_t.as_array()
         net_out = vmap_apply(network, obs_t_array)
-        actions = net_out.policy().sample(seed=key)
+        actions = net_out.policy().sample(seed=act_key)
         state_t1, timestep = env.step(state_t, env.act_space.sigmoid_scale(actions))
-        rewards = reward_fn()
+        rewards = reward_fn(obs_t.collision, actions)  # type: ignore
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,

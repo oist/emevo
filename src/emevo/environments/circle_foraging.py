@@ -13,7 +13,15 @@ import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
 
-from emevo.env import Env, Profile, TimeStep, Visualizer, init_profile
+from emevo.env import (
+    Env,
+    Profile,
+    Status,
+    TimeStep,
+    Visualizer,
+    init_profile,
+    init_status,
+)
 from emevo.environments.env_utils import (
     CircleCoordinate,
     FoodNumState,
@@ -44,8 +52,6 @@ from emevo.environments.phyjax2d_utils import (
     make_square,
 )
 from emevo.spaces import BoxSpace, NamedTupleSpace
-from emevo.status import Status, init_status
-from emevo.types import Index
 from emevo.vec2d import Vec2d
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
@@ -288,6 +294,10 @@ def nstep(
     return state, solver, contacts
 
 
+def _first_n_true(boolean_array: jax.Array, n: jax.Array) -> jax.Array:
+    return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) <= n)
+
+
 class CircleForaging(Env):
     def __init__(
         self,
@@ -302,6 +312,7 @@ class CircleForaging(Env):
         env_radius: float = 120.0,
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
+        newborn_loc: Literal["neighbor", "uniform"] = "uniform",
         n_agent_sensors: int = 16,
         sensor_length: float = 100.0,
         sensor_range: tuple[float, float] | SensorRange = SensorRange.WIDE,
@@ -316,6 +327,7 @@ class CircleForaging(Env):
         init_energy: float = 20.0,
         energy_capacity: float = 100.0,
         force_energy_consumption: float = 0.01 / 40.0,
+        energy_share_ratio: float = 0.4,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
@@ -345,8 +357,11 @@ class CircleForaging(Env):
         self._agent_loc_fn, self._initial_agentloc_state = self._make_agent_loc_fn(
             agent_loc_fn
         )
-        # Energy consumption
+        # Energy
         self._force_energy_consumption = force_energy_consumption
+        self._init_energy = init_energy
+        self._energy_capacity = energy_capacity
+        self._energy_share_ratio = energy_share_ratio
         # Initial numbers
         assert n_max_agents > n_initial_agents
         assert n_max_foods > self._food_num_fn.initial
@@ -355,8 +370,6 @@ class CircleForaging(Env):
         self._n_initial_foods = self._food_num_fn.initial
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
-        self._init_energy = init_energy
-        self._energy_capacity = energy_capacity
         # Physics
         if isinstance(obstacles, str):
             obs_list = Obstacle(obstacles).as_list(self._x_range, self._y_range)
@@ -397,13 +410,13 @@ class CircleForaging(Env):
         act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
         self._act_p1 = jnp.tile(jnp.array(act_p1), (self._n_max_agents, 1))
         self._act_p2 = jnp.tile(jnp.array(act_p2), (self._n_max_agents, 1))
-        self._place_agent = jax.jit(
+        self._init_agent = jax.jit(
             functools.partial(
                 place,
                 n_trial=self._max_place_attempts,
                 radius=self._agent_radius,
                 coordinate=self._coordinate,
-                loc_fn=self._agent_loc_fn,
+                loc_fn=jax.vmap(self._agent_loc_fn, in_axes=(0, None)),
                 shaped=self._physics.shaped,
             )
         )
@@ -413,10 +426,32 @@ class CircleForaging(Env):
                 n_trial=self._max_place_attempts,
                 radius=self._food_radius,
                 coordinate=self._coordinate,
-                loc_fn=self._food_loc_fn,
+                loc_fn=jax.vmap(self._food_loc_fn, in_axes=(0, None)),
                 shaped=self._physics.shaped,
             )
         )
+        if newborn_loc == "uniform":
+
+            def place_newborn(
+                state: LocatingState,
+                stated: StateDict,
+                key: chex.PRNGKey,
+            ) -> tuple[jax.Array, jax.Array]:
+                return place(
+                    n_trial=self._max_place_attempts,
+                    radius=self._agent_radius,
+                    coordinate=self._coordinate,
+                    loc_fn=jax.vmap(self._agent_loc_fn, in_axes=(0, None)),
+                    shaped=self._physics.shaped,
+                    loc_state=state,
+                    key=key,
+                    stated=stated,
+                )
+
+            self._place_newborn = jax.vmap(place_newborn, in_axes=(None, None, 0))
+
+        else:
+            assert False, "Not implemented"
         if isinstance(sensor_range, SensorRange):
             sensor_range_tuple = SensorRange(sensor_range).as_tuple()
         else:
@@ -548,7 +583,7 @@ class CircleForaging(Env):
             angular_velocity=stated.circle.v.angle,
         )
         # energy_delta = food - coef * |force|
-        force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2)
+        force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_delta = food_collision - self._force_energy_consumption * force_norm
         timestep = TimeStep(encount=c2c, obs=obs)
         # Remove and reproduce foods
@@ -578,59 +613,51 @@ class CircleForaging(Env):
     def activate(
         self,
         state: CFState,
-        parent_gen: jax.Array,
-        init_energy: jax.Array,
+        is_parent: jax.Array,
     ) -> tuple[CFState, jax.Array]:
         circle = state.physics.circle
-        key, place_key = jax.random.split(state.key)
-        new_xy, ok = self._place_agent(
-            loc_state=state.agent_loc,
-            key=place_key,
-            stated=state.physics,
-        )
-        first_inactive = first_true(jnp.logical_not(circle.is_active))
-        place = jnp.logical_and(first_inactive, ok)
-        xy = jnp.where(
-            jnp.expand_dims(place, axis=1),
-            jnp.expand_dims(new_xy, axis=0),
-            circle.p.xy,
-        )
-        angle = jnp.where(place, 0.0, circle.p.angle)
+        keys = jax.random.split(state.key, self._n_max_agents + 1)
+        new_xy, ok = self._place_newborn(state.agent_loc, state.physics, keys[1:])
+        canbe_parent = jnp.logical_and(is_parent, ok)
+        slots = _first_n_true(jnp.logical_not(circle.is_active), jnp.sum(canbe_parent))
+        parents = _first_n_true(canbe_parent, jnp.sum(slots))
+        xy = circle.p.xy.at[slots].set(new_xy[parents])
+        angle = jnp.where(slots, 0.0, circle.p.angle)
         p = Position(angle=angle, xy=xy)
-        is_active = jnp.logical_or(place, circle.is_active)
+        is_active = jnp.logical_or(slots, circle.is_active)
         physics = replace(
             state.physics,
             circle=replace(circle, p=p, is_active=is_active),
         )
-        profile = state.profile.activate(
-            place,
-            parent_gen,
-            state.n_born_agents,
-            state.step,
+        profile = state.profile.activate(slots, state.step)
+        shared_energy = state.status.energy * self._energy_share_ratio
+        init_energy = (
+            jnp.zeros_like(state.status.energy).at[slots].set(shared_energy[parents])
         )
-        status = state.status.activate(place, init_energy=init_energy)
+        status = state.status.activate(slots, init_energy=init_energy)
+        status = status.update(energy_delta=(status.energy - shared_energy) * parents)
         new_state = replace(
             state,
             physics=physics,
             profile=profile,
             status=status,
-            agent_loc=state.agent_loc.increment(jnp.sum(place)),
-            n_born_agents=state.n_born_agents + jnp.sum(place),
-            key=key,
+            agent_loc=state.agent_loc.increment(jnp.sum(slots)),
+            n_born_agents=state.n_born_agents + jnp.sum(slots),
+            key=keys[0],
         )
-        return new_state, jnp.any(place)
+        return new_state, parents
 
-    def deactivate(self, state: CFState, index: Index) -> CFState:
-        p_xy = state.physics.circle.p.xy.at[index].set(self._invisible_xy)
+    def deactivate(self, state: CFState, flag: jax.Array) -> CFState:
+        p_xy = state.physics.circle.p.xy.at[flag].set(self._invisible_xy)
         p = replace(state.physics.circle.p, xy=p_xy)
-        v_xy = state.physics.circle.v.xy.at[index].set(0.0)
-        v_angle = state.physics.circle.v.angle.at[index].set(0.0)
+        v_xy = state.physics.circle.v.xy.at[flag].set(0.0)
+        v_angle = state.physics.circle.v.angle.at[flag].set(0.0)
         v = Velocity(angle=v_angle, xy=v_xy)
-        is_active = state.physics.circle.is_active.at[index].set(False)
+        is_active = state.physics.circle.is_active.at[flag].set(False)
         circle = replace(state.physics.circle, p=p, v=v, is_active=is_active)
         physics = replace(state.physics, circle=circle)
-        profile = state.profile.deactivate(index)
-        status = state.status.deactivate(index)
+        profile = state.profile.deactivate(flag)
+        status = state.status.deactivate(flag)
         return replace(state, physics=physics, profile=profile, status=status)
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
@@ -701,7 +728,7 @@ class CircleForaging(Env):
         agent_failed = 0
         agentloc_state = self._initial_foodloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
-            xy, ok = self._place_agent(loc_state=agentloc_state, key=key, stated=stated)
+            xy, ok = self._init_agent(loc_state=agentloc_state, key=key, stated=stated)
             if ok:
                 stated = stated.nested_replace(
                     "circle.p.xy",

@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from typing import Any, Protocol
 
 import jax
@@ -14,4 +13,3 @@ class SupportsDType(Protocol):
 
 DTypeLike = DType | SupportsDType
 PyTree = Any
-Index = int | jax.Array | Sequence[int]

@@ -67,6 +67,7 @@ def main(
 
     replace_interval = steps // 10
     deactivate_index = n_agents - 1
+    activate_p = jnp.zeros(n_max_agents).at[jnp.arange(5)].set(0.5)
     for i in tqdm(range(steps)):
         before = datetime.datetime.now()
         state, _ = jit_step(state, jit_sample(keys[i + 1]))
@@ -78,12 +79,15 @@ def main(
 
         if replace and i % replace_interval == 0:
             if i < steps // 2:
-                state = env.deactivate(state, deactivate_index)
+                flag = jnp.zeros(n_max_agents, dtype=bool).at[deactivate_index].set(True)
+                state = env.deactivate(state, flag)
                 deactivate_index -= 1
             else:
-                state, success = env.activate(state, jnp.array(0), jnp.array(10.0))
-                if not success:
-                    print("Failed to activate agent!")
+                flag = jax.random.bernoulli(keys[i + 1], p=activate_p)
+                state, success = env.activate(state, flag)
+                for idx in range(n_max_agents):
+                    if flag[idx] and not success[idx]:
+                        print(f"Failed to activate agent for a parent {idx}")
 
         if visualizer is not None:
             visualizer.render(state)

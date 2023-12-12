@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import abc
 import dataclasses
+from dataclasses import replace
 from typing import Any, Generic, Protocol, TypeVar
 
 import chex
@@ -11,11 +12,49 @@ import jax.numpy as jnp
 from jax.typing import ArrayLike
 
 from emevo.spaces import Space
-from emevo.status import Status
-from emevo.types import Index
 from emevo.visualizer import Visualizer
 
 Self = Any
+
+
+@chex.dataclass
+class Status:
+    """Default status implementation with age and energy."""
+
+    age: jax.Array
+    energy: jax.Array
+    capacity: float = 100.0
+
+    def step(self) -> Self:
+        """Get older."""
+        return replace(self, age=self.age + 1)
+
+    def activate(self, flag: jax.Array, init_energy: jax.Array) -> Self:
+        age = jnp.where(flag, 0, self.age)
+        energy = jnp.where(flag, init_energy, self.energy)
+        return replace(self, age=age, energy=energy)
+
+    def deactivate(self, flag: jax.Array) -> Self:
+        return replace(self, age=jnp.where(flag, -1, self.age))
+
+    def update(self, *, energy_delta: jax.Array) -> Self:
+        """Update energy."""
+        energy = self.energy + energy_delta
+        return replace(self, energy=jnp.clip(energy, a_min=0.0, a_max=self.capacity))
+
+
+def init_status(
+    n: int,
+    max_n: int,
+    init_energy: float,
+    capacity: float = 100.0,
+) -> Status:
+    assert max_n >= n
+    return Status(
+        age=jnp.zeros(max_n, dtype=jnp.int32),
+        energy=jnp.ones(max_n, dtype=jnp.float32) * init_energy,
+        capacity=capacity,
+    )
 
 
 @chex.dataclass
@@ -26,24 +65,25 @@ class Profile:
     generation: jax.Array
     unique_id: jax.Array
 
-    def activate(
-        self,
-        index: Index,
-        parent_gen: jax.Array,
-        uid: jax.Array,
-        step: jax.Array,
-    ) -> Self:
+    def activate(self, flag: jax.Array, step: jax.Array) -> Self:
+        birthtime = jnp.where(flag, step, self.birthtime)
+        generation = jnp.where(flag, self.generation + 1, self.generation)
+        unique_id = jnp.where(
+            flag,
+            jnp.cumsum(flag) + jnp.max(self.unique_id),
+            self.unique_id,
+        )
         return Profile(
-            birthtime=self.birthtime.at[index].set(step),
-            generation=self.generation.at[index].set(parent_gen + 1),
-            unique_id=self.unique_id.at[index].set(uid),
+            birthtime=birthtime,
+            generation=generation,
+            unique_id=unique_id,
         )
 
-    def deactivate(self, index: Index) -> Self:
+    def deactivate(self, flag: jax.Array) -> Self:
         return Profile(
-            birthtime=self.birthtime.at[index].set(-1),
-            generation=self.generation.at[index].set(-1),
-            unique_id=self.unique_id.at[index].set(-1),
+            birthtime=jnp.where(flag, -1, self.birthtime),
+            generation=jnp.where(flag, -1, self.generation),
+            unique_id=jnp.where(flag, -1, self.unique_id),
         )
 
     def is_active(self) -> jax.Array:
@@ -119,8 +159,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
     def activate(
         self,
         state: STATE,
-        parent_gen: jax.Array,
-        init_energy: jax.Array,
+        is_parent: jax.Array,
     ) -> tuple[STATE, jax.Array]:
         """
         Mark an agent or some agents active.
@@ -129,7 +168,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         pass
 
     @abc.abstractmethod
-    def deactivate(self, state: STATE, index: Index) -> STATE:
+    def deactivate(self, state: STATE, flag: jax.Array) -> STATE:
         """
         Deactivate an agent or some agents. The shape of observations should remain the
         same so that `Env.step` is compiled onle once. So, to represent that an agent is

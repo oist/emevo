@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import pytest
 
-from emevo.status import init_status
+from emevo.env import init_status
 
 
 @pytest.mark.parametrize(

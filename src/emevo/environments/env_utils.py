@@ -287,10 +287,8 @@ def place(
     shaped: ShapeDict,
     stated: StateDict,
 ) -> tuple[jax.Array, jax.Array]:
-    """Returns `[inf, inf]` if it fails"""
     keys = jax.random.split(key, n_trial)
-    vmap_loc_fn = jax.vmap(loc_fn, in_axes=(0, None))
-    locations = vmap_loc_fn(keys, loc_state)
+    locations = loc_fn(keys, loc_state)
     contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
     overlap = jax.vmap(circle_overlap, in_axes=(None, None, 0, None))(
         shaped,
