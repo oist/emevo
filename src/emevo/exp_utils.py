@@ -18,7 +18,7 @@ class CfConfig:
     n_agent_sensors: int
     sensor_length: float
     food_loc_fn: str
-    food_num_fn: Tuple["str", int]
+    food_num_fn: Tuple[str, int]
     xlim: Tuple[float, float]
     ylim: Tuple[float, float]
     env_radius: float

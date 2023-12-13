@@ -57,7 +57,13 @@ profile = "black"
 
 [tool.ruff]
 line-length = 88
+# ignore = ["UP035"]
 select = ["E", "F", "B", "UP"]
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
+# For pyserde
+"src/emevo/exp_utils.py" = ["UP006", "UP035"]
+# For typer
+"experiments/**/*.py" = ["B008", "UP006", "UP007"]
+"smoke-tests/*.py" = ["B008", "UP006", "UP007"]

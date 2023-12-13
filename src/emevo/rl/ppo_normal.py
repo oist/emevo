@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast, NamedTuple
+from typing import NamedTuple, cast
 
 import chex
 import distrax

@@ -6,7 +6,6 @@ import optax
 import pytest
 
 from emevo.rl.ppo_normal import (
-    Batch,
     NormalPPONet,
     Rollout,
     get_minibatches,

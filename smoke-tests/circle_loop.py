@@ -79,7 +79,9 @@ def main(
 
         if replace and i % replace_interval == 0:
             if i < steps // 2:
-                flag = jnp.zeros(n_max_agents, dtype=bool).at[deactivate_index].set(True)
+                flag = (
+                    jnp.zeros(n_max_agents, dtype=bool).at[deactivate_index].set(True)
+                )
                 state = env.deactivate(state, flag)
                 deactivate_index -= 1
             else:

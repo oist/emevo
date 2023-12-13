@@ -282,6 +282,33 @@ def _collect_heads(circle: Circle, state: State) -> NDArray:
     return np.concatenate((p1, p2), axis=1).reshape(-1, 2)
 
 
+# def _collect_policies(
+#     circle: Circle,
+#     state: State,
+#     max_arrow_length: float,
+# ) -> NDArray:
+# max_f = max(map(lambda bp: bp[1].max(), bodies_and_policies))
+# policy_scaling = max_arrow_length / max_f
+# points = []
+# radius = None
+# for body, policy in bodies_and_policies:
+#     a = body.position
+#     if radius is None:
+#         radius = next(
+#             filter(lambda shape: isinstance(shape, pymunk.Circle), body.shapes)
+#         ).radius
+#     f1, f2 = policy
+#     from1 = a + pymunk.Vec2d(0, radius).rotated(body.angle + np.pi * 0.75)
+#     to1 = from1 + pymunk.Vec2d(0, -f1 * policy_scaling).rotated(body.angle)
+#     from2 = a + pymunk.Vec2d(0, radius).rotated(body.angle - np.pi * 0.75)
+#     to2 = from2 + pymunk.Vec2d(0, -f2 * policy_scaling).rotated(body.angle)
+#     points.append(from1)
+#     points.append(to1)
+#     points.append(from2)
+#     points.append(to2)
+# return np.array(points, dtype=np.float32)
+
+
 def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
     """Clip ranges to [-1, 1]"""
     total = sum(lengthes)
@@ -435,7 +462,9 @@ class MglRenderer:
         """Render additional value as an overlay"""
         key = name.lower()
         if key == "arrow":
-            segments = _collect_policies(value, self._range_min * 0.1)
+            # Not implmented yet
+            # segments = _collect_policies(value, self._range_min * 0.1)
+            segments = np.zeros(1)
             if "arrow" in self._overlays:
                 do_render = self._overlays["arrow"].update(segments)
             else:
