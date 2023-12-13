@@ -86,10 +86,8 @@ def main(
                 deactivate_index -= 1
             else:
                 flag = jax.random.bernoulli(keys[i + 1], p=activate_p)
-                state, success = env.activate(state, flag)
-                for idx in range(n_max_agents):
-                    if flag[idx] and not success[idx]:
-                        print(f"Failed to activate agent for a parent {idx}")
+                state, parents = env.activate(state, flag)
+                print("Parents: ", parents)
 
         if visualizer is not None:
             visualizer.render(state)

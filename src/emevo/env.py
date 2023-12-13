@@ -161,16 +161,13 @@ class Env(abc.ABC, Generic[STATE, OBS]):
         state: STATE,
         is_parent: jax.Array,
     ) -> tuple[STATE, jax.Array]:
-        """
-        Mark an agent or some agents active.
-        This method fails if there isn't enough space, returning (STATE, False).
-        """
+        """Mark some agents active, if possible."""
         pass
 
     @abc.abstractmethod
     def deactivate(self, state: STATE, flag: jax.Array) -> STATE:
         """
-        Deactivate an agent or some agents. The shape of observations should remain the
+        Deactivate some agents. The shape of observations should remain the
         same so that `Env.step` is compiled onle once. So, to represent that an agent is
         dead, it is recommended to mark that body is not active and reuse it after a new
         agent is born.

@@ -657,9 +657,12 @@ class CircleForaging(Env):
             keys[1:],
             circle.p.xy,
         )
-        canbe_parent = jnp.logical_and(is_parent, ok)
-        slots = _first_n_true(jnp.logical_not(circle.is_active), jnp.sum(canbe_parent))
-        parents = _first_n_true(canbe_parent, jnp.sum(slots))
+        possible_parents = jnp.logical_and(is_parent, ok)
+        slots = _first_n_true(
+            jnp.logical_not(circle.is_active),
+            jnp.sum(possible_parents),
+        )
+        parents = _first_n_true(possible_parents, jnp.sum(slots))
         xy = circle.p.xy.at[slots].set(new_xy[parents])
         angle = jnp.where(slots, 0.0, circle.p.angle)
         p = Position(angle=angle, xy=xy)
@@ -684,7 +687,9 @@ class CircleForaging(Env):
             n_born_agents=state.n_born_agents + jnp.sum(slots),
             key=keys[0],
         )
-        return new_state, parents
+        empty_id = jnp.ones_like(state.profile.unique_id) * -1
+        parents_id = empty_id.at[slots].set(state.profile.unique_id[parents])
+        return new_state, parents_id
 
     def deactivate(self, state: CFState, flag: jax.Array) -> CFState:
         p_xy = state.physics.circle.p.xy.at[flag].set(self._invisible_xy)
@@ -701,10 +706,11 @@ class CircleForaging(Env):
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
-        profile = init_profile(self._n_initial_agents, self._n_max_agents)
+        nmax = self._n_max_agents
+        profile = init_profile(self._n_initial_agents, nmax)
         status = init_status(
             self._n_initial_agents,
-            self._n_max_agents,
+            nmax,
             self._init_energy,
             self._energy_capacity,
         )
@@ -723,12 +729,13 @@ class CircleForaging(Env):
         sensor_obs = self._sensor_obs(stated=physics)
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, N_OBJECTS),
-            collision=jnp.zeros((self._n_max_agents, N_OBJECTS), dtype=bool),
+            collision=jnp.zeros((nmax, N_OBJECTS), dtype=bool),
             angle=physics.circle.p.angle,
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
         )
-        timestep = TimeStep(encount=None, obs=obs)
+        # They shouldn't encount now
+        timestep = TimeStep(encount=jnp.zeros((nmax, nmax), dtype=bool), obs=obs)
         return state, timestep
 
     def _initialize_physics_state(

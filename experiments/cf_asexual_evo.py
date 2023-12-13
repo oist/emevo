@@ -11,7 +11,9 @@ import numpy as np
 import optax
 import typer
 
-from emevo import Env, make
+from emevo import Env
+from emevo import birth_and_death as bd
+from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
 from emevo.rl.ppo_normal import (
@@ -78,12 +80,19 @@ def visualize(
         visualizer.show()
 
 
+@chex.dataclass
+class Record:
+    parents: jax.Array
+
+
 def exec_rollout(
     state: State,
     initial_obs: Obs,
     env: Env,
     network: NormalPPONet,
     reward_fn: LinearReward,
+    hazard_fn: bd.HazardFunction,
+    birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
 ) -> tuple[State, Rollout, Obs, jax.Array]:
@@ -107,7 +116,17 @@ def exec_rollout(
             means=net_out.mean,
             logstds=net_out.logstd,
         )
-        return (state_t1, timestep.obs), rollout
+        # Birth and death
+        death_prob = hazard_fn(state_t1.status.age, state_t1.status.energy)
+        dead = jax.random.bernoulli(hazard_key, p=death_prob)
+        state_t1d = env.deactivate(state_t1, dead)
+        birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
+        possible_parents = jnp.logical_and(
+            jnp.logical_not(dead),
+            jax.random.bernoulli(birth_key, p=birth_prob),
+        )
+        state_t1db, parents = env.activate(state_t1d, possible_parents)
+        return (state_t1db, timestep.obs), rollout
 
     (state, obs), rollout = jax.lax.scan(
         step_rollout,
