@@ -418,7 +418,7 @@ class CircleForaging(Env):
                 n_trial=self._max_place_attempts,
                 radius=self._agent_radius,
                 coordinate=self._coordinate,
-                loc_fn=jax.vmap(self._agent_loc_fn, in_axes=(0, None)),
+                loc_fn=self._agent_loc_fn,
                 shaped=self._physics.shaped,
             )
         )
@@ -428,7 +428,7 @@ class CircleForaging(Env):
                 n_trial=self._max_place_attempts,
                 radius=self._food_radius,
                 coordinate=self._coordinate,
-                loc_fn=jax.vmap(self._food_loc_fn, in_axes=(0, None)),
+                loc_fn=self._food_loc_fn,
                 shaped=self._physics.shaped,
             )
         )
@@ -444,7 +444,7 @@ class CircleForaging(Env):
                     n_trial=self._max_place_attempts,
                     radius=self._agent_radius,
                     coordinate=self._coordinate,
-                    loc_fn=jax.vmap(self._agent_loc_fn, in_axes=(0, None)),
+                    loc_fn=self._agent_loc_fn,
                     shaped=self._physics.shaped,
                     loc_state=state,
                     key=key,
@@ -473,7 +473,7 @@ class CircleForaging(Env):
                     n_trial=self._max_place_attempts,
                     radius=self._agent_radius,
                     coordinate=self._coordinate,
-                    loc_fn=jax.vmap(loc_fn, in_axes=(0, None)),
+                    loc_fn=loc_fn,
                     shaped=self._physics.shaped,
                     loc_state=state,
                     key=key,

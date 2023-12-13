@@ -277,25 +277,6 @@ def first_true(boolean_array: jax.Array) -> jax.Array:
     return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) == 1)
 
 
-def place_with_loc(
-    radius: float,
-    coordinate: Coordinate,
-    locations: jax.Array,
-    shaped: ShapeDict,
-    stated: StateDict,
-) -> tuple[jax.Array, jax.Array]:
-    contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
-    overlap = jax.vmap(circle_overlap, in_axes=(None, None, 0, None))(
-        shaped,
-        stated,
-        locations,
-        radius,
-    )
-    ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
-    mask = jnp.expand_dims(first_true(ok), axis=1)
-    return jnp.sum(mask * locations, axis=0), jnp.any(ok)
-
-
 def place(
     n_trial: int,
     radius: float,
@@ -307,5 +288,14 @@ def place(
     stated: StateDict,
 ) -> tuple[jax.Array, jax.Array]:
     keys = jax.random.split(key, n_trial)
-    locations = loc_fn(keys, loc_state)
-    return place_with_loc(radius, coordinate, locations, shaped, stated)
+    locations = jax.vmap(loc_fn, in_axes=(0, None))(keys, loc_state)
+    overlap = jax.vmap(circle_overlap, in_axes=(None, None, 0, None))(
+        shaped,
+        stated,
+        locations,
+        radius,
+    )
+    contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
+    ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
+    mask = jnp.expand_dims(first_true(ok), axis=1)
+    return jnp.sum(mask * locations, axis=0), jnp.any(ok)
