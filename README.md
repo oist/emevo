@@ -34,6 +34,6 @@ nox -s tests
 ```
 
 # License
-Apache 2.0
+[Apache LICENSE 2.0][./LICENSE] holds unless otherwise noted.
 
 `vec2d.py` is copied from [PyMunk](pymunk.org) with the license-header as-is.

@@ -1,3 +1,7 @@
+"""2D physics simulator based on jax"""
+
+from __future__ import annotations
+
 import dataclasses
 import functools
 import uuid
@@ -9,7 +13,6 @@ import chex
 import jax
 import jax.numpy as jnp
 
-Axis = Sequence[int] | int
 Self = Any
 
 
@@ -20,7 +23,10 @@ def then(x: Any, f: Callable[[Any], Any]) -> Any:
         return f(x)
 
 
-def normalize(x: jax.Array, axis: Axis | None = None) -> tuple[jax.Array, jax.Array]:
+def normalize(
+    x: jax.Array,
+    axis: Sequence[int] | int | None = None,
+) -> tuple[jax.Array, jax.Array]:
     norm = jnp.linalg.norm(x, axis=axis)
     n = x / jnp.clip(norm, a_min=1e-6)
     return n, norm
