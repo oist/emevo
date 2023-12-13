@@ -9,8 +9,6 @@ import chex
 import jax
 import jax.numpy as jnp
 
-from emevo.types import DTypeLike
-
 INSTANCE = TypeVar("INSTANCE")
 DTYPE = TypeVar("DTYPE")
 
@@ -50,7 +48,7 @@ class BoxSpace(Space[jax.Array, jnp.dtype]):
         low: int | float | jax.Array,
         high: int | float | jax.Array,
         shape: Sequence[int] | None = None,
-        dtype: DTypeLike = jnp.float32,
+        dtype: jnp.dtype = jnp.float32,
     ) -> None:
         self.dtype = jnp.dtype(dtype)
 
