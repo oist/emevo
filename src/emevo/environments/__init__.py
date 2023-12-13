@@ -2,7 +2,7 @@
 """
 
 from emevo.environments.circle_foraging import CircleForaging
-from emevo.environments.registry import description, make, register
+from emevo.environments.registry import register
 
 register(
     "CircleForaging-v0",
