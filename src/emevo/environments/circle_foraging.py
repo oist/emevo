@@ -32,6 +32,7 @@ from emevo.environments.env_utils import (
     ReprNumFn,
     SquareCoordinate,
     first_true,
+    loc_gaussian,
     place,
 )
 from emevo.environments.phyjax2d import Circle, Position, Raycast, ShapeDict
@@ -312,7 +313,8 @@ class CircleForaging(Env):
         env_radius: float = 120.0,
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
-        newborn_loc: Literal["neighbor", "uniform"] = "uniform",
+        newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
+        neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
         sensor_length: float = 100.0,
         sensor_range: tuple[float, float] | SensorRange = SensorRange.WIDE,
@@ -432,10 +434,11 @@ class CircleForaging(Env):
         )
         if newborn_loc == "uniform":
 
-            def place_newborn(
+            def place_newborn_uniform(
                 state: LocatingState,
                 stated: StateDict,
                 key: chex.PRNGKey,
+                _: jax.Array,
             ) -> tuple[jax.Array, jax.Array]:
                 return place(
                     n_trial=self._max_place_attempts,
@@ -448,10 +451,41 @@ class CircleForaging(Env):
                     stated=stated,
                 )
 
-            self._place_newborn = jax.vmap(place_newborn, in_axes=(None, None, 0))
+            self._place_newborn = jax.vmap(
+                place_newborn_uniform,
+                in_axes=(None, None, 0, None),
+            )
 
+        elif newborn_loc == "neighbor":
+
+            def place_newborn_neighbor(
+                state: LocatingState,
+                stated: StateDict,
+                key: chex.PRNGKey,
+                agent_loc: jax.Array,
+            ) -> tuple[jax.Array, jax.Array]:
+                loc_fn = loc_gaussian(
+                    agent_loc,
+                    jnp.ones_like(agent_loc) * neighbor_stddev,
+                )
+
+                return place(
+                    n_trial=self._max_place_attempts,
+                    radius=self._agent_radius,
+                    coordinate=self._coordinate,
+                    loc_fn=jax.vmap(loc_fn, in_axes=(0, None)),
+                    shaped=self._physics.shaped,
+                    loc_state=state,
+                    key=key,
+                    stated=stated,
+                )
+
+            self._place_newborn = jax.vmap(
+                place_newborn_neighbor,
+                in_axes=(None, None, 0, 0),
+            )
         else:
-            assert False, "Not implemented"
+            raise ValueError(f"Invalid newborn_loc: {newborn_loc}")
         if isinstance(sensor_range, SensorRange):
             sensor_range_tuple = SensorRange(sensor_range).as_tuple()
         else:
@@ -617,7 +651,12 @@ class CircleForaging(Env):
     ) -> tuple[CFState, jax.Array]:
         circle = state.physics.circle
         keys = jax.random.split(state.key, self._n_max_agents + 1)
-        new_xy, ok = self._place_newborn(state.agent_loc, state.physics, keys[1:])
+        new_xy, ok = self._place_newborn(
+            state.agent_loc,
+            state.physics,
+            keys[1:],
+            circle.p.xy,
+        )
         canbe_parent = jnp.logical_and(is_parent, ok)
         slots = _first_n_true(jnp.logical_not(circle.is_active), jnp.sum(canbe_parent))
         parents = _first_n_true(canbe_parent, jnp.sum(slots))
