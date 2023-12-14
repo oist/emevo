@@ -1,7 +1,7 @@
 """Example of using circle foraging environment"""
 
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import chex
 import equinox as eqx
@@ -10,12 +10,14 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import typer
+from fastavro import parse_schema, writer
 
 from emevo import Env
 from emevo import birth_and_death as bd
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
+from emevo.exp_utils import Log
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -80,11 +82,6 @@ def visualize(
         visualizer.show()
 
 
-@chex.dataclass
-class Record:
-    parents: jax.Array
-
-
 def exec_rollout(
     state: State,
     initial_obs: Obs,
@@ -95,11 +92,11 @@ def exec_rollout(
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
-) -> tuple[State, Rollout, Obs, jax.Array]:
+) -> tuple[State, Rollout, Log, Obs, jax.Array]:
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
-    ) -> tuple[tuple[State, Obs], Rollout]:
+    ) -> tuple[tuple[State, Obs], tuple[Rollout, Log]]:
         act_key, hazard_key, birth_key = jax.random.split(key, 3)
         state_t, obs_t = carried
         obs_t_array = obs_t.as_array()
@@ -126,23 +123,35 @@ def exec_rollout(
             jax.random.bernoulli(birth_key, p=birth_prob),
         )
         state_t1db, parents = env.activate(state_t1d, possible_parents)
-        return (state_t1db, timestep.obs), rollout
+        log = Log(
+            parents=parents,
+            rewards=rewards,
+            age=state_t1db.status.age,
+            energy=state_t1db.status.energy,
+            birthtime=state_t1db.profile.birthtime,
+            generation=state_t1db.profile.generation,
+            unique_id=state_t1db.profile.unique_id,
+        )
+        return (state_t1db, timestep.obs), (rollout, log)
 
-    (state, obs), rollout = jax.lax.scan(
+    (state, obs), (rollout, log) = jax.lax.scan(
         step_rollout,
         (state, initial_obs),
         jax.random.split(prng_key, n_rollout_steps),
     )
     next_value = vmap_value(network, obs.as_array())
-    return state, rollout, obs, next_value
+    return state, rollout, log, obs, next_value
 
 
 @eqx.filter_jit
-def training_step(
+def epoch(
     state: State,
     initial_obs: Obs,
     env: Env,
     network: NormalPPONet,
+    reward_fn: LinearReward,
+    hazard_fn: bd.HazardFunction,
+    birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
     gamma: float,
@@ -151,20 +160,20 @@ def training_step(
     opt_state: optax.OptState,
     minibatch_size: int,
     n_optim_epochs: int,
-    reset: jax.Array,
 ) -> tuple[State, Obs, jax.Array, optax.OptState, NormalPPONet]:
     keys = jax.random.split(prng_key, N_MAX_AGENTS + 1)
-    env_state, rollout, obs, next_value = exec_rollout(
+    env_state, rollout, log, obs, next_value = exec_rollout(
         state,
         initial_obs,
         env,
         network,
+        reward_fn,
+        hazard_fn,
+        birth_fn,
         keys[0],
         n_rollout_steps,
     )
-    rollout = rollout.replace(terminations=rollout.terminations.at[-1].set(reset))
     batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
-    output = vmap_apply(network, obs.as_array())
     opt_state, pponet = vmap_update(
         batch,
         network,
@@ -179,7 +188,7 @@ def training_step(
     return env_state, obs, rollout.rewards, opt_state, pponet
 
 
-def run_training(
+def run_evolution(
     key: jax.Array,
     n_agents: int,
     env: Env,
@@ -190,7 +199,6 @@ def run_training(
     minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
-    reset_interval: int | None = None,
     debug_vis: bool = False,
 ) -> NormalPPONet:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -216,8 +224,7 @@ def run_training(
     else:
         visualizer = None
     for i, key in enumerate(keys):
-        reset = reset_interval is not None and (i + 1) % reset_interval
-        env_state, obs, rewards_i, opt_state, pponet = training_step(
+        env_state, obs, rewards_i, opt_state, pponet = epoch(
             env_state,
             obs,
             env,
@@ -230,7 +237,6 @@ def run_training(
             opt_state,
             minibatch_size,
             n_optim_epochs,
-            jnp.array(reset),
         )
         ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
         rewards = rewards + ri
@@ -238,24 +244,19 @@ def run_training(
             visualizer.render(env_state)
             visualizer.show()
             print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
-        if reset:
-            env_state, timestep = env.reset(key)
-            obs = timestep.obs
         # weight_summary(pponet)
     print(f"Sum of rewards {[x.item() for x in rewards[: n_agents]]}")
     return pponet
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
+here = Path(__file__)
 
 
 @app.command()
-def train(
-    modelpath: Path = Path("trained.eqx"),
+def evolve(
     seed: int = 1,
     n_agents: int = 2,
-    n_foods: int = 10,
-    obstacles: str = "none",
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
     gamma: float = 0.999,
@@ -264,37 +265,14 @@ def train(
     minibatch_size: int = 128,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 1000,
-    food_loc_fn: str = "gaussian",
-    env_shape: str = "circle",
-    reset_interval: Optional[int] = None,
-    xlim: int = 200,
-    ylim: int = 200,
-    linear_damping: float = 0.8,
-    angular_damping: float = 0.6,
-    max_force: float = 40.0,
-    min_force: float = -20.0,
+    cfconfig: Path = here.joinpath("../config/"),
+    bdconfig: Path = here.joinpath("../config/bd-20230530-a035-e020.toml"),
+    reward_fn: Literal["linear", "sigmoid"] = "linear",
+    logdir: Path = Path("./log"),
     debug_vis: bool = False,
 ) -> None:
-    assert n_agents < N_MAX_AGENTS
-    env = make(
-        "CircleForaging-v0",
-        env_shape=env_shape,
-        n_max_agents=N_MAX_AGENTS,
-        n_initial_agents=n_agents,
-        food_num_fn=("constant", n_foods),
-        food_loc_fn=food_loc_fn,
-        agent_loc_fn="gaussian",
-        foodloc_interval=20,
-        obstacles=obstacles,
-        xlim=(0.0, float(xlim)),
-        ylim=(0.0, float(ylim)),
-        env_radius=min(xlim, ylim) * 0.5,
-        linear_damping=linear_damping,
-        angular_damping=angular_damping,
-        max_force=max_force,
-        min_force=min_force,
-    )
-    network = run_training(
+    env = make("CircleForaging-v0")
+    network = run_evolution(
         jax.random.PRNGKey(seed),
         n_agents,
         env,
@@ -305,10 +283,9 @@ def train(
         minibatch_size,
         n_rollout_steps,
         n_total_steps,
-        reset_interval,
         debug_vis,
     )
-    eqx.tree_serialise_leaves(modelpath, network)
+    # eqx.tree_serialise_leaves(modelpath, network)
 
 
 @app.command()

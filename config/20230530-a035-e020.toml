@@ -11,4 +11,4 @@ e0 = 0.0
 [birth_params]
 alpha = 0.1
 scale = 2e-4
-e0 = 20.0.
+e0 = 20.0

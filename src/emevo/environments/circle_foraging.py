@@ -629,7 +629,10 @@ class CircleForaging(Env):
             state.food_num,
             state.food_loc,
         )
-        status = state.status.update(energy_delta=energy_delta)
+        status = state.status.update(
+            energy_delta=energy_delta,
+            capacity=self._energy_capacity,
+        )
         state = CFState(
             physics=stated,
             solver=solver,
@@ -708,12 +711,7 @@ class CircleForaging(Env):
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
         nmax = self._n_max_agents
         profile = init_profile(self._n_initial_agents, nmax)
-        status = init_status(
-            self._n_initial_agents,
-            nmax,
-            self._init_energy,
-            self._energy_capacity,
-        )
+        status = init_status(self._n_initial_agents, nmax, self._init_energy)
         state = CFState(
             physics=physics,
             solver=self._physics.init_solver(),

@@ -23,7 +23,6 @@ class Status:
 
     age: jax.Array
     energy: jax.Array
-    capacity: float = 100.0
 
     def step(self) -> Self:
         """Get older."""
@@ -37,23 +36,17 @@ class Status:
     def deactivate(self, flag: jax.Array) -> Self:
         return replace(self, age=jnp.where(flag, -1, self.age))
 
-    def update(self, *, energy_delta: jax.Array) -> Self:
+    def update(self, energy_delta: jax.Array, capacity: float | None = 100.0) -> Self:
         """Update energy."""
         energy = self.energy + energy_delta
-        return replace(self, energy=jnp.clip(energy, a_min=0.0, a_max=self.capacity))
+        return replace(self, energy=jnp.clip(energy, a_min=0.0, a_max=capacity))
 
 
-def init_status(
-    n: int,
-    max_n: int,
-    init_energy: float,
-    capacity: float = 100.0,
-) -> Status:
+def init_status(n: int, max_n: int, init_energy: float) -> Status:
     assert max_n >= n
     return Status(
         age=jnp.zeros(max_n, dtype=jnp.int32),
         energy=jnp.ones(max_n, dtype=jnp.float32) * init_energy,
-        capacity=capacity,
     )
 
 
