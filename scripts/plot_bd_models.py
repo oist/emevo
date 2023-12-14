@@ -18,7 +18,7 @@ from emevo.plotting import (
 
 
 def plot_bd_models(
-    config: Path = Path("config/20230530-a035-e020.toml"),
+    config: Path = Path("config/bd/20230530-a035-e020.toml"),
     age_max: int = 200000,
     energy_max: float = 40,
     survivorship_energy: float = 10.0,
