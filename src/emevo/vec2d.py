@@ -58,7 +58,7 @@ import numbers
 import operator
 from typing import Any, NamedTuple
 
-__all__ = ["Vec2d", "Vec2dLike"]
+__all__ = ["Vec2d"]
 
 Self = Any
 
@@ -412,6 +412,3 @@ class Vec2d(NamedTuple):
         return Vec2d(
             self.x * other[0] + self.y * other[1], self.y * other[0] - self.x * other[1]
         )
-
-
-Vec2dLike = Vec2d | tuple[float, float]

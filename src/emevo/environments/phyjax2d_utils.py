@@ -20,7 +20,7 @@ from emevo.environments.phyjax2d import (
     _vmap_dot,
     empty,
 )
-from emevo.vec2d import Vec2d, Vec2dLike
+from emevo.vec2d import Vec2d
 
 Self = Any
 
@@ -101,7 +101,7 @@ class SpaceBuilder:
     Not expected to used with `jax.jit`.
     """
 
-    gravity: Vec2dLike = dataclasses.field(default=(0.0, -9.8))
+    gravity: Vec2d | tuple[float, float] = dataclasses.field(default=(0.0, -9.8))
     circles: list[Circle] = dataclasses.field(default_factory=list)
     static_circles: list[Circle] = dataclasses.field(default_factory=list)
     capsules: list[Capsule] = dataclasses.field(default_factory=list)
@@ -284,7 +284,7 @@ class SpaceBuilder:
 
 
 def make_approx_circle(
-    center: Vec2dLike,
+    center: Vec2d | tuple[float, float],
     radius: float,
     n_lines: int = 32,
 ) -> list[tuple[Vec2d, Vec2d]]:
