@@ -298,6 +298,8 @@ def vis(
     angular_damping: float = 0.6,
     max_force: float = 40.0,
     min_force: float = -20.0,
+    n_sensors: int = 16,
+    sensor_length: float = 100.0,
     headless: bool = False,
 ) -> None:
     assert n_agents < N_MAX_AGENTS
@@ -315,6 +317,8 @@ def vis(
         env_radius=min(xlim, ylim) * 0.5,
         linear_damping=linear_damping,
         angular_damping=angular_damping,
+        n_agent_sensors=n_sensors,
+        sensor_length=sensor_length,
         max_force=max_force,
         min_force=min_force,
     )
