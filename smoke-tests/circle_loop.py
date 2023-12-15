@@ -22,6 +22,8 @@ def main(
     fixed_agent_loc: bool = False,
     env_shape: str = "square",
     food_loc_fn: str = "gaussian",
+    food_num_fn: str = "constant",
+    food_growth_rate: float = 0.1,
 ) -> None:
     if fixed_agent_loc:
         additional_kwargs = {
@@ -39,12 +41,18 @@ def main(
         additional_kwargs = {}
 
     n_max_agents = n_agents + 10
+    if food_num_fn == "constant":
+        fnf = "constant", n_foods
+    elif food_num_fn == "logistic":
+        fnf = "logistic", n_foods, food_growth_rate, n_foods * 2
+    else:
+        raise ValueError(f"Invalid food_num_fn: {food_num_fn}")
     env = make(
         "CircleForaging-v0",
         env_shape=env_shape,
         n_max_agents=n_max_agents,
         n_initial_agents=n_agents,
-        food_num_fn=("constant", n_foods),
+        food_num_fn=fnf,
         food_loc_fn=food_loc_fn,
         foodloc_interval=20,
         obstacles=obstacles,

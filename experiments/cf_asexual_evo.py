@@ -160,7 +160,7 @@ def epoch(
     opt_state: optax.OptState,
     minibatch_size: int,
     n_optim_epochs: int,
-) -> tuple[State, Obs, jax.Array, optax.OptState, NormalPPONet]:
+) -> tuple[State, Obs, Log, optax.OptState, NormalPPONet]:
     keys = jax.random.split(prng_key, N_MAX_AGENTS + 1)
     env_state, rollout, log, obs, next_value = exec_rollout(
         state,
@@ -185,7 +185,7 @@ def epoch(
         0.2,
         0.0,
     )
-    return env_state, obs, rollout.rewards, opt_state, pponet
+    return env_state, obs, log, opt_state, pponet
 
 
 def run_evolution(
