@@ -1,15 +1,15 @@
 #!/bin/bash
 set -eo pipefail
 
-if [[ -d .exp-venv ]]; then
-    exit 0
+if [[ ! -d .exp-venv ]]; then
+    mkdir .exp-venv
+    python -m venv .exp-venv
 fi
 
-mkdir .exp-venv
-python -m venv .exp-venv
-if [[ -f requirements/experiments.txt ]]; then
+if [[ ! -f requirements/experiments.txt ]]; then
     nox -s compile -- -k experiments
 fi
-source .venv/bin/activate
+
+source .exp-venv/bin/activate
 pip install pip-tools
 pip-sync requirements/experiments.txt
