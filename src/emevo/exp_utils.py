@@ -11,7 +11,6 @@ import jax
 import serde
 
 from emevo import birth_and_death as bd
-from emevo.env import Profile, Status
 
 
 @serde.serde

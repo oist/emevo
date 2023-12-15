@@ -1,7 +1,7 @@
 """Example of using circle foraging environment"""
-
+import dataclasses
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import chex
 import equinox as eqx
@@ -11,13 +11,14 @@ import numpy as np
 import optax
 import typer
 from fastavro import parse_schema, writer
+from serde import toml
 
 from emevo import Env
 from emevo import birth_and_death as bd
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
-from emevo.exp_utils import Log
+from emevo.exp_utils import BDConfig, CfConfig, Log
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -36,14 +37,8 @@ class LinearReward(eqx.Module):
     weight: jax.Array
     max_action_norm: float
 
-    def __init__(
-        self,
-        max_action_norm: float,
-        n_agents: int,
-        key: chex.PRNGKey,
-    ) -> None:
+    def __init__(self, key: chex.PRNGKey, n_agents: int) -> None:
         self.weight = jax.random.normal(key, (n_agents, 4))
-        self.max_action_norm = max_action_norm
 
     def __call__(self, collision: jax.Array, action: jax.Array) -> jax.Array:
         action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
@@ -199,6 +194,10 @@ def run_evolution(
     minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
+    reward_fn: LinearReward,
+    hazard_fn: bd.HazardFunction,
+    birth_fn: bd.BirthFunction,
+    logdir: Path,
     debug_vis: bool = False,
 ) -> NormalPPONet:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -229,6 +228,9 @@ def run_evolution(
             obs,
             env,
             pponet,
+            reward_fn,
+            hazard_fn,
+            birth_fn,
             key,
             n_rollout_steps,
             gamma,
@@ -238,8 +240,6 @@ def run_evolution(
             minibatch_size,
             n_optim_epochs,
         )
-        ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
-        rewards = rewards + ri
         if visualizer is not None:
             visualizer.render(env_state)
             visualizer.show()
@@ -265,15 +265,30 @@ def evolve(
     minibatch_size: int = 128,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 1000,
-    cfconfig: Path = here.joinpath("../config/env/20231214-square.toml"),
-    bdconfig: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
+    cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
+    bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
     reward_fn: Literal["linear", "sigmoid"] = "linear",
     logdir: Path = Path("./log"),
     debug_vis: bool = False,
 ) -> None:
-    env = make("CircleForaging-v0")
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+    with bdconfig_path.open("r") as f:
+        bdconfig = toml.from_toml(BDConfig, f.read())
+
+    # Override config
+    cfconfig.n_agents = n_agents
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    birth_fn, hazard_fn = bdconfig.load_models()
+    key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
+    if reward_fn == "linear":
+        reward_fn_instance = LinearReward(reward_key, cfconfig.n_max_agents)
+    elif reward_fn == "sigmoid":
+        assert False, "Unimplemented"
+    else:
+        raise ValueError(f"Invalid reward_fn {reward_fn}")
     network = run_evolution(
-        jax.random.PRNGKey(seed),
+        key,
         n_agents,
         env,
         optax.adam(adam_lr, eps=adam_eps),
@@ -283,6 +298,10 @@ def evolve(
         minibatch_size,
         n_rollout_steps,
         n_total_steps,
+        reward_fn_instance,
+        hazard_fn,
+        birth_fn,
+        logdir,
         debug_vis,
     )
     # eqx.tree_serialise_leaves(modelpath, network)
