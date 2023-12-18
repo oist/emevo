@@ -7,7 +7,9 @@
 **/build/
 **/*.egg-info/
 **/.mypy_cache/
+.virtual_documents/
 .ipynb_checkpoints/
 requirements/*.txt
 # This should be local
 pyrightconfig.json
+*.eqx

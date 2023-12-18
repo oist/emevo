@@ -3,35 +3,51 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
-from typing import Dict, List, Tuple, Type
+from typing import Dict, Tuple, Type, Union
 
 import chex
-import fastavro
 import jax
 import serde
 
 from emevo import birth_and_death as bd
+from emevo.environments.circle_foraging import SensorRange
 
 
 @serde.serde
 @dataclasses.dataclass
 class CfConfig:
-    agent_radius: float
-    n_agents: int
-    n_agent_sensors: int
-    sensor_length: float
-    food_loc_fn: str
-    food_num_fn: Tuple[str, int]
-    xlim: Tuple[float, float]
-    ylim: Tuple[float, float]
-    env_radius: float
-    env_shape: str
-    obstacles: List[Tuple[float, float, float, float]]
-    seed: int
+    n_initial_agents: int = 6
+    n_max_agents: int = 100
+    n_max_foods: int = 40
+    food_num_fn: Union[str, Tuple[str, ...]] = "constant"
+    food_loc_fn: Union[str, Tuple[str, ...]] = "gaussian"
+    agent_loc_fn: Union[str, Tuple[str, ...]] = "uniform"
+    xlim: Tuple[float, float] = (0.0, 200.0)
+    ylim: Tuple[float, float] = (0.0, 200.0)
+    env_radius: float = 120.0
+    env_shape: str = "square"
+    obstacles: str = "none"
+    newborn_loc: str = "neighbor"
+    neighbor_stddev: float = 40.0
+    n_agent_sensors: int = 16
+    sensor_length: float = 100.0
+    sensor_range: SensorRange = SensorRange.WIDE
+    agent_radius: float = 10.0
+    food_radius: float = 4.0
+    foodloc_interval: int = 1000
+    dt: float = 0.1
     linear_damping: float = 0.8
     angular_damping: float = 0.6
     max_force: float = 40.0
     min_force: float = -20.0
+    init_energy: float = 20.0
+    energy_capacity: float = 100.0
+    force_energy_consumption: float = 0.01 / 40.0
+    energy_share_ratio: float = 0.4
+    n_velocity_iter: int = 6
+    n_position_iter: int = 2
+    n_physics_iter: int = 5
+    max_place_attempts: int = 10
 
 
 def _load_cls(cls_path: str) -> Type:

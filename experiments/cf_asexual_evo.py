@@ -1,7 +1,8 @@
 """Example of using circle foraging environment"""
 import dataclasses
+import enum
 from pathlib import Path
-from typing import Literal
+from typing import Protocol
 
 import chex
 import equinox as eqx
@@ -11,6 +12,7 @@ import numpy as np
 import optax
 import typer
 from fastavro import parse_schema, writer
+from jax._src.numpy.lax_numpy import Protocol
 from serde import toml
 
 from emevo import Env
@@ -33,6 +35,11 @@ from emevo.visualizer import SaveVideoWrapper
 N_MAX_AGENTS: int = 10
 
 
+class RewardFn(Protocol):
+    def __call__(self, collision: jax.Array, action: jax.Array) -> jax.Array:
+        ...
+
+
 class LinearReward(eqx.Module):
     weight: jax.Array
     max_action_norm: float
@@ -44,6 +51,11 @@ class LinearReward(eqx.Module):
         action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
         input_ = jnp.concatenate((collision, action_norm), axis=1)
         return jax.vmap(jnp.dot)(input_, self.weight)
+
+
+class RewardKind(str, enum.Enum):
+    LINEAR = "linear"
+    SIGMOID = "sigmoid"
 
 
 def visualize(
@@ -243,7 +255,6 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state)
             visualizer.show()
-            print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
         # weight_summary(pponet)
     print(f"Sum of rewards {[x.item() for x in rewards[: n_agents]]}")
     return pponet
@@ -267,7 +278,7 @@ def evolve(
     n_total_steps: int = 1024 * 1000,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
-    reward_fn: Literal["linear", "sigmoid"] = "linear",
+    reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
     debug_vis: bool = False,
 ) -> None:
@@ -277,13 +288,13 @@ def evolve(
         bdconfig = toml.from_toml(BDConfig, f.read())
 
     # Override config
-    cfconfig.n_agents = n_agents
+    cfconfig.n_initial_agents = n_agents
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     birth_fn, hazard_fn = bdconfig.load_models()
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
-    if reward_fn == "linear":
+    if reward_fn == RewardKind.LINEAR:
         reward_fn_instance = LinearReward(reward_key, cfconfig.n_max_agents)
-    elif reward_fn == "sigmoid":
+    elif reward_fn == RewardKind.SIGMOID:
         assert False, "Unimplemented"
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
