@@ -299,6 +299,12 @@ def _first_n_true(boolean_array: jax.Array, n: jax.Array) -> jax.Array:
     return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) <= n)
 
 
+def _nonzero(arr: jax.Array, n: int) -> jax.Array:
+    cums = jnp.cumsum(arr)
+    bincount = jnp.zeros(n, dtype=jnp.int32).at[cums].add(1)
+    return jnp.cumsum(bincount)
+
+
 class CircleForaging(Env):
     def __init__(
         self,
@@ -651,47 +657,63 @@ class CircleForaging(Env):
         state: CFState,
         is_parent: jax.Array,
     ) -> tuple[CFState, jax.Array]:
+        N = self.n_max_agents
         circle = state.physics.circle
-        keys = jax.random.split(state.key, self.n_max_agents + 1)
+        keys = jax.random.split(state.key, N + 1)
         new_xy, ok = self._place_newborn(
             state.agent_loc,
             state.physics,
             keys[1:],
             circle.p.xy,
         )
-        possible_parents = jnp.logical_and(is_parent, ok)
-        slots = _first_n_true(
+        is_possible_parent = jnp.logical_and(is_parent, ok)
+        is_replaced = _first_n_true(
             jnp.logical_not(circle.is_active),
-            jnp.sum(possible_parents),
+            jnp.sum(is_possible_parent),
         )
-        parents = _first_n_true(possible_parents, jnp.sum(slots))
-        xy = circle.p.xy.at[slots].set(new_xy[parents])
-        angle = jnp.where(slots, 0.0, circle.p.angle)
+        is_parent = _first_n_true(is_possible_parent, jnp.sum(is_replaced))
+        # parent_indices := nonzero_indices(parents) + (N, N, N, ....)
+        parent_indices = _nonzero(is_parent, N)
+        # empty_indices := nonzero_indices(not(is_active)) + (0, 0, 0, ....)
+        replaced_indices = _nonzero(is_replaced, N) % (N + 1)
+        # To use .at[].add, append (0, 0) to sampled xy
+        new_xy_with_sentinel = jnp.concatenate((new_xy, jnp.zeros((1, 2))))
+        xy = circle.p.xy.at[replaced_indices].add(new_xy_with_sentinel[parent_indices])
+        angle = jnp.where(is_replaced, 0.0, circle.p.angle)
         p = Position(angle=angle, xy=xy)
-        is_active = jnp.logical_or(slots, circle.is_active)
+        is_active = jnp.logical_or(is_replaced, circle.is_active)
         physics = replace(
             state.physics,
             circle=replace(circle, p=p, is_active=is_active),
         )
-        profile = state.profile.activate(slots, state.step)
+        profile = state.profile.activate(is_replaced, state.step)
         shared_energy = state.status.energy * self._energy_share_ratio
+        shared_energy_with_sentinel = jnp.concatenate((shared_energy, jnp.zeros(1)))
         init_energy = (
-            jnp.zeros_like(state.status.energy).at[slots].set(shared_energy[parents])
+            jnp.zeros_like(state.status.energy)
+            .at[replaced_indices]
+            .add(shared_energy_with_sentinel[parent_indices % N])
         )
-        status = state.status.activate(slots, init_energy=init_energy)
-        status = status.update(energy_delta=(status.energy - shared_energy) * parents)
+        status = state.status.activate(replaced_indices, init_energy=init_energy)
+        status = status.update(energy_delta=(status.energy - shared_energy) * is_parent)
+        n_children = jnp.sum(is_parent)
         new_state = replace(
             state,
             physics=physics,
             profile=profile,
             status=status,
-            agent_loc=state.agent_loc.increment(jnp.sum(slots)),
-            n_born_agents=state.n_born_agents + jnp.sum(slots),
+            agent_loc=state.agent_loc.increment(n_children),
+            n_born_agents=state.n_born_agents + n_children,
             key=keys[0],
         )
         empty_id = jnp.ones_like(state.profile.unique_id) * -1
-        parents_id = empty_id.at[slots].set(state.profile.unique_id[parents])
-        return new_state, parents_id
+        unique_id_with_sentinel = jnp.concatenate(
+            (state.profile.unique_id, jnp.zeros(1, dtype=jnp.int32))
+        )
+        parent_id = empty_id.at[replaced_indices].set(
+            unique_id_with_sentinel[parent_indices]
+        )
+        return new_state, parent_id
 
     def deactivate(self, state: CFState, flag: jax.Array) -> CFState:
         expanded_flag = jnp.expand_dims(flag, axis=1)

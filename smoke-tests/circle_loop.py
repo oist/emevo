@@ -76,6 +76,8 @@ def main(
     replace_interval = steps // 10
     deactivate_index = n_agents - 1
     activate_p = jnp.zeros(n_max_agents).at[jnp.arange(5)].set(0.5)
+    deactivate = jax.jit(env.deactivate)
+    activate = jax.jit(env.activate)
     for i in tqdm(range(steps)):
         before = datetime.datetime.now()
         state, _ = jit_step(state, jit_sample(keys[i + 1]))
@@ -90,11 +92,11 @@ def main(
                 flag = (
                     jnp.zeros(n_max_agents, dtype=bool).at[deactivate_index].set(True)
                 )
-                state = env.deactivate(state, flag)
+                state = deactivate(state, flag)
                 deactivate_index -= 1
             else:
                 flag = jax.random.bernoulli(keys[i + 1], p=activate_p)
-                state, parents = env.activate(state, flag)
+                state, parents = activate(state, flag)
                 print("Parents: ", parents)
 
         if visualizer is not None:
