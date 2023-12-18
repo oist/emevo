@@ -32,8 +32,6 @@ from emevo.rl.ppo_normal import (
 )
 from emevo.visualizer import SaveVideoWrapper
 
-N_MAX_AGENTS: int = 10
-
 
 class RewardFn(Protocol):
     def __call__(self, collision: jax.Array, action: jax.Array) -> jax.Array:
@@ -42,7 +40,6 @@ class RewardFn(Protocol):
 
 class LinearReward(eqx.Module):
     weight: jax.Array
-    max_action_norm: float
 
     def __init__(self, key: chex.PRNGKey, n_agents: int) -> None:
         self.weight = jax.random.normal(key, (n_agents, 4))
@@ -126,7 +123,7 @@ def exec_rollout(
         state_t1d = env.deactivate(state_t1, dead)
         birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
         possible_parents = jnp.logical_and(
-            jnp.logical_not(dead),
+            jnp.logical_and(jnp.logical_not(dead), state.profile.is_active()),
             jax.random.bernoulli(birth_key, p=birth_prob),
         )
         state_t1db, parents = env.activate(state_t1d, possible_parents)
@@ -168,7 +165,7 @@ def epoch(
     minibatch_size: int,
     n_optim_epochs: int,
 ) -> tuple[State, Obs, Log, optax.OptState, NormalPPONet]:
-    keys = jax.random.split(prng_key, N_MAX_AGENTS + 1)
+    keys = jax.random.split(prng_key, env.n_max_agents + 1)
     env_state, rollout, log, obs, next_value = exec_rollout(
         state,
         initial_obs,
@@ -197,7 +194,6 @@ def epoch(
 
 def run_evolution(
     key: jax.Array,
-    n_agents: int,
     env: Env,
     adam: optax.GradientTransformation,
     gamma: float,
@@ -220,7 +216,7 @@ def run_evolution(
         input_size,
         64,
         act_size,
-        jax.random.split(net_key, N_MAX_AGENTS),
+        jax.random.split(net_key, env.n_max_agents),
     )
     adam_init, adam_update = adam
     opt_state = jax.vmap(adam_init)(eqx.filter(pponet, eqx.is_array))
@@ -228,7 +224,7 @@ def run_evolution(
     obs = timestep.obs
 
     n_loop = n_total_steps // n_rollout_steps
-    rewards = jnp.zeros(N_MAX_AGENTS)
+    rewards = jnp.zeros(env.n_max_agents)
     keys = jax.random.split(key, n_loop)
     if debug_vis:
         visualizer = env.visualizer(env_state, figsize=(640.0, 640.0))
@@ -261,7 +257,7 @@ def run_evolution(
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
-here = Path(__file__)
+here = Path(__file__).parent
 
 
 @app.command()
@@ -300,7 +296,6 @@ def evolve(
         raise ValueError(f"Invalid reward_fn {reward_fn}")
     network = run_evolution(
         key,
-        n_agents,
         env,
         optax.adam(adam_lr, eps=adam_eps),
         gamma,

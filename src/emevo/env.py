@@ -130,6 +130,7 @@ class Env(abc.ABC, Generic[STATE, OBS]):
 
     act_space: Space
     obs_space: Space
+    n_max_agents: int
 
     def __init__(self, *args, **kwargs) -> None:
         # To supress PyRight errors in registry

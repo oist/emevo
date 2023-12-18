@@ -59,7 +59,7 @@ MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
 AGENT_COLOR: Color = Color(2, 204, 254)
 FOOD_COLOR: Color = Color(254, 2, 162)
-NOWHERE: float = -100.0
+NOWHERE: float = 0.0
 N_OBJECTS: int = 3
 
 
@@ -368,7 +368,7 @@ class CircleForaging(Env):
         assert n_max_agents > n_initial_agents
         assert n_max_foods > self._food_num_fn.initial
         self._n_initial_agents = n_initial_agents
-        self._n_max_agents = n_max_agents
+        self.n_max_agents = n_max_agents
         self._n_initial_foods = self._food_num_fn.initial
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
@@ -407,11 +407,10 @@ class CircleForaging(Env):
         # Obs
         self._n_sensors = n_agent_sensors
         # Some cached constants
-        self._invisible_xy = jnp.ones(2) * NOWHERE
         act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
         act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
-        self._act_p1 = jnp.tile(jnp.array(act_p1), (self._n_max_agents, 1))
-        self._act_p2 = jnp.tile(jnp.array(act_p2), (self._n_max_agents, 1))
+        self._act_p1 = jnp.tile(jnp.array(act_p1), (self.n_max_agents, 1))
+        self._act_p2 = jnp.tile(jnp.array(act_p2), (self.n_max_agents, 1))
         self._init_agent = jax.jit(
             functools.partial(
                 place,
@@ -653,7 +652,7 @@ class CircleForaging(Env):
         is_parent: jax.Array,
     ) -> tuple[CFState, jax.Array]:
         circle = state.physics.circle
-        keys = jax.random.split(state.key, self._n_max_agents + 1)
+        keys = jax.random.split(state.key, self.n_max_agents + 1)
         new_xy, ok = self._place_newborn(
             state.agent_loc,
             state.physics,
@@ -695,12 +694,13 @@ class CircleForaging(Env):
         return new_state, parents_id
 
     def deactivate(self, state: CFState, flag: jax.Array) -> CFState:
-        p_xy = state.physics.circle.p.xy.at[flag].set(self._invisible_xy)
+        expanded_flag = jnp.expand_dims(flag, axis=1)
+        p_xy = jnp.where(expanded_flag, NOWHERE, state.physics.circle.p.xy)
         p = replace(state.physics.circle.p, xy=p_xy)
-        v_xy = state.physics.circle.v.xy.at[flag].set(0.0)
-        v_angle = state.physics.circle.v.angle.at[flag].set(0.0)
+        v_xy = jnp.where(expanded_flag, 0.0, state.physics.circle.v.xy)
+        v_angle = jnp.where(flag, 0.0, state.physics.circle.v.angle)
         v = Velocity(angle=v_angle, xy=v_xy)
-        is_active = state.physics.circle.is_active.at[flag].set(False)
+        is_active = jnp.where(flag, False, state.physics.circle.is_active)
         circle = replace(state.physics.circle, p=p, v=v, is_active=is_active)
         physics = replace(state.physics, circle=circle)
         profile = state.profile.deactivate(flag)
@@ -709,7 +709,7 @@ class CircleForaging(Env):
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
-        nmax = self._n_max_agents
+        nmax = self.n_max_agents
         profile = init_profile(self._n_initial_agents, nmax)
         status = init_status(self._n_initial_agents, nmax, self._init_energy)
         state = CFState(
@@ -748,7 +748,7 @@ class CircleForaging(Env):
         is_active_c = jnp.concatenate(
             (
                 jnp.ones(self._n_initial_agents, dtype=bool),
-                jnp.zeros(self._n_max_agents - self._n_initial_agents, dtype=bool),
+                jnp.zeros(self.n_max_agents - self._n_initial_agents, dtype=bool),
             )
         )
         is_active_s = jnp.concatenate(

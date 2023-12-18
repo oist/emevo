@@ -22,7 +22,7 @@ class HazardFunction(Protocol):
         return jnp.exp(-self.cumulative(age, energy))
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class DeterministicHazard(HazardFunction):
     """
     A deterministic hazard function where an agent dies when
@@ -52,7 +52,7 @@ class DeterministicHazard(HazardFunction):
         )
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class ConstantHazard(HazardFunction):
     """
     Hazard with constant death rate.
@@ -79,7 +79,7 @@ class ConstantHazard(HazardFunction):
         return self(age, energy) * age
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class EnergyLogisticHazard(HazardFunction):
     """
     Hazard with death rate that only depends on energy.
@@ -101,7 +101,7 @@ class EnergyLogisticHazard(HazardFunction):
         return self._energy_death_rate(energy) * age
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class GompertzHazard(ConstantHazard):
     """
     Hazard with exponentially increasing death rate.
@@ -123,7 +123,7 @@ class GompertzHazard(ConstantHazard):
         return ht - h0
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class ELGompertzHazard(EnergyLogisticHazard):
     """
     Exponentially increasing with time + EnergyLogistic
@@ -158,7 +158,7 @@ class BirthFunction(Protocol):
         ...
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class EnergyLogisticBirth(BirthFunction):
     """
     Only energy is important to give birth.

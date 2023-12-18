@@ -20,6 +20,9 @@ class HasStateD(Protocol):
     stated: StateDict
 
 
+NOWHERE: float = -1000.0
+
+
 _CIRCLE_VERTEX_SHADER = """
 #version 330
 uniform mat4 proj;
@@ -259,7 +262,8 @@ def _collect_circles(
     state: State,
     circle_scaling: float,
 ) -> tuple[NDArray, NDArray, NDArray]:
-    points = np.array(state.p.xy, dtype=np.float32)
+    flag = np.array(state.is_active).reshape(-1, 1)
+    points = np.where(flag, np.array(state.p.xy, dtype=np.float32), NOWHERE)
     scales = circle.radius * circle_scaling
     colors = np.array(circle.rgba, dtype=np.float32) / 255.0
     is_active = np.expand_dims(np.array(state.is_active), axis=1)
@@ -271,7 +275,8 @@ def _collect_static_lines(segment: Segment, state: State) -> NDArray:
     a, b = segment.point1, segment.point2
     a = state.p.transform(a)
     b = state.p.transform(b)
-    return np.concatenate((a, b), axis=1).reshape(-1, 2)
+    flag = np.repeat(np.array(state.is_active), 2).reshape(-1, 1)
+    return np.where(flag, np.concatenate((a, b), axis=1).reshape(-1, 2), NOWHERE)
 
 
 def _collect_heads(circle: Circle, state: State) -> NDArray:
@@ -279,7 +284,8 @@ def _collect_heads(circle: Circle, state: State) -> NDArray:
     x = jnp.zeros_like(y)
     p1, p2 = jnp.stack((x, y * 0.8), axis=1), jnp.stack((x, y * 1.2), axis=1)
     p1, p2 = state.p.transform(p1), state.p.transform(p2)
-    return np.concatenate((p1, p2), axis=1).reshape(-1, 2)
+    flag = np.repeat(np.array(state.is_active), 2).reshape(-1, 1)
+    return np.where(flag, np.concatenate((p1, p2), axis=1).reshape(-1, 2), NOWHERE)
 
 
 # def _collect_policies(
@@ -406,7 +412,16 @@ class MglRenderer:
                     sensor_fn(stated=stated),  # type: ignore
                     axis=1,
                 )
-                return sensors.reshape(-1, 2).astype(jnp.float32)
+                sensors = sensors.reshape(-1, 2).astype(jnp.float32)
+                flag = np.repeat(
+                    np.array(stated.circle.is_active),
+                    sensors.shape[0] // stated.circle.batch_size(),
+                )
+                return np.where(
+                    flag.reshape(-1, 1),
+                    sensors,
+                    NOWHERE,
+                )
 
             self._sensors = SegmentVA(
                 ctx=context,
