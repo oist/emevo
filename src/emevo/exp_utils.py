@@ -7,15 +7,11 @@ from typing import Any, Dict, Tuple, Type, Union
 
 import chex
 import jax
+import jax.numpy as jnp
 import serde
 
 from emevo import birth_and_death as bd
 from emevo.environments.circle_foraging import SensorRange
-
-
-def tree_as_list(pytree: Any) -> list[Any]:
-    leaves, treedef = jax.tree_util.tree_flatten(pytree)
-    return [treedef.unflatten(leaf) for leaf in zip(*leaves)]  # type: ignore
 
 
 @serde.serde
@@ -81,9 +77,35 @@ class BDConfig:
 class Log:
     parents: jax.Array
     rewards: jax.Array
-    dead: jax.Array
     age: jax.Array
     energy: jax.Array
     birthtime: jax.Array
     generation: jax.Array
     unique_id: jax.Array
+
+    def with_step(self, from_: int) -> LogWithStep:
+        if self.parents.ndim == 2:
+            step_size, batch_size = self.parents.shape
+            arange = jnp.arange(from_, from_ + step_size)
+            step = jnp.tile(jnp.expand_dims(arange, axis=1), (1, batch_size))
+            return LogWithStep(**self, step=step)
+        elif self.parents.ndim == 1:
+            batch_size = self.parents.shape[0]
+            return LogWithStep(
+                **self,
+                step=jnp.ones(batch_size, dtype=jnp.int32) * from_,
+            )
+        else:
+            raise ValueError(
+                "with_step is only applicable for 1 or 2 dimensional log, but it has"
+                + f"{self.parents.ndim} ndim"
+            )
+
+
+@chex.dataclass
+class LogWithStep(Log):
+    step: jax.Array
+
+    def filter(self) -> Any:
+        is_active = self.unique_id > -1
+        return jax.tree_map(lambda arr: arr[is_active], self)

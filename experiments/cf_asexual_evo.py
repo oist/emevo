@@ -13,7 +13,6 @@ import optax
 import pyarrow as pa
 import pyarrow.parquet as pq
 import typer
-from jax._src.numpy.lax_numpy import Protocol
 from serde import toml
 
 from emevo import Env
@@ -21,7 +20,7 @@ from emevo import birth_and_death as bd
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
-from emevo.exp_utils import BDConfig, CfConfig, Log, tree_as_list
+from emevo.exp_utils import BDConfig, CfConfig, Log
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -133,7 +132,6 @@ def exec_rollout(
         )
         state_t1db, parents = env.activate(state_t1d, possible_parents)
         log = Log(
-            dead=jnp.where(dead, state_t1.profile.unique_id, -1),  # type: ignore
             parents=parents,
             rewards=rewards.ravel(),
             age=state_t1db.status.age,
@@ -246,9 +244,7 @@ def run_evolution(
             lambda *args: np.array(jnp.concatenate(args, axis=0)),
             *log_list,
         )
-        print(log)
         log_dict = dataclasses.asdict(log)
-        print({arr.shape for arr in log_dict.values()})
         table = pa.Table.from_pydict(log_dict)
         pq.write_table(
             table,
@@ -285,16 +281,13 @@ def run_evolution(
             print(f"Extinct after {i + 1} epochs")
             return pponet
 
-        import datetime as dt
+        filtered_log = log.with_step(i * n_rollout_steps).filter()
 
-        log_list.append(log)
+        log_list.append(filtered_log)
         if (i + 1) % log_interval == 0:
             index = (i + 1) // log_interval
-            print("Start parquet writing")
-            now = dt.datetime.now()
             write_log(index)
 
-            print(f"End parquet writing: {(dt.datetime.now() - now).seconds} sec")
     return pponet
 
 
@@ -318,7 +311,7 @@ def evolve(
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
-    log_interval: int = 5,
+    log_interval: int = 100,
     debug_vis: bool = False,
 ) -> None:
     with cfconfig_path.open("r") as f:
