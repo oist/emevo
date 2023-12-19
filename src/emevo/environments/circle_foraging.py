@@ -692,9 +692,9 @@ class CircleForaging(Env):
         init_energy = (
             jnp.zeros_like(state.status.energy)
             .at[replaced_indices]
-            .add(shared_energy_with_sentinel[parent_indices % N])
+            .add(shared_energy_with_sentinel[parent_indices])
         )
-        status = state.status.activate(replaced_indices, init_energy=init_energy)
+        status = state.status.activate(is_replaced, init_energy=init_energy)
         status = status.update(energy_delta=(status.energy - shared_energy) * is_parent)
         n_children = jnp.sum(is_parent)
         new_state = replace(
@@ -731,9 +731,9 @@ class CircleForaging(Env):
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
-        nmax = self.n_max_agents
-        profile = init_profile(self._n_initial_agents, nmax)
-        status = init_status(self._n_initial_agents, nmax, self._init_energy)
+        N = self.n_max_agents
+        profile = init_profile(self._n_initial_agents, N)
+        status = init_status(N, self._init_energy)
         state = CFState(
             physics=physics,
             solver=self._physics.init_solver(),
@@ -749,13 +749,13 @@ class CircleForaging(Env):
         sensor_obs = self._sensor_obs(stated=physics)
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, N_OBJECTS),
-            collision=jnp.zeros((nmax, N_OBJECTS), dtype=bool),
+            collision=jnp.zeros((N, N_OBJECTS), dtype=bool),
             angle=physics.circle.p.angle,
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
         )
         # They shouldn't encount now
-        timestep = TimeStep(encount=jnp.zeros((nmax, nmax), dtype=bool), obs=obs)
+        timestep = TimeStep(encount=jnp.zeros((N, N), dtype=bool), obs=obs)
         return state, timestep
 
     def _initialize_physics_state(

@@ -107,7 +107,7 @@ def exec_rollout(
         net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=act_key)
         state_t1, timestep = env.step(state_t, env.act_space.sigmoid_scale(actions))
-        rewards = reward_fn(obs_t.collision, actions)  # type: ignore
+        rewards = reward_fn(obs_t.collision, actions).reshape(-1, 1)
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -128,6 +128,7 @@ def exec_rollout(
         )
         state_t1db, parents = env.activate(state_t1d, possible_parents)
         log = Log(
+            dead=jnp.where(dead, state_t1.profile.unique_id, -1),  # type: ignore
             parents=parents,
             rewards=rewards,
             age=state_t1db.status.age,
@@ -206,6 +207,8 @@ def run_evolution(
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     logdir: Path,
+    xmax: float,
+    ymax: float,
     debug_vis: bool = False,
 ) -> NormalPPONet:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -224,14 +227,14 @@ def run_evolution(
     obs = timestep.obs
 
     n_loop = n_total_steps // n_rollout_steps
-    rewards = jnp.zeros(env.n_max_agents)
     keys = jax.random.split(key, n_loop)
     if debug_vis:
-        visualizer = env.visualizer(env_state, figsize=(640.0, 640.0))
+        visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
     else:
         visualizer = None
+
     for i, key in enumerate(keys):
-        env_state, obs, rewards_i, opt_state, pponet = epoch(
+        env_state, obs, log, opt_state, pponet = epoch(
             env_state,
             obs,
             env,
@@ -251,8 +254,16 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state)
             visualizer.show()
-        # weight_summary(pponet)
-    print(f"Sum of rewards {[x.item() for x in rewards[: n_agents]]}")
+
+        for dead, energy in zip(log.dead, log.energy):
+            if jnp.any(dead != -1):
+                print("Dead: ", dead[dead != -1])
+                print("Energy: ", energy[dead != -1])
+
+        for parental_log in log.parents:
+            if jnp.any(parental_log != -1):
+                for child in jnp.nonzero(parental_log)[0]:
+                    print(f"Child {child} Parent {parental_log[child]}")
     return pponet
 
 
@@ -263,7 +274,7 @@ here = Path(__file__).parent
 @app.command()
 def evolve(
     seed: int = 1,
-    n_agents: int = 2,
+    n_agents: int = 20,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
     gamma: float = 0.999,
@@ -271,7 +282,7 @@ def evolve(
     n_optim_epochs: int = 10,
     minibatch_size: int = 128,
     n_rollout_steps: int = 1024,
-    n_total_steps: int = 1024 * 1000,
+    n_total_steps: int = 1024 * 10000,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
     reward_fn: RewardKind = RewardKind.LINEAR,
@@ -308,6 +319,8 @@ def evolve(
         hazard_fn,
         birth_fn,
         logdir,
+        cfconfig.xlim[1],
+        cfconfig.ylim[1],
         debug_vis,
     )
     # eqx.tree_serialise_leaves(modelpath, network)

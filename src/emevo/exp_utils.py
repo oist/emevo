@@ -76,6 +76,7 @@ class BDConfig:
 class Log:
     parents: jax.Array
     rewards: jax.Array
+    dead: jax.Array
     age: jax.Array
     energy: jax.Array
     birthtime: jax.Array
@@ -97,6 +98,7 @@ class Log:
             "fields": [
                 {"name": "parents", "type": array("int")},
                 {"name": "rewards", "type": array("float")},
+                {"name": "dead", "type": array("int")},
                 {"name": "energy", "type": array("float")},
                 {"name": "age", "type": array("int")},
                 {"name": "birthtime", "type": array("int")},
