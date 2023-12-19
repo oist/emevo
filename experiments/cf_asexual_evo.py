@@ -10,8 +10,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import pyarrow as pa
+import pyarrow.parquet as pq
 import typer
-from fastavro import parse_schema, writer
 from jax._src.numpy.lax_numpy import Protocol
 from serde import toml
 
@@ -20,7 +21,7 @@ from emevo import birth_and_death as bd
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
-from emevo.exp_utils import BDConfig, CfConfig, Log
+from emevo.exp_utils import BDConfig, CfConfig, Log, tree_as_list
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -48,6 +49,10 @@ class LinearReward(eqx.Module):
         action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
         input_ = jnp.concatenate((collision, action_norm), axis=1)
         return jax.vmap(jnp.dot)(input_, self.weight)
+
+
+def evolve_rewards(old, method, parents: jax.Array):
+    pass
 
 
 class RewardKind(str, enum.Enum):
@@ -130,7 +135,7 @@ def exec_rollout(
         log = Log(
             dead=jnp.where(dead, state_t1.profile.unique_id, -1),  # type: ignore
             parents=parents,
-            rewards=rewards,
+            rewards=rewards.ravel(),
             age=state_t1db.status.age,
             energy=state_t1db.status.energy,
             birthtime=state_t1db.profile.birthtime,
@@ -207,6 +212,7 @@ def run_evolution(
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     logdir: Path,
+    log_interval: int,
     xmax: float,
     ymax: float,
     debug_vis: bool = False,
@@ -233,6 +239,24 @@ def run_evolution(
     else:
         visualizer = None
 
+    log_list = []
+
+    def write_log(index: int) -> None:
+        log = jax.tree_map(
+            lambda *args: np.array(jnp.concatenate(args, axis=0)),
+            *log_list,
+        )
+        print(log)
+        log_dict = dataclasses.asdict(log)
+        print({arr.shape for arr in log_dict.values()})
+        table = pa.Table.from_pydict(log_dict)
+        pq.write_table(
+            table,
+            logdir.joinpath(f"log-{index}.parquet"),
+            compression="zstd",
+        )
+        log_list.clear()
+
     for i, key in enumerate(keys):
         env_state, obs, log, opt_state, pponet = epoch(
             env_state,
@@ -255,15 +279,22 @@ def run_evolution(
             visualizer.render(env_state)
             visualizer.show()
 
-        for dead, energy in zip(log.dead, log.energy):
-            if jnp.any(dead != -1):
-                print("Dead: ", dead[dead != -1])
-                print("Energy: ", energy[dead != -1])
+        # Extinct?
+        n_active = jnp.sum(env_state.profile.is_active())
+        if n_active == 0:
+            print(f"Extinct after {i + 1} epochs")
+            return pponet
 
-        for parental_log in log.parents:
-            if jnp.any(parental_log != -1):
-                for child in jnp.nonzero(parental_log)[0]:
-                    print(f"Child {child} Parent {parental_log[child]}")
+        import datetime as dt
+
+        log_list.append(log)
+        if (i + 1) % log_interval == 0:
+            index = (i + 1) // log_interval
+            print("Start parquet writing")
+            now = dt.datetime.now()
+            write_log(index)
+
+            print(f"End parquet writing: {(dt.datetime.now() - now).seconds} sec")
     return pponet
 
 
@@ -287,6 +318,7 @@ def evolve(
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
+    log_interval: int = 5,
     debug_vis: bool = False,
 ) -> None:
     with cfconfig_path.open("r") as f:
@@ -319,6 +351,7 @@ def evolve(
         hazard_fn,
         birth_fn,
         logdir,
+        log_interval,
         cfconfig.xlim[1],
         cfconfig.ylim[1],
         debug_vis,

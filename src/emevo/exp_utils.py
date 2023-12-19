@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
-from typing import Dict, Tuple, Type, Union
+from typing import Any, Dict, Tuple, Type, Union
 
 import chex
 import jax
@@ -11,6 +11,11 @@ import serde
 
 from emevo import birth_and_death as bd
 from emevo.environments.circle_foraging import SensorRange
+
+
+def tree_as_list(pytree: Any) -> list[Any]:
+    leaves, treedef = jax.tree_util.tree_flatten(pytree)
+    return [treedef.unflatten(leaf) for leaf in zip(*leaves)]  # type: ignore
 
 
 @serde.serde
@@ -82,27 +87,3 @@ class Log:
     birthtime: jax.Array
     generation: jax.Array
     unique_id: jax.Array
-
-    @staticmethod
-    def avro_schema() -> dict:
-        """Apache avro schema for this class"""
-
-        def array(dtype: str) -> dict[str, str]:
-            return {"type": "array", "items": dtype}
-
-        return {
-            "doc": "Default log schema for emevo",
-            "name": "Log",
-            "namespace": "emevo",
-            "type": "record",
-            "fields": [
-                {"name": "parents", "type": array("int")},
-                {"name": "rewards", "type": array("float")},
-                {"name": "dead", "type": array("int")},
-                {"name": "energy", "type": array("float")},
-                {"name": "age", "type": array("int")},
-                {"name": "birthtime", "type": array("int")},
-                {"name": "generation", "type": array("int")},
-                {"name": "unique_id", "type": array("int")},
-            ],
-        }

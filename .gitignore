@@ -13,3 +13,5 @@ requirements/*.txt
 # This should be local
 pyrightconfig.json
 *.eqx
+# Default log dir
+log/

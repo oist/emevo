@@ -1,4 +1,4 @@
 -e .[video,pyside6]
-fastavro
+pyarrow
 tqdm
 typer
