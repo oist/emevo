@@ -647,7 +647,7 @@ class CircleForaging(Env):
             key=key,
             step=state.step + 1,
             profile=state.profile,
-            status=status,
+            status=status.step(),
             n_born_agents=state.n_born_agents,
         )
         return state, timestep
