@@ -666,7 +666,10 @@ class CircleForaging(Env):
             keys[1:],
             circle.p.xy,
         )
-        is_possible_parent = jnp.logical_and(is_parent, ok)
+        is_possible_parent = jnp.logical_and(
+            is_parent,
+            jnp.logical_and(circle.is_active, ok),
+        )
         is_replaced = _first_n_true(
             jnp.logical_not(circle.is_active),
             jnp.sum(is_possible_parent),

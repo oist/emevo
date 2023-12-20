@@ -1,4 +1,5 @@
-"""Example of using circle foraging environment"""
+"""Asexual reward
+ evolution with Circle Foraging"""
 import dataclasses
 import enum
 from pathlib import Path
@@ -44,29 +45,6 @@ class LinearReward(eqx.Module):
         action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
         input_ = jnp.concatenate((collision, action_norm), axis=1)
         return jax.vmap(jnp.dot)(input_, self.weight)
-
-
-def mutate_reward_fn(
-    key: chex.PRNGKey,
-    reward_fn_dict: dict[int, eqx.Module],
-    old: eqx.Module,
-    mutation: gops.Mutation,
-    parents: jax.Array,
-    unique_id: jax.Array,
-) -> eqx.Module:
-    # new[i] := old[i] if i not in parents
-    # new[i] := mutation(old[parents[i]]) if i in parents
-    is_parent = parents != -1
-    if not jnp.any(is_parent):
-        return old
-    dynamic_net, static_net = eqx.partition(old, eqx.is_array)
-    keys = jax.random.split(key, jnp.sum(is_parent).item())
-    for i, key in zip(jnp.nonzero(is_parent)[0], keys):
-        parent_reward_fn = reward_fn_dict[parents[i]]
-        mutated_dnet = mutation(key, parent_reward_fn)
-        reward_fn_dict[unique_id[i]] = eqx.combine(mutated_dnet, static_net)
-        dynamic_net = jax.tree_map(lambda arr: arr[i].set(mutated_dnet), dynamic_net)
-    return eqx.combine(dynamic_net, static_net)
 
 
 class RewardKind(str, enum.Enum):

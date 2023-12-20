@@ -87,7 +87,8 @@ def init_profile(n: int, max_n: int) -> Profile:
     return Profile(
         birthtime=jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1)),
         generation=jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1)),
-        unique_id=jnp.concatenate((jnp.arange(n, dtype=jnp.int32), minus_1)),
+        # unique_id starts from 1
+        unique_id=jnp.concatenate((jnp.arange(1, n + 1, dtype=jnp.int32), minus_1)),
     )
 
 

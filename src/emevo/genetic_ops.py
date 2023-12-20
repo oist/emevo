@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import abc
 import dataclasses
-from typing import cast
+from typing import Any, cast
 
 import chex
 import jax
 import jax.numpy as jnp
+
+PyTree = Any
 
 
 class Crossover(abc.ABC):
@@ -24,9 +26,9 @@ class Crossover(abc.ABC):
     def __call__(
         self,
         prng_key: chex.PRNGKey,
-        params_a: chex.ArrayTree,
-        params_b: chex.ArrayTree,
-    ) -> chex.ArrayTree:
+        params_a: PyTree,
+        params_b: PyTree,
+    ) -> PyTree:
         leaves, treedef = jax.tree_util.tree_flatten(params_a)
         prng_keys = jax.random.split(prng_key, len(leaves))
         result = jax.tree_map(
@@ -43,11 +45,7 @@ class Mutation(abc.ABC):
     def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
         pass
 
-    def __call__(
-        self,
-        prng_key: chex.PRNGKey,
-        params: chex.ArrayTree,
-    ) -> chex.ArrayTree:
+    def __call__(self, prng_key: chex.PRNGKey, params: PyTree) -> PyTree:
         leaves, treedef = jax.tree_util.tree_flatten(params)
         prng_keys = jax.random.split(prng_key, len(leaves))
         result = jax.tree_map(self._add_noise, treedef.unflatten(prng_keys), params)
