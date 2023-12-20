@@ -116,12 +116,14 @@ class GaussianMutation(Mutation):
 
 @dataclasses.dataclass(frozen=True)
 class UniformMutation(Mutation):
+    min_noise: float
     max_noise: float
 
     def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
         uniform = jax.random.uniform(
             prng_key,
             shape=array.shape,
-            maxval=self.max_noise * 2,
+            minval=self.min_noise,
+            maxval=self.max_noise,
         )
-        return array + uniform - self.max_noise
+        return array + uniform

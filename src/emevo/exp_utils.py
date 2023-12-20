@@ -81,7 +81,7 @@ def _resolve_cls(d: dict[str, Any]) -> GopsConfig:
             params[k] = _resolve_cls(v)
         else:
             params[k] = v
-    return _load_cls(d["path"], **d["params"])
+    return _load_cls(d["path"])(**d["params"])
 
 
 @serde.serde
@@ -92,7 +92,7 @@ class GopsConfig:
 
     def load_model(self) -> gops.Mutation | gops.Crossover:
         params = {}
-        for k, v in params.items():
+        for k, v in self.params.items():
             if isinstance(v, dict):
                 params[k] = _resolve_cls(v)
             else:
