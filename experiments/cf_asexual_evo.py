@@ -323,15 +323,20 @@ def evolve(
     log_interval: int = 100,
     debug_vis: bool = False,
 ) -> None:
+    # Load config
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
     with bdconfig_path.open("r") as f:
         bdconfig = toml.from_toml(BDConfig, f.read())
+    with gopsconfig_path.open("r") as f:
+        gopsconfig = toml.from_toml(GopsConfig, f.read())
 
+    # Load models
+    birth_fn, hazard_fn = bdconfig.load_models()
+    mutation = gopsconfig.load_model()
     # Override config
     cfconfig.n_initial_agents = n_agents
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
-    birth_fn, hazard_fn = bdconfig.load_models()
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     if reward_fn == RewardKind.LINEAR:
         reward_fn_instance = LinearReward(reward_key, cfconfig.n_max_agents)

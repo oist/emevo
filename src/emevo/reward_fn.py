@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Callable, Protocol
+from typing import Any, Callable
 
 import chex
 import equinox as eqx
@@ -13,11 +13,32 @@ from numpy.typing import NDArray
 
 from emevo import genetic_ops as gops
 
+Self = Any
+
 
 class RewardFn(abc.ABC, eqx.Module):
     @abc.abstractmethod
-    def as_logdict(self) -> dict[str, float | NDArray]:
+    def serialize(self) -> dict[str, float | NDArray]:
         pass
+
+    def get_slice(
+        self,
+        slice_idx: int | jax.Array,
+        include_static: bool = False,
+    ) -> Self:
+        dynamic, static = eqx.partition(self, eqx.is_array)
+        sliced_dyn = jax.tree_map(lambda item: item[slice_idx], dynamic)
+        if include_static:
+            return eqx.combine(sliced_dyn, static)
+        else:
+            return sliced_dyn
+
+
+def _item_or_np(array: jax.Array) -> float | NDArray:
+    if array.ndim == 0:
+        return array.item()
+    else:
+        return np.array(array)
 
 
 class LinearReward(RewardFn):
@@ -29,17 +50,20 @@ class LinearReward(RewardFn):
         self,
         key: chex.PRNGKey,
         n_agents: int,
+        n_weights: int,
         extractor: Callable[..., jax.Array],
+        serializer: Callable[[jax.Array], dict[str, jax.Array]],
     ) -> None:
-        self.weight = jax.random.normal(key, (n_agents, 4))
+        self.weight = jax.random.normal(key, (n_agents, n_weights))
         self.extractor = extractor
+        self.serializer = serializer
 
     def __call__(self, *args) -> jax.Array:
         extracted = self.extractor(*args)
         return jax.vmap(jnp.dot)(extracted, self.weight)
 
-    def as_logdict(self) -> dict[str, float | NDArray]:
-        return {""}
+    def serialize(self) -> dict[str, float | NDArray]:
+        return jax.tree_map(_item_or_np, self.serializer(self.weight))
 
 
 def mutate_reward_fn(
@@ -58,8 +82,12 @@ def mutate_reward_fn(
     dynamic_net, static_net = eqx.partition(old, eqx.is_array)
     keys = jax.random.split(key, jnp.sum(is_parent).item())
     for i, key in zip(jnp.nonzero(is_parent)[0], keys):
-        parent_reward_fn = reward_fn_dict[parents[i]]
+        parent_reward_fn = reward_fn_dict[parents[i].item()]
         mutated_dnet = mutation(key, parent_reward_fn)
-        reward_fn_dict[unique_id[i]] = eqx.combine(mutated_dnet, static_net)
-        dynamic_net = jax.tree_map(lambda arr: arr[i].set(mutated_dnet), dynamic_net)
+        reward_fn_dict[unique_id[i].item()] = eqx.combine(mutated_dnet, static_net)
+        dynamic_net = jax.tree_map(
+            lambda orig, mutated: orig.at[i].set(mutated),
+            dynamic_net,
+            mutated_dnet,
+        )
     return eqx.combine(dynamic_net, static_net)

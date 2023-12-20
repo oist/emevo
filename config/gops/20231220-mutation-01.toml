@@ -1,7 +1,7 @@
 path = "emevo.genetic_ops.BernoulliMixtureMutation"
 
 [params]
-mutation_prob = 0.1
+mutation_prob = 0.2
 
 [params.mutator]
 path = "emevo.genetic_ops.UniformMutation"
