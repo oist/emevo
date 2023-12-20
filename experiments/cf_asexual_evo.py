@@ -21,7 +21,7 @@ from emevo import genetic_ops as gops
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
-from emevo.exp_utils import BDConfig, CfConfig, Log
+from emevo.exp_utils import BDConfig, CfConfig, GopsConfig, Log
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -32,11 +32,6 @@ from emevo.rl.ppo_normal import (
     vmap_value,
 )
 from emevo.visualizer import SaveVideoWrapper
-
-
-class RewardFn(Protocol):
-    def __call__(self, collision: jax.Array, action: jax.Array) -> jax.Array:
-        ...
 
 
 class LinearReward(eqx.Module):
@@ -344,6 +339,7 @@ def evolve(
     n_total_steps: int = 1024 * 10000,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
+    gopsconfig_path: Path = here.joinpath("../config/gops/20231220-mutation-01toml"),
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
     log_interval: int = 100,

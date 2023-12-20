@@ -11,6 +11,7 @@ import jax.numpy as jnp
 import serde
 
 from emevo import birth_and_death as bd
+from emevo import genetic_ops as gops
 from emevo.environments.circle_foraging import SensorRange
 
 
@@ -71,6 +72,32 @@ class BDConfig:
         birth_fn = _load_cls(self.birth_fn)(**self.birth_params)
         hazard_fn = _load_cls(self.hazard_fn)(**self.hazard_params)
         return birth_fn, hazard_fn
+
+
+def _resolve_cls(d: dict[str, Any]) -> GopsConfig:
+    params = {}
+    for k, v in d["params"].items():
+        if isinstance(v, dict):
+            params[k] = _resolve_cls(v)
+        else:
+            params[k] = v
+    return _load_cls(d["path"], **d["params"])
+
+
+@serde.serde
+@dataclasses.dataclass(frozen=True)
+class GopsConfig:
+    path: str
+    params: Dict[str, Union[float, Dict[str, float]]]
+
+    def load_model(self) -> gops.Mutation | gops.Crossover:
+        params = {}
+        for k, v in params.items():
+            if isinstance(v, dict):
+                params[k] = _resolve_cls(v)
+            else:
+                params[k] = v
+        return _load_cls(self.path)(**params)
 
 
 @chex.dataclass

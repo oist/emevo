@@ -1,0 +1,8 @@
+path = "emevo.genetic_ops.BernoulliMixtureMutation"
+
+[reward]
+min_value = -1.0
+max_value = 1.0
+initial = 0.0
+
+[metadata]
