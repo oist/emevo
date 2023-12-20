@@ -113,14 +113,17 @@ class Log:
     def with_step(self, from_: int) -> LogWithStep:
         if self.parents.ndim == 2:
             step_size, batch_size = self.parents.shape
-            arange = jnp.arange(from_, from_ + step_size)
-            step = jnp.tile(jnp.expand_dims(arange, axis=1), (1, batch_size))
-            return LogWithStep(**dataclasses.asdict(self), step=step)
+            step_arange = jnp.arange(from_, from_ + step_size)
+            step = jnp.tile(jnp.expand_dims(step_arange, axis=1), (1, batch_size))
+            slots_arange = jnp.arange(batch_size)
+            slots = jnp.tile(jnp.expand_dims(slots_arange, axis=1), (step_size, 1))
+            return LogWithStep(**dataclasses.asdict(self), step=step, slots=slots)
         elif self.parents.ndim == 1:
             batch_size = self.parents.shape[0]
             return LogWithStep(
                 **dataclasses.asdict(self),
                 step=jnp.ones(batch_size, dtype=jnp.int32) * from_,
+                slots=jnp.arange(batch_size),
             )
         else:
             raise ValueError(
@@ -132,6 +135,7 @@ class Log:
 @chex.dataclass
 class LogWithStep(Log):
     step: jax.Array
+    slots: jax.Array
 
     def filter(self) -> Any:
         is_active = self.unique_id > -1

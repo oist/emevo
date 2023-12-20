@@ -73,20 +73,17 @@ def mutate_reward_fn(
     mutation: gops.Mutation,
     parents: jax.Array,
     unique_id: jax.Array,
+    slots: jax.Array,
 ) -> eqx.Module:
-    # new[i] := old[i] if i not in parents
-    # new[i] := mutation(old[parents[i]]) if i in parents
-    is_parent = parents != -1
-    if not jnp.any(is_parent):
-        return old
+    n = parents.shape[0]
     dynamic_net, static_net = eqx.partition(old, eqx.is_array)
-    keys = jax.random.split(key, jnp.sum(is_parent).item())
-    for i, key in zip(jnp.nonzero(is_parent)[0], keys):
-        parent_reward_fn = reward_fn_dict[parents[i].item()]
+    keys = jax.random.split(key, n)
+    for key, parent, uid, slot in zip(keys, parents, unique_id, slots):
+        parent_reward_fn = reward_fn_dict[parent.item()]
         mutated_dnet = mutation(key, parent_reward_fn)
-        reward_fn_dict[unique_id[i].item()] = eqx.combine(mutated_dnet, static_net)
+        reward_fn_dict[uid.item()] = eqx.combine(mutated_dnet, static_net)
         dynamic_net = jax.tree_map(
-            lambda orig, mutated: orig.at[i].set(mutated),
+            lambda orig, mutated: orig.at[slot.item()].set(mutated),
             dynamic_net,
             mutated_dnet,
         )

@@ -23,6 +23,7 @@ from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
 from emevo.exp_utils import BDConfig, CfConfig, GopsConfig, Log
+from emevo.reward_fn import mutate_reward_fn
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -203,6 +204,7 @@ def run_evolution(
     reward_fn: LinearReward,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
+    mutation: gops.Mutation,
     logdir: Path,
     log_interval: int,
     xmax: float,
@@ -247,11 +249,7 @@ def run_evolution(
         )
         log_list.clear()
 
-    rewardfn_dict = {}
-    dnet, _ = eqx.partition(reward_fn, eqx.is_array)
-    for i in range(n_initial_agents):
-        rewardfn_dict[i] = jax.tree_map(lambda arr: arr[i], dnet)
-
+    reward_fn_dict = {i + 1: reward_fn.get_slice(i) for i in range(n_initial_agents)}
     for i, key in enumerate(keys):
         env_state, obs, log, opt_state, pponet = epoch(
             env_state,
@@ -281,16 +279,17 @@ def run_evolution(
             return pponet
 
         # Mutation
+        filtered_log = log.with_step(i * n_rollout_steps).filter()
         reward_fn = mutate_reward_fn(
             key,
             reward_fn_dict,
             reward_fn,
             mutation,
-            parents,
-            unique_id,
+            filtered_log.parents,
+            filtered_log.unique_id,
+            filtered_log.slots,
         )
 
-        filtered_log = log.with_step(i * n_rollout_steps).filter()
         log_list.append(filtered_log)
         if (i + 1) % log_interval == 0:
             index = (i + 1) // log_interval

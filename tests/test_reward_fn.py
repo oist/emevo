@@ -42,8 +42,9 @@ def test_mutation(reward_fn: LinearReward) -> None:
         reward_fn_dict,
         reward_fn,
         mutation,
-        parents=parents,
-        unique_id=jnp.array([1, 2, 3, 4, 5, 6, 7, -1, -1, -1]),
+        parents=parents[5:7],
+        unique_id=jnp.array([6, 7]),
+        slots=jnp.array([5, 6]),
     )
     same = parents == -1
     chex.assert_trees_all_close(reward_fn.weight[same], mutated.weight[same])
