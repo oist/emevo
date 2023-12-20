@@ -17,6 +17,7 @@ from serde import toml
 
 from emevo import Env
 from emevo import birth_and_death as bd
+from emevo import genetic_ops as gops
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
@@ -50,8 +51,27 @@ class LinearReward(eqx.Module):
         return jax.vmap(jnp.dot)(input_, self.weight)
 
 
-def evolve_rewards(old, method, parents: jax.Array):
-    pass
+def mutate_reward_fn(
+    key: chex.PRNGKey,
+    reward_fn_dict: dict[int, eqx.Module],
+    old: eqx.Module,
+    mutation: gops.Mutation,
+    parents: jax.Array,
+    unique_id: jax.Array,
+) -> eqx.Module:
+    # new[i] := old[i] if i not in parents
+    # new[i] := mutation(old[parents[i]]) if i in parents
+    is_parent = parents != -1
+    if not jnp.any(is_parent):
+        return old
+    dynamic_net, static_net = eqx.partition(old, eqx.is_array)
+    keys = jax.random.split(key, jnp.sum(is_parent).item())
+    for i, key in zip(jnp.nonzero(is_parent)[0], keys):
+        parent_reward_fn = reward_fn_dict[parents[i]]
+        mutated_dnet = mutation(key, parent_reward_fn)
+        reward_fn_dict[unique_id[i]] = eqx.combine(mutated_dnet, static_net)
+        dynamic_net = jax.tree_map(lambda arr: arr[i].set(mutated_dnet), dynamic_net)
+    return eqx.combine(dynamic_net, static_net)
 
 
 class RewardKind(str, enum.Enum):
@@ -199,6 +219,7 @@ def epoch(
 def run_evolution(
     key: jax.Array,
     env: Env,
+    n_initial_agents: int,
     adam: optax.GradientTransformation,
     gamma: float,
     gae_lambda: float,
@@ -253,6 +274,11 @@ def run_evolution(
         )
         log_list.clear()
 
+    rewardfn_dict = {}
+    dnet, _ = eqx.partition(reward_fn, eqx.is_array)
+    for i in range(n_initial_agents):
+        rewardfn_dict[i] = jax.tree_map(lambda arr: arr[i], dnet)
+
     for i, key in enumerate(keys):
         env_state, obs, log, opt_state, pponet = epoch(
             env_state,
@@ -281,8 +307,17 @@ def run_evolution(
             print(f"Extinct after {i + 1} epochs")
             return pponet
 
-        filtered_log = log.with_step(i * n_rollout_steps).filter()
+        # Mutation
+        reward_fn = mutate_reward_fn(
+            key,
+            reward_fn_dict,
+            reward_fn,
+            mutation,
+            parents,
+            unique_id,
+        )
 
+        filtered_log = log.with_step(i * n_rollout_steps).filter()
         log_list.append(filtered_log)
         if (i + 1) % log_interval == 0:
             index = (i + 1) // log_interval
@@ -333,6 +368,7 @@ def evolve(
     network = run_evolution(
         key,
         env,
+        n_agents,
         optax.adam(adam_lr, eps=adam_eps),
         gamma,
         gae_lambda,
