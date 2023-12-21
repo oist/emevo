@@ -116,7 +116,7 @@ class Log:
             step_arange = jnp.arange(from_, from_ + step_size)
             step = jnp.tile(jnp.expand_dims(step_arange, axis=1), (1, batch_size))
             slots_arange = jnp.arange(batch_size)
-            slots = jnp.tile(jnp.expand_dims(slots_arange, axis=1), (step_size, 1))
+            slots = jnp.tile(slots_arange, (step_size, 1))
             return LogWithStep(**dataclasses.asdict(self), step=step, slots=slots)
         elif self.parents.ndim == 1:
             batch_size = self.parents.shape[0]
@@ -137,6 +137,10 @@ class LogWithStep(Log):
     step: jax.Array
     slots: jax.Array
 
-    def filter(self) -> Any:
+    def filter_active(self) -> Any:
         is_active = self.unique_id > -1
         return jax.tree_map(lambda arr: arr[is_active], self)
+
+    def filter_birth(self) -> Any:
+        is_birth_event = self.parents > -1
+        return jax.tree_map(lambda arr: arr[is_birth_event], self)

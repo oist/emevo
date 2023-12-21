@@ -8,7 +8,7 @@ from emevo.reward_fn import LinearReward, mutate_reward_fn
 
 
 @pytest.fixture
-def reward_fn() -> chex.PRNGKey:
+def reward_fn() -> LinearReward:
     def slice_last(w: jax.Array, i: int) -> jax.Array:
         return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
 

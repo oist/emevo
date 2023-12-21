@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import abc
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 import chex
 import equinox as eqx
@@ -34,6 +34,9 @@ class RewardFn(abc.ABC, eqx.Module):
             return sliced_dyn
 
 
+RF = TypeVar("RF", bound=RewardFn)
+
+
 def _item_or_np(array: jax.Array) -> float | NDArray:
     if array.ndim == 0:
         return array.item()
@@ -44,7 +47,7 @@ def _item_or_np(array: jax.Array) -> float | NDArray:
 class LinearReward(RewardFn):
     weight: jax.Array
     extractor: Callable[..., jax.Array]
-    serializer: Callable[[jax.Array], jax.Array]
+    serializer: Callable[[jax.Array], dict[str, jax.Array]]
 
     def __init__(
         self,
@@ -68,13 +71,13 @@ class LinearReward(RewardFn):
 
 def mutate_reward_fn(
     key: chex.PRNGKey,
-    reward_fn_dict: dict[int, eqx.Module],
-    old: eqx.Module,
+    reward_fn_dict: dict[int, RF],
+    old: RF,
     mutation: gops.Mutation,
     parents: jax.Array,
     unique_id: jax.Array,
     slots: jax.Array,
-) -> eqx.Module:
+) -> RF:
     n = parents.shape[0]
     dynamic_net, static_net = eqx.partition(old, eqx.is_array)
     keys = jax.random.split(key, n)

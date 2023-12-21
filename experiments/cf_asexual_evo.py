@@ -3,7 +3,7 @@
 import dataclasses
 import enum
 from pathlib import Path
-from typing import Protocol
+from typing import cast
 
 import chex
 import equinox as eqx
@@ -23,7 +23,7 @@ from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
 from emevo.exp_utils import BDConfig, CfConfig, GopsConfig, Log
-from emevo.reward_fn import mutate_reward_fn
+from emevo.reward_fn import LinearReward, RewardFn, mutate_reward_fn
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -36,16 +36,13 @@ from emevo.rl.ppo_normal import (
 from emevo.visualizer import SaveVideoWrapper
 
 
-class LinearReward(eqx.Module):
-    weight: jax.Array
+def extract_reward_input(collision: jax.Array, action: jax.Array) -> jax.Array:
+    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
+    return jnp.concatenate((collision, action_norm), axis=1)
 
-    def __init__(self, key: chex.PRNGKey, n_agents: int) -> None:
-        self.weight = jax.random.normal(key, (n_agents, 4))
 
-    def __call__(self, collision: jax.Array, action: jax.Array) -> jax.Array:
-        action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
-        input_ = jnp.concatenate((collision, action_norm), axis=1)
-        return jax.vmap(jnp.dot)(input_, self.weight)
+def slice_last(w: jax.Array, i: int) -> jax.Array:
+    return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
 
 
 class RewardKind(str, enum.Enum):
@@ -89,7 +86,7 @@ def exec_rollout(
     initial_obs: Obs,
     env: Env,
     network: NormalPPONet,
-    reward_fn: LinearReward,
+    reward_fn: RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
@@ -151,7 +148,7 @@ def epoch(
     initial_obs: Obs,
     env: Env,
     network: NormalPPONet,
-    reward_fn: LinearReward,
+    reward_fn: RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
@@ -191,6 +188,7 @@ def epoch(
 
 
 def run_evolution(
+    *,
     key: jax.Array,
     env: Env,
     n_initial_agents: int,
@@ -201,7 +199,7 @@ def run_evolution(
     minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
-    reward_fn: LinearReward,
+    reward_fn: RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     mutation: gops.Mutation,
@@ -209,7 +207,7 @@ def run_evolution(
     log_interval: int,
     xmax: float,
     ymax: float,
-    debug_vis: bool = False,
+    debug_vis: bool,
 ) -> NormalPPONet:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -279,18 +277,19 @@ def run_evolution(
             return pponet
 
         # Mutation
-        filtered_log = log.with_step(i * n_rollout_steps).filter()
+        log_with_step = log.with_step(i * n_rollout_steps)
+        log_birth = log_with_step.filter_birth()
         reward_fn = mutate_reward_fn(
             key,
             reward_fn_dict,
             reward_fn,
             mutation,
-            filtered_log.parents,
-            filtered_log.unique_id,
-            filtered_log.slots,
+            log_birth.parents,
+            log_birth.unique_id,
+            log_birth.slots,
         )
 
-        log_list.append(filtered_log)
+        log_list.append(log_with_step.filter_active())
         if (i + 1) % log_interval == 0:
             index = (i + 1) // log_interval
             write_log(index)
@@ -316,7 +315,7 @@ def evolve(
     n_total_steps: int = 1024 * 10000,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
-    gopsconfig_path: Path = here.joinpath("../config/gops/20231220-mutation-01toml"),
+    gopsconfig_path: Path = here.joinpath("../config/gops/20231220-mutation-01.toml"),
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
     log_interval: int = 100,
@@ -338,30 +337,42 @@ def evolve(
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     if reward_fn == RewardKind.LINEAR:
-        reward_fn_instance = LinearReward(reward_key, cfconfig.n_max_agents)
+        reward_fn_instance = LinearReward(
+            reward_key,
+            cfconfig.n_max_agents,
+            4,
+            extract_reward_input,
+            lambda w: {
+                "agent": slice_last(w, 0),
+                "food": slice_last(w, 1),
+                "wall": slice_last(w, 2),
+                "energy": slice_last(w, 3),
+            },
+        )
     elif reward_fn == RewardKind.SIGMOID:
         assert False, "Unimplemented"
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
     network = run_evolution(
-        key,
-        env,
-        n_agents,
-        optax.adam(adam_lr, eps=adam_eps),
-        gamma,
-        gae_lambda,
-        n_optim_epochs,
-        minibatch_size,
-        n_rollout_steps,
-        n_total_steps,
-        reward_fn_instance,
-        hazard_fn,
-        birth_fn,
-        logdir,
-        log_interval,
-        cfconfig.xlim[1],
-        cfconfig.ylim[1],
-        debug_vis,
+        key=key,
+        env=env,
+        n_initial_agents=n_agents,
+        adam=optax.adam(adam_lr, eps=adam_eps),
+        gamma=gamma,
+        gae_lambda=gae_lambda,
+        n_optim_epochs=n_optim_epochs,
+        minibatch_size=minibatch_size,
+        n_rollout_steps=n_rollout_steps,
+        n_total_steps=n_total_steps,
+        reward_fn=reward_fn_instance,
+        hazard_fn=hazard_fn,
+        birth_fn=birth_fn,
+        mutation=cast(gops.Mutation, mutation),
+        logdir=logdir,
+        log_interval=log_interval,
+        xmax=cfconfig.xlim[1],
+        ymax=cfconfig.ylim[1],
+        debug_vis=debug_vis,
     )
     # eqx.tree_serialise_leaves(modelpath, network)
 
