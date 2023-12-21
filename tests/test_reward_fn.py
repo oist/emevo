@@ -5,6 +5,7 @@ import pytest
 
 from emevo import genetic_ops as gops
 from emevo.reward_fn import LinearReward, mutate_reward_fn
+from emevo.eqx_utils import get_slice
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def test_serialize(reward_fn: LinearReward) -> None:
 
 
 def test_mutation(reward_fn: LinearReward) -> None:
-    reward_fn_dict = {i + 1: reward_fn.get_slice(i) for i in range(5)}
+    reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(5)}
     chex.assert_shape(tuple(map(lambda lr: lr.weight, reward_fn_dict.values())), (3,))
     mutation = gops.GaussianMutation(std_dev=1.0)
     parents = jnp.array([-1, -1, -1, -1, -1, 2, 4, -1, -1, -1])

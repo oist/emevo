@@ -102,6 +102,7 @@ class GopsConfig:
 
 @chex.dataclass
 class Log:
+    dead: jax.Array
     parents: jax.Array
     rewards: jax.Array
     age: jax.Array
@@ -144,3 +145,7 @@ class LogWithStep(Log):
     def filter_birth(self) -> Any:
         is_birth_event = self.parents > -1
         return jax.tree_map(lambda arr: arr[is_birth_event], self)
+
+    def filter_death(self) -> Any:
+        is_death_event = self.dead > -1
+        return jax.tree_map(lambda arr: arr[is_death_event], self)

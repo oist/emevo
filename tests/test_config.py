@@ -27,7 +27,7 @@ def test_gopsconfig() -> None:
 
     mutation = gopsconfig.load_model()
     assert isinstance(mutation, gops.BernoulliMixtureMutation)
-    assert mutation.mutation_prob == 0.1
+    assert mutation.mutation_prob == 0.2
     assert isinstance(mutation.mutator, gops.UniformMutation)
     assert mutation.mutator.min_noise == -1
     assert mutation.mutator.max_noise == 1

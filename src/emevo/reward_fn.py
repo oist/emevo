@@ -21,17 +21,9 @@ class RewardFn(abc.ABC, eqx.Module):
     def serialize(self) -> dict[str, float | NDArray]:
         pass
 
-    def get_slice(
-        self,
-        slice_idx: int | jax.Array,
-        include_static: bool = False,
-    ) -> Self:
-        dynamic, static = eqx.partition(self, eqx.is_array)
-        sliced_dyn = jax.tree_map(lambda item: item[slice_idx], dynamic)
-        if include_static:
-            return eqx.combine(sliced_dyn, static)
-        else:
-            return sliced_dyn
+    @abc.abstractmethod
+    def __call__(self, *args) -> jax.Array:
+        pass
 
 
 RF = TypeVar("RF", bound=RewardFn)
@@ -83,7 +75,7 @@ def mutate_reward_fn(
     keys = jax.random.split(key, n)
     for key, parent, uid, slot in zip(keys, parents, unique_id, slots):
         parent_reward_fn = reward_fn_dict[parent.item()]
-        mutated_dnet = mutation(key, parent_reward_fn)
+        mutated_dnet = mutation(key, eqx.partition(parent_reward_fn, eqx.is_array)[0])
         reward_fn_dict[uid.item()] = eqx.combine(mutated_dnet, static_net)
         dynamic_net = jax.tree_map(
             lambda orig, mutated: orig.at[slot.item()].set(mutated),

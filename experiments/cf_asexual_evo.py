@@ -3,7 +3,7 @@
 import dataclasses
 import enum
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import chex
 import equinox as eqx
@@ -22,6 +22,8 @@ from emevo import genetic_ops as gops
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
+from emevo.eqx_utils import get_slice
+from emevo.eqx_utils import where as eqx_where
 from emevo.exp_utils import BDConfig, CfConfig, GopsConfig, Log
 from emevo.reward_fn import LinearReward, RewardFn, mutate_reward_fn
 from emevo.rl.ppo_normal import (
@@ -123,6 +125,7 @@ def exec_rollout(
         )
         state_t1db, parents = env.activate(state_t1d, possible_parents)
         log = Log(
+            dead=jnp.where(dead, state_t.profile.unique_id, -1),
             parents=parents,
             rewards=rewards.ravel(),
             age=state_t1db.status.age,
@@ -208,24 +211,30 @@ def run_evolution(
     xmax: float,
     ymax: float,
     debug_vis: bool,
-) -> NormalPPONet:
+) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
     input_size = np.prod(obs_space.shape)
     act_size = np.prod(env.act_space.shape)
-    pponet = vmap_net(
-        input_size,
-        64,
-        act_size,
-        jax.random.split(net_key, env.n_max_agents),
-    )
+
+    def initialize_net(key: chex.PRNGKey) -> NormalPPONet:
+        return vmap_net(
+            input_size,
+            64,
+            act_size,
+            jax.random.split(key, env.n_max_agents),
+        )
+
+    pponet = initialize_net(net_key)
     adam_init, adam_update = adam
-    opt_state = jax.vmap(adam_init)(eqx.filter(pponet, eqx.is_array))
+
+    def initialize_opt_state(net: eqx.Module) -> optax.OptState:
+        return jax.vmap(adam_init)(eqx.filter(net, eqx.is_array))
+
+    opt_state = initialize_opt_state(pponet)
     env_state, timestep = env.reset(reset_key)
     obs = timestep.obs
 
-    n_loop = n_total_steps // n_rollout_steps
-    keys = jax.random.split(key, n_loop)
     if debug_vis:
         visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
     else:
@@ -239,16 +248,44 @@ def run_evolution(
             *log_list,
         )
         log_dict = dataclasses.asdict(log)
-        table = pa.Table.from_pydict(log_dict)
         pq.write_table(
-            table,
+            pa.Table.from_pydict(log_dict),
             logdir.joinpath(f"log-{index}.parquet"),
             compression="zstd",
         )
         log_list.clear()
 
-    reward_fn_dict = {i + 1: reward_fn.get_slice(i) for i in range(n_initial_agents)}
-    for i, key in enumerate(keys):
+    def save_agents(unique_id: jax.Array, slots: jax.Array) -> None:
+        for uid, slot in zip(np.array(unique_id), np.array(slots)):
+            network = get_slice(pponet, slot)
+            modelpath = logdir.joinpath(f"trained-{uid}.eqx")
+            eqx.tree_serialise_leaves(modelpath, network)
+
+    @eqx.filter_jit
+    def replace_net(
+        key: chex.PRNGKey,
+        flag: jax.Array,
+        pponet: NormalPPONet,
+        opt_state: optax.OptState,
+    ) -> tuple[NormalPPONet, optax.OptState]:
+        initialized = initialize_net(key)
+        pponet = eqx_where(flag, initialized, pponet)
+        opt_state = jax.tree_map(
+            lambda a, b: jnp.where(
+                jnp.expand_dims(flag, tuple(range(1, a.ndim))),
+                b,
+                a,
+            ),
+            opt_state,
+            initialize_opt_state(pponet),
+        )
+        return pponet, opt_state
+
+    reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(n_initial_agents)}
+
+    last_log_index = 0
+    for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
+        epoch_key, init_key = jax.random.split(key)
         env_state, obs, log, opt_state, pponet = epoch(
             env_state,
             obs,
@@ -257,7 +294,7 @@ def run_evolution(
             reward_fn,
             hazard_fn,
             birth_fn,
-            key,
+            epoch_key,
             n_rollout_steps,
             gamma,
             gae_lambda,
@@ -269,16 +306,23 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state)
             visualizer.show()
-
         # Extinct?
         n_active = jnp.sum(env_state.profile.is_active())
         if n_active == 0:
             print(f"Extinct after {i + 1} epochs")
-            return pponet
+            break
+
+        # Save network
+        log_with_step = log.with_step(i * n_rollout_steps)
+        log_death = log_with_step.filter_death()
+        save_agents(log_death.dead, log_death.slots)
+        log_birth = log_with_step.filter_birth()
+        # Initialize network and adam state for new agents
+        is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
+        if jnp.any(is_new):
+            pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
 
         # Mutation
-        log_with_step = log.with_step(i * n_rollout_steps)
-        log_birth = log_with_step.filter_birth()
         reward_fn = mutate_reward_fn(
             key,
             reward_fn_dict,
@@ -291,10 +335,17 @@ def run_evolution(
 
         log_list.append(log_with_step.filter_active())
         if (i + 1) % log_interval == 0:
-            index = (i + 1) // log_interval
-            write_log(index)
-
-    return pponet
+            write_log(last_log_index + 1)
+            last_log_index += 1
+    rfd_serialized = [
+        v.serialize() | {"unique_id": k} for k, v in reward_fn_dict.items()
+    ]
+    pq.write_table(
+        pa.Table.from_pylist(rfd_serialized),
+        logdir.joinpath(f"rewards.parquet"),
+    )
+    if len(log_list) > 0:
+        write_log(last_log_index + 1)
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -353,7 +404,7 @@ def evolve(
         assert False, "Unimplemented"
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
-    network = run_evolution(
+    run_evolution(
         key=key,
         env=env,
         n_initial_agents=n_agents,
@@ -374,7 +425,6 @@ def evolve(
         ymax=cfconfig.ylim[1],
         debug_vis=debug_vis,
     )
-    # eqx.tree_serialise_leaves(modelpath, network)
 
 
 @app.command()
