@@ -190,6 +190,32 @@ def epoch(
     return env_state, obs, log, opt_state, pponet
 
 
+def write_log(logdir: Path, log_list: list[Log], index: int) -> None:
+    log = jax.tree_map(
+        lambda *args: np.array(jnp.concatenate(args, axis=0)),
+        *log_list,
+    )
+    log_dict = dataclasses.asdict(log)
+    pq.write_table(
+        pa.Table.from_pydict(log_dict),
+        logdir.joinpath(f"log-{index}.parquet"),
+        compression="zstd",
+    )
+    log_list.clear()
+
+
+def save_agents(
+    logdir: Path,
+    net: NormalPPONet,
+    unique_id: jax.Array,
+    slots: jax.Array,
+) -> None:
+    for uid, slot in zip(np.array(unique_id), np.array(slots)):
+        sliced_net = get_slice(net, slot)
+        modelpath = logdir.joinpath(f"trained-{uid}.eqx")
+        eqx.tree_serialise_leaves(modelpath, sliced_net)
+
+
 def run_evolution(
     *,
     key: jax.Array,
@@ -228,38 +254,9 @@ def run_evolution(
     pponet = initialize_net(net_key)
     adam_init, adam_update = adam
 
+    @eqx.filter_jit
     def initialize_opt_state(net: eqx.Module) -> optax.OptState:
         return jax.vmap(adam_init)(eqx.filter(net, eqx.is_array))
-
-    opt_state = initialize_opt_state(pponet)
-    env_state, timestep = env.reset(reset_key)
-    obs = timestep.obs
-
-    if debug_vis:
-        visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
-    else:
-        visualizer = None
-
-    log_list = []
-
-    def write_log(index: int) -> None:
-        log = jax.tree_map(
-            lambda *args: np.array(jnp.concatenate(args, axis=0)),
-            *log_list,
-        )
-        log_dict = dataclasses.asdict(log)
-        pq.write_table(
-            pa.Table.from_pydict(log_dict),
-            logdir.joinpath(f"log-{index}.parquet"),
-            compression="zstd",
-        )
-        log_list.clear()
-
-    def save_agents(unique_id: jax.Array, slots: jax.Array) -> None:
-        for uid, slot in zip(np.array(unique_id), np.array(slots)):
-            network = get_slice(pponet, slot)
-            modelpath = logdir.joinpath(f"trained-{uid}.eqx")
-            eqx.tree_serialise_leaves(modelpath, network)
 
     @eqx.filter_jit
     def replace_net(
@@ -280,6 +277,17 @@ def run_evolution(
             initialize_opt_state(pponet),
         )
         return pponet, opt_state
+
+    opt_state = initialize_opt_state(pponet)
+    env_state, timestep = env.reset(reset_key)
+    obs = timestep.obs
+
+    if debug_vis:
+        visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
+    else:
+        visualizer = None
+
+    log_list = []
 
     reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(n_initial_agents)}
 
@@ -315,7 +323,7 @@ def run_evolution(
         # Save network
         log_with_step = log.with_step(i * n_rollout_steps)
         log_death = log_with_step.filter_death()
-        save_agents(log_death.dead, log_death.slots)
+        save_agents(logdir, pponet, log_death.dead, log_death.slots)
         log_birth = log_with_step.filter_birth()
         # Initialize network and adam state for new agents
         is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
@@ -335,7 +343,7 @@ def run_evolution(
 
         log_list.append(log_with_step.filter_active())
         if (i + 1) % log_interval == 0:
-            write_log(last_log_index + 1)
+            write_log(logdir, log_list, last_log_index + 1)
             last_log_index += 1
     rfd_serialized = [
         v.serialize() | {"unique_id": k} for k, v in reward_fn_dict.items()
@@ -345,7 +353,7 @@ def run_evolution(
         logdir.joinpath(f"rewards.parquet"),
     )
     if len(log_list) > 0:
-        write_log(last_log_index + 1)
+        write_log(logdir, log_list, last_log_index + 1)
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
