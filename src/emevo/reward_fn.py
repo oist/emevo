@@ -18,7 +18,7 @@ Self = Any
 
 class RewardFn(abc.ABC, eqx.Module):
     @abc.abstractmethod
-    def serialize(self) -> dict[str, float | NDArray]:
+    def serialise(self) -> dict[str, float | NDArray]:
         pass
 
     @abc.abstractmethod
@@ -39,7 +39,7 @@ def _item_or_np(array: jax.Array) -> float | NDArray:
 class LinearReward(RewardFn):
     weight: jax.Array
     extractor: Callable[..., jax.Array]
-    serializer: Callable[[jax.Array], dict[str, jax.Array]]
+    serialiser: Callable[[jax.Array], dict[str, jax.Array]]
 
     def __init__(
         self,
@@ -47,18 +47,18 @@ class LinearReward(RewardFn):
         n_agents: int,
         n_weights: int,
         extractor: Callable[..., jax.Array],
-        serializer: Callable[[jax.Array], dict[str, jax.Array]],
+        serialiser: Callable[[jax.Array], dict[str, jax.Array]],
     ) -> None:
         self.weight = jax.random.normal(key, (n_agents, n_weights))
         self.extractor = extractor
-        self.serializer = serializer
+        self.serialiser = serialiser
 
     def __call__(self, *args) -> jax.Array:
         extracted = self.extractor(*args)
         return jax.vmap(jnp.dot)(extracted, self.weight)
 
-    def serialize(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serializer(self.weight))
+    def serialise(self) -> dict[str, float | NDArray]:
+        return jax.tree_map(_item_or_np, self.serialiser(self.weight))
 
 
 def mutate_reward_fn(

@@ -28,8 +28,8 @@ def test_reward_fn(reward_fn: LinearReward) -> None:
     chex.assert_shape(reward, (10,))
 
 
-def test_serialize(reward_fn: LinearReward) -> None:
-    logd = reward_fn.serialize()
+def test_serialise(reward_fn: LinearReward) -> None:
+    logd = reward_fn.serialise()
     chex.assert_shape((logd["a"], logd["b"], logd["c"]), (10,))
 
 
@@ -53,5 +53,6 @@ def test_mutation(reward_fn: LinearReward) -> None:
     difference = reward_fn.weight[different] - mutated.weight[different]
     assert jnp.linalg.norm(difference) > 1e-6
     assert len(reward_fn_dict) == 7
+    jnp.savez
     for i in range(7):
         chex.assert_trees_all_close(mutated.weight[i], reward_fn_dict[i + 1].weight)

@@ -411,6 +411,7 @@ class CircleForaging(Env):
             velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(2,)),
             angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=()),
             angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=()),
+            energy=BoxSpace(low=0.0, high=energy_capacity, shape=()),
         )
         # Obs
         self._n_sensors = n_agent_sensors

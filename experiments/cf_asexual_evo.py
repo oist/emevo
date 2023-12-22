@@ -3,7 +3,7 @@
 import dataclasses
 import enum
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import Any, Optional, cast
 
 import chex
 import equinox as eqx
@@ -22,6 +22,9 @@ from emevo import genetic_ops as gops
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
+from emevo.environments.phyjax2d import Position
+from emevo.environments.phyjax2d import State as PhysState
+from emevo.environments.phyjax2d import StateDict
 from emevo.eqx_utils import get_slice
 from emevo.eqx_utils import where as eqx_where
 from emevo.exp_utils import BDConfig, CfConfig, GopsConfig, Log
@@ -36,6 +39,51 @@ from emevo.rl.ppo_normal import (
     vmap_value,
 )
 from emevo.visualizer import SaveVideoWrapper
+
+Self = Any
+
+
+@chex.dataclass
+class SavedPhysicsState:
+    circle_axy: jax.Array
+    circle_is_active: jax.Array
+    static_circle_axy: jax.Array
+    static_circle_is_active: jax.Array
+
+    def save(self, path: Path) -> None:
+        np.savez_compressed(
+            path,
+            circle_axy=np.array(self.circle_axy),
+            circle_is_active=np.array(self.circle_is_active),
+            static_circle_axy=np.array(self.static_circle_axy),
+            static_circle_is_active=np.array(self.static_circle_is_active),
+        )
+
+    @staticmethod
+    def load(path: Path) -> Self:
+        npzfile = np.load(path)
+        return SavedPhysicsState(
+            circle_axy=jnp.array(npzfile["circle_axy"]),
+            circle_is_active=jnp.array(npzfile["circle_is_active"]),
+            static_circle_axy=jnp.array(npzfile["static_circle_axy"]),
+            static_circle_is_active=jnp.array(npzfile["static_circle_is_active"]),
+        )
+
+    def set_by_index(self, i: int, phys: StateDict) -> StateDict:
+        phys = phys.nested_replace(
+            "circle.p",
+            Position.from_axy(self.circle_axy[i]),
+        )
+        phys = phys.nested_replace("circle.is_active", self.circle_is_active[i])
+        phys = phys.nested_replace(
+            "static_circle.p",
+            Position.from_axy(self.static_circle_axy[i]),
+        )
+        phys = phys.nested_replace(
+            "static_circle.is_active",
+            self.static_circle_is_active[i],
+        )
+        return phys
 
 
 def extract_reward_input(collision: jax.Array, action: jax.Array) -> jax.Array:
@@ -52,37 +100,6 @@ class RewardKind(str, enum.Enum):
     SIGMOID = "sigmoid"
 
 
-def visualize(
-    key: chex.PRNGKey,
-    env: Env,
-    network: NormalPPONet,
-    n_steps: int,
-    videopath: Path | None,
-    headless: bool,
-) -> None:
-    keys = jax.random.split(key, n_steps + 1)
-    state, ts = env.reset(keys[0])
-    obs = ts.obs
-    backend = "headless" if headless else "pyglet"
-    visualizer = env.visualizer(state, figsize=(640.0, 640.0), backend=backend)
-    if videopath is not None:
-        visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
-
-    # Returns action for debugging
-    @eqx.filter_jit
-    def step(key: chex.PRNGKey, state: State, obs: Obs) -> tuple[State, Obs, jax.Array]:
-        net_out = vmap_apply(network, obs.as_array())
-        actions = net_out.policy().sample(seed=key)
-        next_state, timestep = env.step(state, env.act_space.sigmoid_scale(actions))
-        return next_state, timestep.obs, actions
-
-    for key in keys[1:]:
-        state, obs, act = step(key, state, obs)
-        # print(f"Act: {act[0]}")
-        visualizer.render(state)
-        visualizer.show()
-
-
 def exec_rollout(
     state: State,
     initial_obs: Obs,
@@ -93,18 +110,22 @@ def exec_rollout(
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
-) -> tuple[State, Rollout, Log, Obs, jax.Array]:
+) -> tuple[State, Rollout, Log, SavedPhysicsState, Obs, jax.Array]:
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
-    ) -> tuple[tuple[State, Obs], tuple[Rollout, Log]]:
+    ) -> tuple[tuple[State, Obs], tuple[Rollout, Log, SavedPhysicsState]]:
         act_key, hazard_key, birth_key = jax.random.split(key, 3)
         state_t, obs_t = carried
         obs_t_array = obs_t.as_array()
         net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=act_key)
-        state_t1, timestep = env.step(state_t, env.act_space.sigmoid_scale(actions))
-        rewards = reward_fn(obs_t.collision, actions).reshape(-1, 1)
+        state_t1, timestep = env.step(
+            state_t,
+            env.act_space.sigmoid_scale(actions),  # type: ignore
+        )
+        obs_t1 = timestep.obs
+        rewards = reward_fn(obs_t1.collision, actions).reshape(-1, 1)
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -120,12 +141,16 @@ def exec_rollout(
         state_t1d = env.deactivate(state_t1, dead)
         birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
         possible_parents = jnp.logical_and(
-            jnp.logical_and(jnp.logical_not(dead), state.profile.is_active()),
+            jnp.logical_and(
+                jnp.logical_not(dead),
+                state.profile.is_active(),  # type: ignore
+            ),
             jax.random.bernoulli(birth_key, p=birth_prob),
         )
         state_t1db, parents = env.activate(state_t1d, possible_parents)
         log = Log(
-            dead=jnp.where(dead, state_t.profile.unique_id, -1),
+            dead=jnp.where(dead, state_t.profile.unique_id, -1),  # type: ignore
+            got_food=obs_t1.collision[:, 1],
             parents=parents,
             rewards=rewards.ravel(),
             age=state_t1db.status.age,
@@ -134,15 +159,22 @@ def exec_rollout(
             generation=state_t1db.profile.generation,
             unique_id=state_t1db.profile.unique_id,
         )
-        return (state_t1db, timestep.obs), (rollout, log)
+        phys: StateDict = state_t.physics  # type: ignore
+        phys_state = SavedPhysicsState(
+            circle_axy=phys.circle.p.into_axy(),
+            static_circle_axy=phys.static_circle.p.into_axy(),
+            circle_is_active=phys.circle.is_active,
+            static_circle_is_active=phys.static_circle.is_active,
+        )
+        return (state_t1db, obs_t1), (rollout, log, phys_state)
 
-    (state, obs), (rollout, log) = jax.lax.scan(
+    (state, obs), (rollout, log, phys_state) = jax.lax.scan(
         step_rollout,
         (state, initial_obs),
         jax.random.split(prng_key, n_rollout_steps),
     )
     next_value = vmap_value(network, obs.as_array())
-    return state, rollout, log, obs, next_value
+    return state, rollout, log, phys_state, obs, next_value
 
 
 @eqx.filter_jit
@@ -162,9 +194,9 @@ def epoch(
     opt_state: optax.OptState,
     minibatch_size: int,
     n_optim_epochs: int,
-) -> tuple[State, Obs, Log, optax.OptState, NormalPPONet]:
+) -> tuple[State, Obs, Log, SavedPhysicsState, optax.OptState, NormalPPONet]:
     keys = jax.random.split(prng_key, env.n_max_agents + 1)
-    env_state, rollout, log, obs, next_value = exec_rollout(
+    env_state, rollout, log, phys_state, obs, next_value = exec_rollout(
         state,
         initial_obs,
         env,
@@ -187,7 +219,7 @@ def epoch(
         0.2,
         0.0,
     )
-    return env_state, obs, log, opt_state, pponet
+    return env_state, obs, log, phys_state, opt_state, pponet
 
 
 def write_log(logdir: Path, log_list: list[Log], index: int) -> None:
@@ -201,7 +233,6 @@ def write_log(logdir: Path, log_list: list[Log], index: int) -> None:
         logdir.joinpath(f"log-{index}.parquet"),
         compression="zstd",
     )
-    log_list.clear()
 
 
 def save_agents(
@@ -214,6 +245,11 @@ def save_agents(
         sliced_net = get_slice(net, slot)
         modelpath = logdir.joinpath(f"trained-{uid}.eqx")
         eqx.tree_serialise_leaves(modelpath, sliced_net)
+
+
+@jax.jit
+def concat_physstates(states: list[SavedPhysicsState]) -> SavedPhysicsState:
+    return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
 
 
 def run_evolution(
@@ -234,6 +270,7 @@ def run_evolution(
     mutation: gops.Mutation,
     logdir: Path,
     log_interval: int,
+    savestate_interval: int,
     xmax: float,
     ymax: float,
     debug_vis: bool,
@@ -287,14 +324,13 @@ def run_evolution(
     else:
         visualizer = None
 
-    log_list = []
-
+    log_list, physstate_list = [], []
     reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(n_initial_agents)}
 
-    last_log_index = 0
+    last_log_index, last_state_index = 0, 0
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key)
-        env_state, obs, log, opt_state, pponet = epoch(
+        env_state, obs, log, phys_state, opt_state, pponet = epoch(
             env_state,
             obs,
             env,
@@ -311,11 +347,12 @@ def run_evolution(
             minibatch_size,
             n_optim_epochs,
         )
+
         if visualizer is not None:
             visualizer.render(env_state)
             visualizer.show()
         # Extinct?
-        n_active = jnp.sum(env_state.profile.is_active())
+        n_active = jnp.sum(env_state.profile.is_active())  # type: ignore
         if n_active == 0:
             print(f"Extinct after {i + 1} epochs")
             break
@@ -341,15 +378,27 @@ def run_evolution(
             log_birth.slots,
         )
 
+        # Log
         log_list.append(log_with_step.filter_active())
         if (i + 1) % log_interval == 0:
             write_log(logdir, log_list, last_log_index + 1)
             last_log_index += 1
-    rfd_serialized = [
-        v.serialize() | {"unique_id": k} for k, v in reward_fn_dict.items()
+            log_list.clear()
+
+        # Physics state
+        physstate_list.append(phys_state)
+        if (i + 1) % savestate_interval == 0:
+            concat_physstates(physstate_list).save(
+                logdir.joinpath(f"state-{last_state_index + 1}.npz")
+            )
+            last_state_index += 1
+            physstate_list.clear()
+
+    rfd_serialised = [
+        v.serialise() | {"unique_id": k} for k, v in reward_fn_dict.items()
     ]
     pq.write_table(
-        pa.Table.from_pylist(rfd_serialized),
+        pa.Table.from_pylist(rfd_serialised),
         logdir.joinpath(f"rewards.parquet"),
     )
     if len(log_list) > 0:
@@ -377,7 +426,8 @@ def evolve(
     gopsconfig_path: Path = here.joinpath("../config/gops/20231220-mutation-01.toml"),
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
-    log_interval: int = 100,
+    log_interval: int = 1000,
+    savestate_interval: int = 100,
     debug_vis: bool = False,
 ) -> None:
     # Load config
@@ -429,6 +479,7 @@ def evolve(
         mutation=cast(gops.Mutation, mutation),
         logdir=logdir,
         log_interval=log_interval,
+        savestate_interval=savestate_interval,
         xmax=cfconfig.xlim[1],
         ymax=cfconfig.ylim[1],
         debug_vis=debug_vis,
@@ -436,8 +487,34 @@ def evolve(
 
 
 @app.command()
-def vis() -> None:
-    assert False, "Unimplemented"
+def replay(
+    physstate_path: Path,
+    n_agents: int = 20,
+    backend: str = "pyglet",  # Use "headless" for headless rendering
+    videopath: Optional[Path] = None,
+    start: int = 0,
+    end: Optional[int] = None,
+    cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
+) -> None:
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+    cfconfig.n_initial_agents = n_agents
+    phys_state = SavedPhysicsState.load(physstate_path)
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env_state, _ = env.reset(jax.random.PRNGKey(0))
+    end = end if end is not None else phys_state.circle_axy.shape[0]
+    visualizer = env.visualizer(
+        env_state,
+        figsize=(cfconfig.xlim[1] * 2, cfconfig.ylim[1] * 2),
+        backend=backend,
+    )
+    if videopath is not None:
+        visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
+    for i in range(start, end):
+        phys = phys_state.set_by_index(i, env_state.physics)
+        env_state = dataclasses.replace(env_state, physics=phys)
+        visualizer.render(env_state)
+        visualizer.show()
 
 
 if __name__ == "__main__":
