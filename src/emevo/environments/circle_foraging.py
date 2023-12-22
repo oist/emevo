@@ -71,6 +71,7 @@ class CFObs(NamedTuple):
     velocity: jax.Array
     angle: jax.Array
     angular_velocity: jax.Array
+    energy: jax.Array
 
     def as_array(self) -> jax.Array:
         return jnp.concatenate(
@@ -80,6 +81,7 @@ class CFObs(NamedTuple):
                 self.velocity,
                 jnp.expand_dims(self.angle, axis=1),
                 jnp.expand_dims(self.angular_velocity, axis=1),
+                jnp.expand_dims(self.energy, axis=1),
             ),
             axis=1,
         )
@@ -614,17 +616,9 @@ class CircleForaging(Env):
         )
         # Gather sensor obs
         sensor_obs = self._sensor_obs(stated=stated)
-        obs = CFObs(
-            sensor=sensor_obs.reshape(-1, self._n_sensors, 3),
-            collision=collision,
-            angle=stated.circle.p.angle,
-            velocity=stated.circle.v.xy,
-            angular_velocity=stated.circle.v.angle,
-        )
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_delta = food_collision - self._force_energy_consumption * force_norm
-        timestep = TimeStep(encount=c2c, obs=obs)
         # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)
         stated, food_num, food_loc = self._remove_and_reproduce_foods(
@@ -638,6 +632,16 @@ class CircleForaging(Env):
             energy_delta=energy_delta,
             capacity=self._energy_capacity,
         )
+        # Construct obs
+        obs = CFObs(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, 3),
+            collision=collision,
+            angle=stated.circle.p.angle,
+            velocity=stated.circle.v.xy,
+            angular_velocity=stated.circle.v.angle,
+            energy=status.energy,
+        )
+        timestep = TimeStep(encount=c2c, obs=obs)
         state = CFState(
             physics=stated,
             solver=solver,
@@ -756,6 +760,7 @@ class CircleForaging(Env):
             angle=physics.circle.p.angle,
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
+            energy=state.status.energy,
         )
         # They shouldn't encount now
         timestep = TimeStep(encount=jnp.zeros((N, N), dtype=bool), obs=obs)
