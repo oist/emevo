@@ -87,7 +87,7 @@ class SavedPhysicsState:
 
 
 def extract_reward_input(collision: jax.Array, action: jax.Array) -> jax.Array:
-    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
+    action_norm = jnp.sqrt(jnp.sum(action ** 2, axis=-1, keepdims=True))
     return jnp.concatenate((collision, action_norm), axis=1)
 
 
@@ -413,12 +413,15 @@ here = Path(__file__).parent
 def evolve(
     seed: int = 1,
     n_agents: int = 20,
+    init_energy: float = 20.0,
+    action_cost: float = 0.0001,
+    mutation_prob: float = 0.2,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
     gamma: float = 0.999,
     gae_lambda: float = 0.95,
     n_optim_epochs: int = 10,
-    minibatch_size: int = 128,
+    minibatch_size: int = 256,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
@@ -427,7 +430,7 @@ def evolve(
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
     log_interval: int = 1000,
-    savestate_interval: int = 100,
+    savestate_interval: int = 1000,
     debug_vis: bool = False,
 ) -> None:
     # Load config
@@ -443,6 +446,10 @@ def evolve(
     mutation = gopsconfig.load_model()
     # Override config
     cfconfig.n_initial_agents = n_agents
+    cfconfig.init_energy = init_energy
+    cfconfig.force_energy_consumption = action_cost
+    gopsconfig.params["mutation_prob"] = mutation_prob
+    # Make env
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     if reward_fn == RewardKind.LINEAR:
