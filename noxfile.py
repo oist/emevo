@@ -26,6 +26,7 @@ def compile(session: nox.Session) -> None:
     if has_cuda:
         nvcc_out = subprocess.run(["nvcc", "--version"], capture_output=True)
         is_cuda_12 = "cuda_12" in nvcc_out.stdout.decode("utf-8")
+        cuda_local = "--local-cuda" in session.posargs
 
     def _run_pip_compile(in_file: str, out_name: str) -> None:
         # If -k {out_name} is given, skip compiling
@@ -35,8 +36,12 @@ def compile(session: nox.Session) -> None:
         out_file = f"requirements/{out_name}.txt"
         args = ["pip-compile"]
         if has_cuda and out_name not in ["format", "lint"]:
-            if is_cuda_12:
+            if is_cuda_12 and cuda_local:
+                args.append("requirements/cuda12_local.in")
+            elif is_cuda_12:
                 args.append("requirements/cuda12.in")
+            elif cuda_local:
+                args.append("requirements/cuda11_local.in")
             else:
                 args.append("requirements/cuda11.in")
         args += [

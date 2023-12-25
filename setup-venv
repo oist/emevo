@@ -3,7 +3,7 @@ set -eo pipefail
 
 if [[ ! -d .exp-venv ]]; then
     mkdir .exp-venv
-    python -m venv .exp-venv
+    python3 -m venv .exp-venv
 fi
 
 if [[ ! -f requirements/experiments.txt ]]; then
