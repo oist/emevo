@@ -1,5 +1,5 @@
 -r format.in
--e .
+-e .[video]
 ipympl
 ipywidgets
 jupyterlab
