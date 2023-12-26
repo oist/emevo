@@ -15,12 +15,12 @@ from jax.typing import ArrayLike
 
 from emevo.env import (
     Env,
-    Profile,
     Status,
     TimeStep,
+    UniqueID,
     Visualizer,
-    init_profile,
     init_status,
+    init_uniqueid,
 )
 from emevo.environments.env_utils import (
     CircleCoordinate,
@@ -96,7 +96,7 @@ class CFState:
     food_loc: LocatingState
     key: chex.PRNGKey
     step: jax.Array
-    profile: Profile
+    unique_id: UniqueID
     status: Status
     n_born_agents: jax.Array
 
@@ -105,7 +105,7 @@ class CFState:
         return self.physics
 
     def is_extinct(self) -> bool:
-        return jnp.logical_not(jnp.any(self.profile.is_active())).item()
+        return jnp.logical_not(jnp.any(self.unique_id.is_active())).item()
 
 
 class Obstacle(str, enum.Enum):
@@ -651,7 +651,7 @@ class CircleForaging(Env):
             food_loc=food_loc,
             key=key,
             step=state.step + 1,
-            profile=state.profile,
+            unique_id=state.unique_id,
             status=status.step(),
             n_born_agents=state.n_born_agents,
         )
@@ -682,8 +682,8 @@ class CircleForaging(Env):
         is_parent = _first_n_true(is_possible_parent, jnp.sum(is_replaced))
         # parent_indices := nonzero_indices(parents) + (N, N, N, ....)
         parent_indices = _nonzero(is_parent, N)
-        # empty_indices := nonzero_indices(not(is_active)) + (0, 0, 0, ....)
-        replaced_indices = _nonzero(is_replaced, N) % (N + 1)
+        # empty_indices := nonzero_indices(not(is_active)) + (N, N, N, ....)
+        replaced_indices = _nonzero(is_replaced, N)
         # To use .at[].add, append (0, 0) to sampled xy
         new_xy_with_sentinel = jnp.concatenate((new_xy, jnp.zeros((1, 2))))
         xy = circle.p.xy.at[replaced_indices].add(new_xy_with_sentinel[parent_indices])
@@ -694,29 +694,25 @@ class CircleForaging(Env):
             state.physics,
             circle=replace(circle, p=p, is_active=is_active),
         )
-        profile = state.profile.activate(is_replaced, state.step)
-        shared_energy = state.status.energy * self._energy_share_ratio
-        shared_energy_with_sentinel = jnp.concatenate((shared_energy, jnp.zeros(1)))
-        init_energy = (
-            jnp.zeros_like(state.status.energy)
-            .at[replaced_indices]
-            .add(shared_energy_with_sentinel[parent_indices])
+        unique_id = state.unique_id.activate(is_replaced)
+        status = state.status.activate(
+            self._energy_share_ratio,
+            replaced_indices,
+            parent_indices,
         )
-        status = state.status.activate(is_replaced, init_energy=init_energy)
-        status = status.update(energy_delta=(status.energy - shared_energy) * is_parent)
         n_children = jnp.sum(is_parent)
         new_state = replace(
             state,
             physics=physics,
-            profile=profile,
+            unique_id=unique_id,
             status=status,
             agent_loc=state.agent_loc.increment(n_children),
             n_born_agents=state.n_born_agents + n_children,
             key=keys[0],
         )
-        empty_id = jnp.ones_like(state.profile.unique_id) * -1
+        empty_id = jnp.ones_like(state.unique_id.unique_id) * -1
         unique_id_with_sentinel = jnp.concatenate(
-            (state.profile.unique_id, jnp.zeros(1, dtype=jnp.int32))
+            (state.unique_id.unique_id, jnp.zeros(1, dtype=jnp.int32))
         )
         parent_id = empty_id.at[replaced_indices].set(
             unique_id_with_sentinel[parent_indices]
@@ -733,14 +729,14 @@ class CircleForaging(Env):
         is_active = jnp.where(flag, False, state.physics.circle.is_active)
         circle = replace(state.physics.circle, p=p, v=v, is_active=is_active)
         physics = replace(state.physics, circle=circle)
-        profile = state.profile.deactivate(flag)
+        unique_id = state.unique_id.deactivate(flag)
         status = state.status.deactivate(flag)
-        return replace(state, physics=physics, profile=profile, status=status)
+        return replace(state, physics=physics, unique_id=unique_id, status=status)
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
         physics, agent_loc, food_loc = self._initialize_physics_state(key)
         N = self.n_max_agents
-        profile = init_profile(self._n_initial_agents, N)
+        unique_id = init_uniqueid(self._n_initial_agents, N)
         status = init_status(N, self._init_energy)
         state = CFState(
             physics=physics,
@@ -750,7 +746,7 @@ class CircleForaging(Env):
             food_num=self._initial_foodnum_state,
             key=key,
             step=jnp.array(0, dtype=jnp.int32),
-            profile=profile,
+            unique_id=unique_id,
             status=status,
             n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
         )

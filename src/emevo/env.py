@@ -28,9 +28,18 @@ class Status:
         """Get older."""
         return replace(self, age=self.age + 1)
 
-    def activate(self, flag: jax.Array, init_energy: jax.Array) -> Self:
-        age = jnp.where(flag, 0, self.age)
-        energy = jnp.where(flag, init_energy, self.energy)
+    def activate(
+        self,
+        energy_share_ratio: float,
+        child_indices: jax.Array,
+        parent_indices: jax.Array,
+    ) -> Self:
+        age = self.age.at[child_indices].add(1)
+        shared_energy = self.energy * energy_share_ratio
+        shared_energy_with_sentinel = jnp.concatenate((shared_energy, jnp.zeros(1)))
+        shared = shared_energy_with_sentinel[parent_indices]
+        energy = self.energy.at[child_indices].set(shared)
+        energy = energy.at[parent_indices].add(-shared)
         return replace(self, age=age, energy=energy)
 
     def deactivate(self, flag: jax.Array) -> Self:
@@ -50,45 +59,30 @@ def init_status(max_n: int, init_energy: float) -> Status:
 
 
 @chex.dataclass
-class Profile:
-    """Agent profile."""
+class UniqueID:
+    """Unique ID for agents. Starts from 1."""
 
-    birthtime: jax.Array
-    generation: jax.Array
     unique_id: jax.Array
 
-    def activate(self, flag: jax.Array, step: jax.Array) -> Self:
-        birthtime = jnp.where(flag, step, self.birthtime)
-        generation = jnp.where(flag, self.generation + 1, self.generation)
+    def activate(self, flag: jax.Array) -> Self:
         unique_id = jnp.where(
             flag,
             jnp.cumsum(flag) + jnp.max(self.unique_id),
             self.unique_id,
         )
-        return Profile(
-            birthtime=birthtime,
-            generation=generation,
-            unique_id=unique_id,
-        )
+        return UniqueID(unique_id=unique_id)
 
     def deactivate(self, flag: jax.Array) -> Self:
-        return Profile(
-            birthtime=jnp.where(flag, -1, self.birthtime),
-            generation=jnp.where(flag, -1, self.generation),
-            unique_id=jnp.where(flag, -1, self.unique_id),
-        )
+        return UniqueID(unique_id=jnp.where(flag, -1, self.unique_id))
 
     def is_active(self) -> jax.Array:
-        return 0 <= self.unique_id
+        return 1 <= self.unique_id
 
 
-def init_profile(n: int, max_n: int) -> Profile:
-    minus_1 = jnp.ones(max_n - n, dtype=jnp.int32) * -1
-    return Profile(
-        birthtime=jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1)),
-        generation=jnp.concatenate((jnp.zeros(n, dtype=jnp.int32), minus_1)),
-        # unique_id starts from 1
-        unique_id=jnp.concatenate((jnp.arange(1, n + 1, dtype=jnp.int32), minus_1)),
+def init_uniqueid(n: int, max_n: int) -> UniqueID:
+    zeros = jnp.zeros(max_n - n, dtype=jnp.int32)
+    return UniqueID(
+        unique_id=jnp.concatenate((jnp.arange(1, n + 1, dtype=jnp.int32), zeros)),
     )
 
 
@@ -107,7 +101,7 @@ class StateProtocol(Protocol):
 
     key: chex.PRNGKey
     step: jax.Array
-    profile: Profile
+    unique_id: UniqueID
     status: Status
     n_born_agents: jax.Array
 

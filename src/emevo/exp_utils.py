@@ -3,16 +3,21 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
+from pathlib import Path
 from typing import Any, Dict, Tuple, Type, Union
 
 import chex
 import jax
 import jax.numpy as jnp
+import numpy as np
 import serde
 
 from emevo import birth_and_death as bd
 from emevo import genetic_ops as gops
 from emevo.environments.circle_foraging import SensorRange
+from emevo.environments.phyjax2d import Position, StateDict
+
+Self = Any
 
 
 @serde.serde
@@ -108,8 +113,6 @@ class Log:
     rewards: jax.Array
     age: jax.Array
     energy: jax.Array
-    birthtime: jax.Array
-    generation: jax.Array
     unique_id: jax.Array
 
     def with_step(self, from_: int) -> LogWithStep:
@@ -150,3 +153,53 @@ class LogWithStep(Log):
     def filter_death(self) -> Any:
         is_death_event = self.dead > -1
         return jax.tree_map(lambda arr: arr[is_death_event], self)
+
+
+@dataclasses.dataclass
+class SavedProfile:
+    birthtime: int
+    parent: int
+    unique_id: int
+
+
+@chex.dataclass
+class SavedPhysicsState:
+    circle_axy: jax.Array
+    circle_is_active: jax.Array
+    static_circle_axy: jax.Array
+    static_circle_is_active: jax.Array
+
+    def save(self, path: Path) -> None:
+        np.savez_compressed(
+            path,
+            circle_axy=np.array(self.circle_axy),
+            circle_is_active=np.array(self.circle_is_active),
+            static_circle_axy=np.array(self.static_circle_axy),
+            static_circle_is_active=np.array(self.static_circle_is_active),
+        )
+
+    @staticmethod
+    def load(path: Path) -> Self:
+        npzfile = np.load(path)
+        return SavedPhysicsState(
+            circle_axy=jnp.array(npzfile["circle_axy"]),
+            circle_is_active=jnp.array(npzfile["circle_is_active"]),
+            static_circle_axy=jnp.array(npzfile["static_circle_axy"]),
+            static_circle_is_active=jnp.array(npzfile["static_circle_is_active"]),
+        )
+
+    def set_by_index(self, i: int, phys: StateDict) -> StateDict:
+        phys = phys.nested_replace(
+            "circle.p",
+            Position.from_axy(self.circle_axy[i]),
+        )
+        phys = phys.nested_replace("circle.is_active", self.circle_is_active[i])
+        phys = phys.nested_replace(
+            "static_circle.p",
+            Position.from_axy(self.static_circle_axy[i]),
+        )
+        phys = phys.nested_replace(
+            "static_circle.is_active",
+            self.static_circle_is_active[i],
+        )
+        return phys

@@ -32,12 +32,12 @@ def test_deactivate(key: chex.PRNGKey) -> None:
         [True, True, True, True, True, False, False, False, False, False]
     )
     env, state = reset_env(key)
-    chex.assert_trees_all_close(state.profile.is_active(), expected)
+    chex.assert_trees_all_close(state.unique_id.is_active(), expected)
     state = env.deactivate(state, jnp.zeros_like(expected).at[2].set(True))
     expected = jnp.array(
         [True, True, False, True, True, False, False, False, False, False]
     )
-    chex.assert_trees_all_close(state.profile.is_active(), expected)
+    chex.assert_trees_all_close(state.unique_id.is_active(), expected)
     nowhere = jnp.zeros((1, 2))
     is_nowhere = jnp.all(state.physics.circle.p.xy == nowhere, axis=-1)
     chex.assert_trees_all_close(is_nowhere, jnp.logical_not(expected))
@@ -50,7 +50,7 @@ def test_activate(key: chex.PRNGKey) -> None:
     expected_active = jnp.array(
         [True, True, True, True, True, True, True, False, False, False]
     )
-    chex.assert_trees_all_close(state.profile.is_active(), expected_active)
+    chex.assert_trees_all_close(state.unique_id.is_active(), expected_active)
     expected_parents = jnp.array([-1, -1, -1, -1, -1, 3, 5, -1, -1, -1])
     chex.assert_trees_all_close(parents, expected_parents)
     nowhere = jnp.zeros((1, 2))

@@ -2,8 +2,9 @@
  evolution with Circle Foraging"""
 import dataclasses
 import enum
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Optional, cast
 
 import chex
 import equinox as eqx
@@ -22,12 +23,16 @@ from emevo import genetic_ops as gops
 from emevo import make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
-from emevo.environments.phyjax2d import Position
-from emevo.environments.phyjax2d import State as PhysState
-from emevo.environments.phyjax2d import StateDict
 from emevo.eqx_utils import get_slice
 from emevo.eqx_utils import where as eqx_where
-from emevo.exp_utils import BDConfig, CfConfig, GopsConfig, Log
+from emevo.exp_utils import (
+    BDConfig,
+    CfConfig,
+    GopsConfig,
+    Log,
+    SavedPhysicsState,
+    SavedProfile,
+)
 from emevo.reward_fn import LinearReward, RewardFn, mutate_reward_fn
 from emevo.rl.ppo_normal import (
     NormalPPONet,
@@ -40,54 +45,9 @@ from emevo.rl.ppo_normal import (
 )
 from emevo.visualizer import SaveVideoWrapper
 
-Self = Any
-
-
-@chex.dataclass
-class SavedPhysicsState:
-    circle_axy: jax.Array
-    circle_is_active: jax.Array
-    static_circle_axy: jax.Array
-    static_circle_is_active: jax.Array
-
-    def save(self, path: Path) -> None:
-        np.savez_compressed(
-            path,
-            circle_axy=np.array(self.circle_axy),
-            circle_is_active=np.array(self.circle_is_active),
-            static_circle_axy=np.array(self.static_circle_axy),
-            static_circle_is_active=np.array(self.static_circle_is_active),
-        )
-
-    @staticmethod
-    def load(path: Path) -> Self:
-        npzfile = np.load(path)
-        return SavedPhysicsState(
-            circle_axy=jnp.array(npzfile["circle_axy"]),
-            circle_is_active=jnp.array(npzfile["circle_is_active"]),
-            static_circle_axy=jnp.array(npzfile["static_circle_axy"]),
-            static_circle_is_active=jnp.array(npzfile["static_circle_is_active"]),
-        )
-
-    def set_by_index(self, i: int, phys: StateDict) -> StateDict:
-        phys = phys.nested_replace(
-            "circle.p",
-            Position.from_axy(self.circle_axy[i]),
-        )
-        phys = phys.nested_replace("circle.is_active", self.circle_is_active[i])
-        phys = phys.nested_replace(
-            "static_circle.p",
-            Position.from_axy(self.static_circle_axy[i]),
-        )
-        phys = phys.nested_replace(
-            "static_circle.is_active",
-            self.static_circle_is_active[i],
-        )
-        return phys
-
 
 def extract_reward_input(collision: jax.Array, action: jax.Array) -> jax.Array:
-    action_norm = jnp.sqrt(jnp.sum(action ** 2, axis=-1, keepdims=True))
+    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
     return jnp.concatenate((collision, action_norm), axis=1)
 
 
@@ -143,23 +103,21 @@ def exec_rollout(
         possible_parents = jnp.logical_and(
             jnp.logical_and(
                 jnp.logical_not(dead),
-                state.profile.is_active(),  # type: ignore
+                state.unique_id.is_active(),  # type: ignore
             ),
             jax.random.bernoulli(birth_key, p=birth_prob),
         )
         state_t1db, parents = env.activate(state_t1d, possible_parents)
         log = Log(
-            dead=jnp.where(dead, state_t.profile.unique_id, -1),  # type: ignore
+            dead=jnp.where(dead, state_t.unique_id.unique_id, -1),  # type: ignore
             got_food=obs_t1.collision[:, 1],
             parents=parents,
             rewards=rewards.ravel(),
             age=state_t1db.status.age,
             energy=state_t1db.status.energy,
-            birthtime=state_t1db.profile.birthtime,
-            generation=state_t1db.profile.generation,
-            unique_id=state_t1db.profile.unique_id,
+            unique_id=state_t1db.unique_id.unique_id,
         )
-        phys: StateDict = state_t.physics  # type: ignore
+        phys = state_t.physics  # type: ignore
         phys_state = SavedPhysicsState(
             circle_axy=phys.circle.p.into_axy(),
             static_circle_axy=phys.static_circle.p.into_axy(),
@@ -222,12 +180,19 @@ def epoch(
     return env_state, obs, log, phys_state, opt_state, pponet
 
 
-def write_log(logdir: Path, log_list: list[Log], index: int) -> None:
+def write_log(
+    logdir: Path,
+    log_list: list[Log],
+    index: int,
+    drop_keys: Iterable[str] = ("slots", "dead", "parents"),
+) -> None:
     log = jax.tree_map(
         lambda *args: np.array(jnp.concatenate(args, axis=0)),
         *log_list,
     )
     log_dict = dataclasses.asdict(log)
+    for drop_key in drop_keys:
+        del log_dict[drop_key]
     pq.write_table(
         pa.Table.from_pydict(log_dict),
         logdir.joinpath(f"log-{index}.parquet"),
@@ -326,6 +291,7 @@ def run_evolution(
 
     log_list, physstate_list = [], []
     reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(n_initial_agents)}
+    profile_dict = {i + 1: SavedProfile(0, 0, i + 1) for i in range(n_initial_agents)}
 
     last_log_index, last_state_index = 0, 0
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
@@ -352,7 +318,7 @@ def run_evolution(
             visualizer.render(env_state)
             visualizer.show()
         # Extinct?
-        n_active = jnp.sum(env_state.profile.is_active())  # type: ignore
+        n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
         if n_active == 0:
             print(f"Extinct after {i + 1} epochs")
             break
@@ -377,6 +343,14 @@ def run_evolution(
             log_birth.unique_id,
             log_birth.slots,
         )
+        # Update profile
+        for step, uid, parent in zip(
+            log_birth.step,
+            log_birth.unique_id,
+            log_birth.parents,
+        ):
+            uid_int = uid.item()
+            profile_dict[uid_int] = SavedProfile(step.item(), parent.item(), uid_int)
 
         # Log
         log_list.append(log_with_step.filter_active())
@@ -394,12 +368,13 @@ def run_evolution(
             last_state_index += 1
             physstate_list.clear()
 
-    rfd_serialised = [
-        v.serialise() | {"unique_id": k} for k, v in reward_fn_dict.items()
+    profile_and_rewards = [
+        v.serialise() | dataclasses.asdict(profile_dict[k])
+        for k, v in reward_fn_dict.items()
     ]
     pq.write_table(
-        pa.Table.from_pylist(rfd_serialised),
-        logdir.joinpath(f"rewards.parquet"),
+        pa.Table.from_pylist(profile_and_rewards),
+        logdir.joinpath(f"profile_and_rewards.parquet"),
     )
     if len(log_list) > 0:
         write_log(logdir, log_list, last_log_index + 1)
@@ -509,7 +484,7 @@ def replay(
     phys_state = SavedPhysicsState.load(physstate_path)
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
-    end = end if end is not None else phys_state.circle_axy.shape[0]
+    end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
         env_state,
         figsize=(cfconfig.xlim[1] * 2, cfconfig.ylim[1] * 2),
@@ -517,7 +492,7 @@ def replay(
     )
     if videopath is not None:
         visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
-    for i in range(start, end):
+    for i in range(start, end_index):
         phys = phys_state.set_by_index(i, env_state.physics)
         env_state = dataclasses.replace(env_state, physics=phys)
         visualizer.render(env_state)
