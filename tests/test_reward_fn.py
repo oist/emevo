@@ -4,8 +4,8 @@ import jax.numpy as jnp
 import pytest
 
 from emevo import genetic_ops as gops
-from emevo.reward_fn import LinearReward, mutate_reward_fn
 from emevo.eqx_utils import get_slice
+from emevo.reward_fn import LinearReward, mutate_reward_fn
 
 
 @pytest.fixture
@@ -53,6 +53,5 @@ def test_mutation(reward_fn: LinearReward) -> None:
     difference = reward_fn.weight[different] - mutated.weight[different]
     assert jnp.linalg.norm(difference) > 1e-6
     assert len(reward_fn_dict) == 7
-    jnp.savez
     for i in range(7):
         chex.assert_trees_all_close(mutated.weight[i], reward_fn_dict[i + 1].weight)
