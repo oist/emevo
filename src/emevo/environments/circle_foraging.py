@@ -110,9 +110,8 @@ class CFState:
 
 class Obstacle(str, enum.Enum):
     NONE = "none"
-    CENTER = "center"
     CENTER_HALF = "center-half"
-    CENTER_SHORT = "center-short"
+    CENTER_TWO_THIRDS = "center-two-thirds"
 
     def as_list(
         self,
@@ -122,11 +121,9 @@ class Obstacle(str, enum.Enum):
         # xmin, xmax, ymin, ymax
         if self == Obstacle.NONE:
             return []
-        elif self == Obstacle.CENTER:
-            return [(Vec2d(width / 2, height / 4), Vec2d(width / 2, height))]
         elif self == Obstacle.CENTER_HALF:
             return [(Vec2d(width / 2, height / 2), Vec2d(width / 2, height))]
-        elif self == Obstacle.CENTER_SHORT:
+        elif self == Obstacle.CENTER_TWO_THIRDS:
             return [(Vec2d(width / 2, height / 3), Vec2d(width / 2, height))]
         else:
             raise ValueError(f"Unsupported Obstacle: {self}")
