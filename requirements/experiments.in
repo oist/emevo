@@ -1,4 +1,4 @@
--e .[video,pyside6]
+-e .[analysis,video,pyside6]
 pyarrow
 tqdm
 typer
