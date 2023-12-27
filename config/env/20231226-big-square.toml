@@ -1,5 +1,5 @@
 n_initial_agents = 20
-n_max_agents = 200
+n_max_agents = 120
 n_max_foods = 50
 food_num_fn = ["logistic", 20, 0.01, 50]
 food_loc_fn = "gaussian"
@@ -20,8 +20,8 @@ angular_damping = 0.6
 max_force = 40.0
 min_force = -20.0
 init_energy = 40.0
-energy_capacity = 100.0
-force_energy_consumption = 0.00025
+energy_capacity = 120.0
+force_energy_consumption = 4e-5
 energy_share_ratio = 0.4
 n_velocity_iter = 6
 n_position_iter = 2
