@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
+import json
 from pathlib import Path
 from typing import Any, Dict, Tuple, Type, Union
 
@@ -66,7 +67,7 @@ def _load_cls(cls_path: str) -> Type:
 
 
 @serde.serde
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
 class BDConfig:
     birth_fn: str
     birth_params: Dict[str, float]
@@ -77,6 +78,16 @@ class BDConfig:
         birth_fn = _load_cls(self.birth_fn)(**self.birth_params)
         hazard_fn = _load_cls(self.hazard_fn)(**self.hazard_params)
         return birth_fn, hazard_fn
+
+    def apply_birth_override(self, override: str) -> None:
+        if 0 < len(override):
+            override_dict = json.loads(override)
+            self.birth_params |= override_dict
+
+    def apply_hazard_override(self, override: str) -> None:
+        if 0 < len(override):
+            override_dict = json.loads(override)
+            self.hazard_params |= override_dict
 
 
 def _resolve_cls(d: dict[str, Any]) -> GopsConfig:

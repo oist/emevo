@@ -411,6 +411,8 @@ def evolve(
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
     gopsconfig_path: Path = here.joinpath("../config/gops/20231220-mutation-01.toml"),
+    birth_override: str = "",
+    hazard_override: str = "",
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
     log_interval: int = 1000,
@@ -425,8 +427,14 @@ def evolve(
     with gopsconfig_path.open("r") as f:
         gopsconfig = toml.from_toml(GopsConfig, f.read())
 
+    # Apply overrides
+    bdconfig.apply_birth_override(birth_override)
+    bdconfig.apply_hazard_override(hazard_override)
+
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
+    print(birth_fn)
+    print(hazard_fn)
     mutation = gopsconfig.load_model()
     # Override config
     cfconfig.n_initial_agents = n_agents
