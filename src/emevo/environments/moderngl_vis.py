@@ -606,7 +606,8 @@ class MglVisualizer:
         self._window.use()
         self._renderer.render(stated=state.stated)
 
-    def show(self) -> None:
+    def show(self, *args, **kwargs) -> None:
+        del args, kwargs
         self._window.swap_buffers()
 
 

@@ -20,7 +20,7 @@ class Visualizer(Protocol[STATE]):
         """Render image"""
         ...
 
-    def show(self) -> None:
+    def show(self, *args, **kwargs) -> None:
         """Open a GUI window"""
         ...
 
@@ -41,7 +41,7 @@ class VisWrapper(Visualizer[STATE], Protocol):
     def render(self, state: STATE) -> Any:
         return self.unwrapped.render(state)
 
-    def show(self) -> None:
+    def show(self, *args, **kwargs) -> None:
         self.unwrapped.show()
 
     def overlay(self, name: str, value: Any) -> Any:
@@ -66,7 +66,8 @@ class SaveVideoWrapper(VisWrapper[STATE]):
         if self._writer is not None:
             self._writer.close()
 
-    def show(self) -> None:
+    def show(self, *args, **kwargs) -> None:
+        del args, kwargs
         self._count += 1
         image = self.unwrapped.get_image()
         if self._writer is None:
