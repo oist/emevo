@@ -60,15 +60,15 @@ def test_multilabel_split(treedef: list[tuple[int, int]]) -> None:
     assert list(sorted(lb1[3])) == [0, 1, 5, 8, 9]
 
 
-# def test_from_table() -> None:
-#     table = pq.read_table(ASSET_DIR.joinpath("profile_and_rewards.parquet"))
-#     tree = Tree.from_table(table)
-#     for root, _ in tree.root.children:
-#         assert root.index < 10
-#         assert root.birth_time is not None
-#         for node in root.traverse():
-#             assert node.birth_time is not None
+def test_from_table() -> None:
+    table = pq.read_table(ASSET_DIR.joinpath("profile_and_rewards.parquet"))
+    tree = Tree.from_table(table)
+    for root, _ in tree.root.children:
+        assert root.index < 10
+        assert root.birth_time is not None
+        for node in root.traverse():
+            assert node.birth_time is not None
 
-#     data_dict = tree.as_datadict(split=10)
-#     for key in ["index", "birth-step", "label"]:
-#         assert key in data_dict
+    data_dict = tree.as_datadict(split=10)
+    for key in ["index", "birth-step", "label", "in-label-0", "in-label-1"]:
+        assert key in data_dict
