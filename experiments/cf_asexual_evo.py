@@ -293,6 +293,12 @@ def run_evolution(
     reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(n_initial_agents)}
     profile_dict = {i + 1: SavedProfile(0, 0, i + 1) for i in range(n_initial_agents)}
 
+    def save_physstates(index: int) -> None:
+        concat_physstates(physstate_list).save(
+            logdir.joinpath(f"state-{index + 1}.npz")
+        )
+        physstate_list.clear()
+
     last_log_index, last_state_index = 0, 0
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key)
@@ -362,12 +368,11 @@ def run_evolution(
         # Physics state
         physstate_list.append(phys_state)
         if (i + 1) % savestate_interval == 0:
-            concat_physstates(physstate_list).save(
-                logdir.joinpath(f"state-{last_state_index + 1}.npz")
-            )
+            save_physstates(last_state_index + 1)
             last_state_index += 1
-            physstate_list.clear()
 
+    # Save logs before exiting
+    # Profile and rewards
     profile_and_rewards = [
         v.serialise() | dataclasses.asdict(profile_dict[k])
         for k, v in reward_fn_dict.items()
@@ -376,8 +381,12 @@ def run_evolution(
         pa.Table.from_pylist(profile_and_rewards),
         logdir.joinpath(f"profile_and_rewards.parquet"),
     )
+    # Step log
     if len(log_list) > 0:
         write_log(logdir, log_list, last_log_index + 1)
+    # Physics state
+    if len(physstate_list) > 0:
+        save_physstates(last_state_index + 1)
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
