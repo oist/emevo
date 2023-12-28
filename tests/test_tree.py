@@ -62,7 +62,7 @@ def test_multilabel_split(treedef: list[tuple[int, int]]) -> None:
 
 def test_from_table() -> None:
     table = pq.read_table(ASSET_DIR.joinpath("profile_and_rewards.parquet"))
-    tree = Tree.from_table(table)
+    tree = Tree.from_table(table, 20)
     for root, _ in tree.root.children:
         assert root.index < 10
         assert root.birth_time is not None
