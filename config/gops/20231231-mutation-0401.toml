@@ -1,0 +1,11 @@
+path = "emevo.genetic_ops.BernoulliMixtureMutation"
+
+[params]
+mutation_prob = 0.4
+
+[params.mutator]
+path = "emevo.genetic_ops.UniformMutation"
+
+[params.mutator.params]
+min_noise = -0.1
+max_noise = 0.1
