@@ -47,7 +47,7 @@ from emevo.visualizer import SaveVideoWrapper
 
 
 def extract_reward_input(collision: jax.Array, action: jax.Array) -> jax.Array:
-    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
+    action_norm = jnp.sqrt(jnp.sum(action ** 2, axis=-1, keepdims=True))
     return jnp.concatenate((collision, action_norm), axis=1)
 
 
@@ -433,8 +433,6 @@ def evolve(
 
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
-    print(birth_fn)
-    print(hazard_fn)
     mutation = gopsconfig.load_model()
     # Override config
     cfconfig.n_initial_agents = n_agents
