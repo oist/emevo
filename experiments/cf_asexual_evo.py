@@ -32,7 +32,7 @@ from emevo.exp_utils import (
     SavedPhysicsState,
     SavedProfile,
 )
-from emevo.reward_fn import LinearReward, RewardFn, mutate_reward_fn
+from emevo.reward_fn import LinearReward, RewardFn, SigmoidReward, mutate_reward_fn
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -45,9 +45,22 @@ from emevo.rl.ppo_normal import (
 from emevo.visualizer import SaveVideoWrapper
 
 
-def extract_reward_input(collision: jax.Array, action: jax.Array) -> jax.Array:
+def extract_reward_linear(
+    collision: jax.Array,
+    action: jax.Array,
+    _: jax.Array,
+) -> jax.Array:
     action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
     return jnp.concatenate((collision, action_norm), axis=1)
+
+
+def extract_reward_sigmoid(
+    collision: jax.Array,
+    action: jax.Array,
+    energy: jax.Array,
+) -> tuple[jax.Array, jax.Array]:
+    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
+    return jnp.concatenate((collision, action_norm), axis=1), energy
 
 
 def slice_last(w: jax.Array, i: int) -> jax.Array:
@@ -84,7 +97,8 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        rewards = reward_fn(obs_t1.collision, actions).reshape(-1, 1)
+        energy = state_t.status.energy
+        rewards = reward_fn(obs_t1.collision, actions, energy).reshape(-1, 1)
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -384,16 +398,31 @@ def evolve(
             reward_key,
             cfconfig.n_max_agents,
             4,
-            extract_reward_input,
+            extract_reward_linear,
             lambda w: {
                 "agent": slice_last(w, 0),
                 "food": slice_last(w, 1),
                 "wall": slice_last(w, 2),
-                "energy": slice_last(w, 3),
+                "action": slice_last(w, 3),
             },
         )
     elif reward_fn == RewardKind.SIGMOID:
-        assert False, "Unimplemented"
+        reward_fn_instance = SigmoidReward(
+            reward_key,
+            cfconfig.n_max_agents,
+            4,
+            extract_reward_sigmoid,
+            lambda w, alpha: {
+                "w_agent": slice_last(w, 0),
+                "w_food": slice_last(w, 1),
+                "w_wall": slice_last(w, 2),
+                "w_action": slice_last(w, 3),
+                "alpha_agent": slice_last(alpha, 0),
+                "alpha_food": slice_last(alpha, 1),
+                "alpha_wall": slice_last(alpha, 2),
+                "alpha_action": slice_last(alpha, 3),
+            },
+        )
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
 

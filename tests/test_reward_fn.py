@@ -5,14 +5,15 @@ import pytest
 
 from emevo import genetic_ops as gops
 from emevo.eqx_utils import get_slice
-from emevo.reward_fn import LinearReward, mutate_reward_fn
+from emevo.reward_fn import LinearReward, SigmoidReward, mutate_reward_fn
+
+
+def slice_last(w: jax.Array, i: int) -> jax.Array:
+    return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
 
 
 @pytest.fixture
 def reward_fn() -> LinearReward:
-    def slice_last(w: jax.Array, i: int) -> jax.Array:
-        return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
-
     return LinearReward(
         jax.random.PRNGKey(43),
         10,
@@ -22,9 +23,23 @@ def reward_fn() -> LinearReward:
     )
 
 
-def test_reward_fn(reward_fn: LinearReward) -> None:
+def test_linear_reward_fn(reward_fn: LinearReward) -> None:
     inputs = jnp.zeros((10, 3))
     reward = reward_fn(inputs)
+    chex.assert_shape(reward, (10,))
+
+
+def test_sigmoid_reward_fn() -> None:
+    inputs = jnp.zeros((10, 3))
+    energy = jnp.zeros((10, 1))
+    reward_fn = SigmoidReward(
+        jax.random.PRNGKey(43),
+        10,
+        3,
+        lambda x, y: (x, y),  # Nothing to do
+        lambda _, __: {},
+    )
+    reward = reward_fn(inputs, energy)
     chex.assert_shape(reward, (10,))
 
 
