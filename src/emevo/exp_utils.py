@@ -2,21 +2,27 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import importlib
 import json
 from pathlib import Path
 from typing import Any, Dict, Tuple, Type, Union
 
 import chex
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import serde
 
 from emevo import birth_and_death as bd
 from emevo import genetic_ops as gops
 from emevo.environments.circle_foraging import SensorRange
 from emevo.environments.phyjax2d import Position, StateDict
+from emevo.eqx_utils import get_slice
+from emevo.reward_fn import RewardFn
 
 Self = Any
 
@@ -214,3 +220,115 @@ class SavedPhysicsState:
             self.static_circle_is_active[i],
         )
         return phys
+
+
+@jax.jit
+def concat_physstates(states: list[SavedPhysicsState]) -> SavedPhysicsState:
+    return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
+
+
+class LogMode(str, enum.Enum):
+    NONE = "none"
+    REWARD_ONLY = "reward-only"
+    REWARD_AND_LOG = "reward-and-log"
+    FULL = "full"
+
+
+def _default_dropped_keys() -> list[str]:
+    return ["slots", "dead", "parents"]
+
+
+@dataclasses.dataclass
+class Logger:
+    logdir: Path
+    mode: LogMode
+    log_interval: int
+    savestate_interval: int
+    dropped_keys: list[str] = dataclasses.field(default_factory=_default_dropped_keys)
+    reward_fn_dict: dict[int, RewardFn] = dataclasses.field(default_factory=dict)
+    profile_dict: dict[int, SavedProfile] = dataclasses.field(default_factory=dict)
+    _log_list: list[Log] = dataclasses.field(default_factory=list, init=False)
+    _physstate_list: list[SavedPhysicsState] = dataclasses.field(
+        default_factory=list,
+        init=False,
+    )
+    _log_index: int = dataclasses.field(default=1, init=False)
+    _physstate_index: int = dataclasses.field(default=1, init=False)
+
+    def push_log(self, log: Log) -> None:
+        if self.mode not in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+            return
+
+        self._log_list.append(log)
+
+        if len(self._log_list) % self.log_interval == 0:
+            self._save_log()
+
+    def _save_log(self) -> None:
+        if len(self._log_list) == 0:
+            return
+
+        all_log = jax.tree_map(
+            lambda *args: np.array(jnp.concatenate(args, axis=0)),
+            *self._log_list,
+        )
+        log_dict = dataclasses.asdict(all_log)
+        for dropped_key in self.dropped_keys:
+            del log_dict[dropped_key]
+        pq.write_table(
+            pa.Table.from_pydict(log_dict),
+            self.logdir.joinpath(f"log-{self._log_index}.parquet"),
+            compression="zstd",
+        )
+        self._log_index += 1
+        self._log_list.clear()
+
+    def push_physstate(self, phys_state: SavedPhysicsState) -> None:
+        if self.mode != LogMode.FULL:
+            return
+
+        self._physstate_list.append(phys_state)
+
+        if len(self._physstate_list) % self.savestate_interval != 0:
+            self._save_physstate()
+
+    def _save_physstate(self) -> None:
+        if len(self._physstate_list) == 0:
+            return
+
+        concat_physstates(self._physstate_list).save(
+            self.logdir.joinpath(f"state-{self._physstate_index + 1}.npz")
+        )
+        self._physstate_index += 1
+        self._physstate_list.clear()
+
+    def save_agents(
+        self,
+        net: eqx.Module,
+        unique_id: jax.Array,
+        slots: jax.Array,
+    ) -> None:
+        if self.mode != LogMode.FULL:
+            return
+
+        for uid, slot in zip(np.array(unique_id), np.array(slots)):
+            sliced_net = get_slice(net, slot)
+            modelpath = self.logdir.joinpath(f"trained-{uid}.eqx")
+            eqx.tree_serialise_leaves(modelpath, sliced_net)
+
+    def finalize(self) -> None:
+        if self.mode != LogMode.NONE:
+            profile_and_rewards = [
+                v.serialise() | dataclasses.asdict(self.profile_dict[k])
+                for k, v in self.reward_fn_dict.items()
+            ]
+            pq.write_table(
+                pa.Table.from_pylist(profile_and_rewards),
+                self.logdir.joinpath(f"profile_and_rewards.parquet"),
+            )
+
+        if self.mode in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+            self._save_log()
+
+        if self.mode == LogMode.FULL:
+            self._save_physstate()
