@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-from typing import Any, Iterable, NamedTuple, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any, NamedTuple
 from weakref import ReferenceType
 from weakref import ref as make_weakref
 
@@ -99,8 +100,13 @@ class Tree:
     nodes: dict[int, Node]
 
     @staticmethod
-    def from_iter(iterator: Iterable[tuple[int, int] | tuple[int, int, dict]]) -> Tree:
+    def from_iter(
+        iterator: Iterable[tuple[int, int] | tuple[int, int, dict]],
+        root_idx: int = -1,
+    ) -> Tree:
         nodes = {}
+        root = Node(index=_ROOT_INDEX, is_root=True)
+
         for item in iterator:
             if len(item) == 2:
                 idx, parent_idx = item
@@ -110,6 +116,8 @@ class Tree:
 
             if parent_idx in nodes:
                 parent = nodes[parent_idx]
+            elif parent_idx == root_idx:
+                parent = root
             else:
                 parent = Node(parent_idx)
                 nodes[parent_idx] = parent
@@ -117,7 +125,6 @@ class Tree:
                 nodes[idx] = Node(index=idx)
             parent.add_child(nodes[idx], **kwargs)
 
-        root = Node(index=_ROOT_INDEX, is_root=True)
         for node in nodes.values():
             if node.parent_ref is None:
                 root.add_child(node)
@@ -129,6 +136,7 @@ class Tree:
     def from_table(
         table: Table,
         initial_population: int | None = None,
+        root_idx: int = -1,
     ) -> Tree:
         birth_steps = {}
 
@@ -140,7 +148,7 @@ class Tree:
                     birth_steps[idx] = step
                     yield idx, pidx
 
-        tree = Tree.from_iter(table_iter())
+        tree = Tree.from_iter(table_iter(), root_idx=root_idx)
         for idx, node in tree.nodes.items():
             if idx in birth_steps:
                 node.birth_time = birth_steps[idx]
@@ -148,7 +156,7 @@ class Tree:
                 node.birth_time = 0
 
         if initial_population is not None:
-            for i in range(initial_population):
+            for i in range(1, initial_population + 1):
                 if i not in tree.nodes:
                     node = Node(index=i)
                     tree.nodes[i] = node
@@ -238,13 +246,7 @@ class Tree:
         """Returns a dict immediately convertable to Pandas dataframe"""
 
         indices = list(self.nodes.keys())
-        data_dict = {"index": np.array(indices, dtype=int)}
-        birth_times = []
-        for node in self.nodes.values():
-            if node.birth_time is not None:
-                birth_times.append(node.birth_time)
-        if len(birth_times) == len(self.nodes):
-            data_dict["birth-step"] = np.array(birth_times, dtype=int)
+        data_dict = {"unique_id": np.array(indices, dtype=int)}
         representive_node = next(iter(self.nodes.values()))
         for key in representive_node.info.keys():
             collected = []
