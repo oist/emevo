@@ -2,7 +2,6 @@
  evolution with Circle Foraging"""
 import dataclasses
 import enum
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Optional, cast
 
@@ -12,8 +11,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-import pyarrow as pa
-import pyarrow.parquet as pq
 import typer
 from serde import toml
 
@@ -30,10 +27,12 @@ from emevo.exp_utils import (
     CfConfig,
     GopsConfig,
     Log,
+    Logger,
+    LogMode,
     SavedPhysicsState,
     SavedProfile,
 )
-from emevo.reward_fn import LinearReward, RewardFn, mutate_reward_fn
+from emevo.reward_fn import LinearReward, RewardFn, SigmoidReward, mutate_reward_fn
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -46,9 +45,22 @@ from emevo.rl.ppo_normal import (
 from emevo.visualizer import SaveVideoWrapper
 
 
-def extract_reward_input(collision: jax.Array, action: jax.Array) -> jax.Array:
+def extract_reward_linear(
+    collision: jax.Array,
+    action: jax.Array,
+    _: jax.Array,
+) -> jax.Array:
     action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
     return jnp.concatenate((collision, action_norm), axis=1)
+
+
+def extract_reward_sigmoid(
+    collision: jax.Array,
+    action: jax.Array,
+    energy: jax.Array,
+) -> tuple[jax.Array, jax.Array]:
+    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
+    return jnp.concatenate((collision, action_norm), axis=1), energy
 
 
 def slice_last(w: jax.Array, i: int) -> jax.Array:
@@ -85,7 +97,8 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        rewards = reward_fn(obs_t1.collision, actions).reshape(-1, 1)
+        energy = state_t.status.energy
+        rewards = reward_fn(obs_t1.collision, actions, energy).reshape(-1, 1)
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -180,43 +193,6 @@ def epoch(
     return env_state, obs, log, phys_state, opt_state, pponet
 
 
-def write_log(
-    logdir: Path,
-    log_list: list[Log],
-    index: int,
-    drop_keys: Iterable[str] = ("slots", "dead", "parents"),
-) -> None:
-    log = jax.tree_map(
-        lambda *args: np.array(jnp.concatenate(args, axis=0)),
-        *log_list,
-    )
-    log_dict = dataclasses.asdict(log)
-    for drop_key in drop_keys:
-        del log_dict[drop_key]
-    pq.write_table(
-        pa.Table.from_pydict(log_dict),
-        logdir.joinpath(f"log-{index}.parquet"),
-        compression="zstd",
-    )
-
-
-def save_agents(
-    logdir: Path,
-    net: NormalPPONet,
-    unique_id: jax.Array,
-    slots: jax.Array,
-) -> None:
-    for uid, slot in zip(np.array(unique_id), np.array(slots)):
-        sliced_net = get_slice(net, slot)
-        modelpath = logdir.joinpath(f"trained-{uid}.eqx")
-        eqx.tree_serialise_leaves(modelpath, sliced_net)
-
-
-@jax.jit
-def concat_physstates(states: list[SavedPhysicsState]) -> SavedPhysicsState:
-    return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
-
-
 def run_evolution(
     *,
     key: jax.Array,
@@ -233,11 +209,9 @@ def run_evolution(
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     mutation: gops.Mutation,
-    logdir: Path,
-    log_interval: int,
-    savestate_interval: int,
     xmax: float,
     ymax: float,
+    logger: Logger,
     debug_vis: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -289,17 +263,10 @@ def run_evolution(
     else:
         visualizer = None
 
-    log_list, physstate_list = [], []
-    reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(n_initial_agents)}
-    profile_dict = {i + 1: SavedProfile(0, 0, i + 1) for i in range(n_initial_agents)}
+    for i in range(n_initial_agents):
+        logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
+        logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
-    def save_physstates(index: int) -> None:
-        concat_physstates(physstate_list).save(
-            logdir.joinpath(f"state-{index + 1}.npz")
-        )
-        physstate_list.clear()
-
-    last_log_index, last_state_index = 0, 0
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key)
         env_state, obs, log, phys_state, opt_state, pponet = epoch(
@@ -332,7 +299,7 @@ def run_evolution(
         # Save network
         log_with_step = log.with_step(i * n_rollout_steps)
         log_death = log_with_step.filter_death()
-        save_agents(logdir, pponet, log_death.dead, log_death.slots)
+        logger.save_agents(pponet, log_death.dead, log_death.slots)
         log_birth = log_with_step.filter_birth()
         # Initialize network and adam state for new agents
         is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
@@ -342,7 +309,7 @@ def run_evolution(
         # Mutation
         reward_fn = mutate_reward_fn(
             key,
-            reward_fn_dict,
+            logger.reward_fn_dict,
             reward_fn,
             mutation,
             log_birth.parents,
@@ -355,38 +322,21 @@ def run_evolution(
             log_birth.unique_id,
             log_birth.parents,
         ):
-            uid_int = uid.item()
-            profile_dict[uid_int] = SavedProfile(step.item(), parent.item(), uid_int)
+            ui = uid.item()
+            logger.profile_dict[ui] = SavedProfile(step.item(), parent.item(), ui)
 
-        # Log
-        log_list.append(log_with_step.filter_active())
-        if (i + 1) % log_interval == 0:
-            write_log(logdir, log_list, last_log_index + 1)
-            last_log_index += 1
-            log_list.clear()
-
-        # Physics state
-        physstate_list.append(phys_state)
-        if (i + 1) % savestate_interval == 0:
-            save_physstates(last_state_index + 1)
-            last_state_index += 1
+        # Push log and physics state
+        logger.push_log(log_with_step.filter_active())
+        logger.push_physstate(phys_state)
 
     # Save logs before exiting
-    # Profile and rewards
-    profile_and_rewards = [
-        v.serialise() | dataclasses.asdict(profile_dict[k])
-        for k, v in reward_fn_dict.items()
-    ]
-    pq.write_table(
-        pa.Table.from_pylist(profile_and_rewards),
-        logdir.joinpath(f"profile_and_rewards.parquet"),
+    logger.finalize()
+    is_active = env_state.unique_id.is_active()
+    logger.save_agents(
+        pponet,
+        env_state.unique_id.unique_id[is_active],
+        jnp.arange(len(is_active))[is_active],
     )
-    # Step log
-    if len(log_list) > 0:
-        write_log(logdir, log_list, last_log_index + 1)
-    # Physics state
-    if len(physstate_list) > 0:
-        save_physstates(last_state_index + 1)
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -415,6 +365,7 @@ def evolve(
     hazard_override: str = "",
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
+    log_mode: LogMode = LogMode.FULL,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
@@ -433,8 +384,6 @@ def evolve(
 
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
-    print(birth_fn)
-    print(hazard_fn)
     mutation = gopsconfig.load_model()
     # Override config
     cfconfig.n_initial_agents = n_agents
@@ -449,18 +398,40 @@ def evolve(
             reward_key,
             cfconfig.n_max_agents,
             4,
-            extract_reward_input,
+            extract_reward_linear,
             lambda w: {
                 "agent": slice_last(w, 0),
                 "food": slice_last(w, 1),
                 "wall": slice_last(w, 2),
-                "energy": slice_last(w, 3),
+                "action": slice_last(w, 3),
             },
         )
     elif reward_fn == RewardKind.SIGMOID:
-        assert False, "Unimplemented"
+        reward_fn_instance = SigmoidReward(
+            reward_key,
+            cfconfig.n_max_agents,
+            4,
+            extract_reward_sigmoid,
+            lambda w, alpha: {
+                "w_agent": slice_last(w, 0),
+                "w_food": slice_last(w, 1),
+                "w_wall": slice_last(w, 2),
+                "w_action": slice_last(w, 3),
+                "alpha_agent": slice_last(alpha, 0),
+                "alpha_food": slice_last(alpha, 1),
+                "alpha_wall": slice_last(alpha, 2),
+                "alpha_action": slice_last(alpha, 3),
+            },
+        )
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
+
+    logger = Logger(
+        logdir=logdir,
+        mode=log_mode,
+        log_interval=log_interval,
+        savestate_interval=savestate_interval,
+    )
     run_evolution(
         key=key,
         env=env,
@@ -476,11 +447,9 @@ def evolve(
         hazard_fn=hazard_fn,
         birth_fn=birth_fn,
         mutation=cast(gops.Mutation, mutation),
-        logdir=logdir,
-        log_interval=log_interval,
-        savestate_interval=savestate_interval,
         xmax=cfconfig.xlim[1],
         ymax=cfconfig.ylim[1],
+        logger=logger,
         debug_vis=debug_vis,
     )
 
