@@ -235,7 +235,7 @@ class LogMode(str, enum.Enum):
 
 
 def _default_dropped_keys() -> list[str]:
-    return ["slots", "dead", "parents"]
+    return ["dead", "parents"]
 
 
 @dataclasses.dataclass
@@ -275,6 +275,7 @@ class Logger:
         log_dict = dataclasses.asdict(all_log)
         for dropped_key in self.dropped_keys:
             del log_dict[dropped_key]
+
         pq.write_table(
             pa.Table.from_pydict(log_dict),
             self.logdir.joinpath(f"log-{self._log_index}.parquet"),
