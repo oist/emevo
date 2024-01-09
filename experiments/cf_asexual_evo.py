@@ -483,6 +483,7 @@ def replay(
         env_state = dataclasses.replace(env_state, physics=phys)
         visualizer.render(env_state)
         visualizer.show()
+    visualizer.close()
 
 
 if __name__ == "__main__":

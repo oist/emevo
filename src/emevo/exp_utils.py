@@ -290,7 +290,7 @@ class Logger:
 
         self._physstate_list.append(phys_state)
 
-        if len(self._physstate_list) % self.savestate_interval != 0:
+        if len(self._physstate_list) % self.savestate_interval == 0:
             self._save_physstate()
 
     def _save_physstate(self) -> None:
