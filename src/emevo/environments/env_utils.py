@@ -263,7 +263,9 @@ class LocSwitching:
                 locfn_list.append(fn_or_base)
             else:
                 name, *args = fn_or_base
-                locfn_list.append(Locating(name)(*args))
+                fn, state = Locating(name)(*args)
+                del state
+                locfn_list.append(fn)
         self._locfn_list = locfn_list
         self._interval = interval
         self._n = len(locfn_list)
