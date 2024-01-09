@@ -63,6 +63,12 @@ class CfConfig:
     n_physics_iter: int = 5
     max_place_attempts: int = 10
 
+    def apply_override(self, override: str) -> None:
+        if 0 < len(override):
+            override_dict = json.loads(override)
+            for key, value in override_dict.items():
+                setattr(self, key, value)
+
 
 def _load_cls(cls_path: str) -> Type:
     try:
