@@ -1,7 +1,7 @@
 n_initial_agents = 20
 n_max_agents = 120
-n_max_foods = 50
-food_num_fn = ["logistic", 20, 0.01, 50]
+n_max_foods = 60
+food_num_fn = ["logistic", 20, 0.01, 60]
 food_loc_fn = "gaussian-mixture"
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
