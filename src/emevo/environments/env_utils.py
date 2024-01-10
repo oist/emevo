@@ -20,15 +20,27 @@ Self = Any
 class FoodNumState:
     current: jax.Array
     internal: jax.Array
+    n_called: jax.Array
 
     def appears(self) -> jax.Array:
         return (self.internal - self.current) >= 1.0
 
     def eaten(self, n: int | jax.Array) -> Self:
-        return FoodNumState(current=self.current - n, internal=self.internal - n)
+        return FoodNumState(
+            current=self.current - n,
+            internal=self.internal - n,
+            n_called=self.n_called,
+        )
 
     def recover(self, n: int | jax.Array = 1) -> Self:
         return dataclasses.replace(self, current=self.current + n)
+
+    def _update(self, internal: jax.Array) -> Self:
+        return FoodNumState(
+            current=self.current,
+            internal=internal,
+            n_called=self.n_called + 1,
+        )
 
 
 class ReprNumFn(Protocol):
@@ -44,10 +56,7 @@ class ReprNumConstant:
 
     def __call__(self, state: FoodNumState) -> FoodNumState:
         # Do nothing here
-        return dataclasses.replace(
-            state,
-            internal=jnp.array(self.initial, dtype=jnp.float32),
-        )
+        return state._update(jnp.array(self.initial, dtype=jnp.float32))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -58,8 +67,8 @@ class ReprNumLinear:
     def __call__(self, state: FoodNumState) -> FoodNumState:
         # Increase the number of foods by dn_dt
         internal = jnp.fmax(state.current, state.internal)
-        internal = jnp.clip(internal + self.dn_dt, a_max=float(self.initial))
-        return dataclasses.replace(state, internal=internal)
+        max_value = jnp.array(self.initial, dtype=jnp.float32)
+        return state._update(jnp.clip(internal + self.dn_dt, a_max=max_value))
 
 
 @dataclasses.dataclass(frozen=True)
@@ -71,7 +80,37 @@ class ReprNumLogistic:
     def __call__(self, state: FoodNumState) -> FoodNumState:
         internal = jnp.fmax(state.current, state.internal)
         dn_dt = self.growth_rate * internal * (1 - internal / self.capacity)
-        return dataclasses.replace(state, internal=internal + dn_dt)
+        return state._update(internal + dn_dt)
+
+
+class ReprNumScheduled:
+    """Branching based on steps."""
+
+    def __init__(
+        self,
+        interval: int,
+        *num_fns: tuple[str, ...] | ReprNumFn,
+    ) -> None:
+        numfn_list = []
+        for fn_or_base in num_fns:
+            if callable(fn_or_base):
+                numfn_list.append(fn_or_base)
+            else:
+                name, *args = fn_or_base
+                fn, state = ReprNum(name)(*args)
+                del state
+                numfn_list.append(fn)
+        self._numfn_list = numfn_list
+        self._interval = interval
+        self._n = len(numfn_list)
+
+    @property
+    def initial(self) -> int:
+        return self._numfn_list[0].initial
+
+    def __call__(self, state: FoodNumState) -> FoodNumState:
+        index = jnp.fmin(state.n_called // self._interval, self._n)
+        return jax.lax.switch(index, self._numfn_list, state)
 
 
 class ReprNum(str, enum.Enum):
@@ -80,26 +119,26 @@ class ReprNum(str, enum.Enum):
     CONSTANT = "constant"
     LINEAR = "linear"
     LOGISTIC = "logistic"
+    SCHEDULED = "scheduled"
 
     def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprNumFn, FoodNumState]:
-        if len(args) > 0:
-            initial = args[0]
-        elif "initial" in kwargs:
-            initial = kwargs["initial"]
-        else:
-            raise ValueError("'initial' is required for all ReprNum functions")
-        state = FoodNumState(  # type: ignore
-            current=jnp.array(int(initial), dtype=jnp.int32),
-            internal=jnp.array(float(initial), dtype=jnp.float32),
-        )
         if self is ReprNum.CONSTANT:
             fn = ReprNumConstant(*args, **kwargs)
         elif self is ReprNum.LINEAR:
             fn = ReprNumLinear(*args, **kwargs)
         elif self is ReprNum.LOGISTIC:
             fn = ReprNumLogistic(*args, **kwargs)
+        elif self is ReprNum.SCHEDULED:
+            fn = ReprNumScheduled(*args, **kwargs)
         else:
             raise AssertionError("Unreachable")
+
+        initial = fn.initial
+        state = FoodNumState(
+            current=jnp.array(int(initial), dtype=jnp.int32),
+            internal=jnp.array(float(initial), dtype=jnp.float32),
+            n_called=jnp.array(1, dtype=jnp.int32),
+        )
         return cast(ReprNumFn, fn), state
 
 
