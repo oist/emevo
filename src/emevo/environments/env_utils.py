@@ -190,6 +190,7 @@ class Locating(str, enum.Enum):
     GAUSSIAN = "gaussian"
     GAUSSIAN_MIXTURE = "gaussian-mixture"
     PERIODIC = "periodic"
+    SCHEDULED = "scheduled"
     SWITCHING = "switching"
     UNIFORM = "uniform"
 
@@ -206,6 +207,8 @@ class Locating(str, enum.Enum):
             return LocPeriodic(*args, **kwargs), state
         elif self is Locating.UNIFORM:
             return loc_uniform(*args, **kwargs), state
+        elif self is Locating.SCHEDULED:
+            return LocScheduled(*args, **kwargs), state
         elif self is Locating.SWITCHING:
             return LocSwitching(*args, **kwargs), state
         else:
@@ -252,6 +255,8 @@ class LocPeriodic:
 
 
 class LocSwitching:
+    """Branching based on how many foods are produced."""
+
     def __init__(
         self,
         interval: int,
@@ -272,6 +277,14 @@ class LocSwitching:
 
     def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
         index = (state.n_produced // self._interval) % self._n
+        return jax.lax.switch(index, self._locfn_list, key, state)
+
+
+class LocScheduled(LocSwitching):
+    """Branching based on steps."""
+
+    def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
+        index = jnp.fmin(state.n_trial // self._interval, self._n)
         return jax.lax.switch(index, self._locfn_list, key, state)
 
 
