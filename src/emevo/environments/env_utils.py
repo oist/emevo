@@ -88,7 +88,7 @@ class ReprNumScheduled:
 
     def __init__(
         self,
-        interval: int,
+        intervals: int | list[int],
         *num_fns: tuple[str, ...] | ReprNumFn,
     ) -> None:
         numfn_list = []
@@ -101,15 +101,17 @@ class ReprNumScheduled:
                 del state
                 numfn_list.append(fn)
         self._numfn_list = numfn_list
-        self._interval = interval
-        self._n = len(numfn_list)
+        if isinstance(int, intervals):
+            self._intervals = jnp.array([intervals])
+        else:
+            self._intervals = jnp.array(intervals)
 
     @property
     def initial(self) -> int:
         return self._numfn_list[0].initial
 
     def __call__(self, state: FoodNumState) -> FoodNumState:
-        index = jnp.fmin(state.n_called // self._interval, self._n)
+        index = jnp.digitize(state.n_called, bins=self._intervals)
         return jax.lax.switch(index, self._numfn_list, state)
 
 
@@ -319,11 +321,32 @@ class LocSwitching:
         return jax.lax.switch(index, self._locfn_list, key, state)
 
 
-class LocScheduled(LocSwitching):
+class LocScheduled:
     """Branching based on steps."""
 
+    def __init__(
+        self,
+        intervals: int | list[int],
+        *loc_fns: tuple[str, ...] | LocatingFn,
+    ) -> None:
+        locfn_list = []
+        for fn_or_base in loc_fns:
+            if callable(fn_or_base):
+                locfn_list.append(fn_or_base)
+            else:
+                name, *args = fn_or_base
+                fn, state = Locating(name)(*args)
+                del state
+                locfn_list.append(fn)
+        self._locfn_list = locfn_list
+        if isinstance(int, intervals):
+            self._intervals = jnp.array([intervals])
+        else:
+            self._intervals = jnp.array(intervals)
+
+
     def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
-        index = jnp.fmin(state.n_trial // self._interval, self._n)
+        index = jnp.digitize(state.n_called, bins=self._intervals)
         return jax.lax.switch(index, self._locfn_list, key, state)
 
 
