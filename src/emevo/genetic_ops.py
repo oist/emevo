@@ -105,19 +105,34 @@ class BernoulliMixtureMutation(Mutation):
         return cast(jax.Array, jnp.where(is_mutated, noise_added, array))
 
 
+def _clip_minmax(
+    x: jax.Array,
+    clip_min: float | None = None,
+    clip_max: float | None = None,
+) -> jax.Array:
+    if clip_min is None and clip_max is None:
+        return x
+    return jnp.clip(x, a_min=clip_min, a_max=clip_max)
+
+
 @dataclasses.dataclass(frozen=True)
 class GaussianMutation(Mutation):
     std_dev: float
+    clip_min: float | None = None
+    clip_max: float | None = None
 
     def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
         std_normal = jax.random.normal(prng_key, shape=array.shape)
-        return array + std_normal * self.std_dev
+        res = array + std_normal * self.std_dev
+        return _clip_minmax(res, self.clip_min, self.clip_max)
 
 
 @dataclasses.dataclass(frozen=True)
 class UniformMutation(Mutation):
     min_noise: float
     max_noise: float
+    clip_min: float | None = None
+    clip_max: float | None = None
 
     def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
         uniform = jax.random.uniform(
@@ -126,4 +141,5 @@ class UniformMutation(Mutation):
             minval=self.min_noise,
             maxval=self.max_noise,
         )
-        return array + uniform
+        res = array + uniform
+        return _clip_minmax(res, self.clip_min, self.clip_max)
