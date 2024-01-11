@@ -471,10 +471,12 @@ def replay(
     start: int = 0,
     end: Optional[int] = None,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
+    env_override: str = "",
 ) -> None:
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
     cfconfig.n_initial_agents = n_agents
+    cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
