@@ -22,7 +22,7 @@ def test_cfconfig() -> None:
 
 
 def test_gopsconfig() -> None:
-    with open("config/gops/20231220-mutation-01.toml") as f:
+    with open("config/gops/20240111-mutation-0401.toml") as f:
         gopsconfig = toml.from_toml(GopsConfig, f.read())
 
     mutation = gopsconfig.load_model()

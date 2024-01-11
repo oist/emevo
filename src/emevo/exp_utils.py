@@ -116,6 +116,8 @@ def _resolve_cls(d: dict[str, Any]) -> GopsConfig:
 @dataclasses.dataclass(frozen=True)
 class GopsConfig:
     path: str
+    init_std: float
+    init_mean: float
     params: Dict[str, Union[float, Dict[str, float]]]
 
     def load_model(self) -> gops.Mutation | gops.Crossover:

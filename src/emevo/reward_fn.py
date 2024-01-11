@@ -39,47 +39,53 @@ def _item_or_np(array: jax.Array) -> float | NDArray:
 class LinearReward(RewardFn):
     weight: jax.Array
     extractor: Callable[..., jax.Array]
-    serialiser: Callable[[jax.Array], dict[str, jax.Array]]
+    serializer: Callable[[jax.Array], dict[str, jax.Array]]
 
     def __init__(
         self,
+        *,  # order of arguments are a bit confusing here...
         key: chex.PRNGKey,
         n_agents: int,
         n_weights: int,
+        std: float,
+        mean: float,
         extractor: Callable[..., jax.Array],
-        serialiser: Callable[[jax.Array], dict[str, jax.Array]],
+        serializer: Callable[[jax.Array], dict[str, jax.Array]],
     ) -> None:
-        self.weight = jax.random.normal(key, (n_agents, n_weights))
+        self.weight = jax.random.normal(key, (n_agents, n_weights)) * std + mean
         self.extractor = extractor
-        self.serialiser = serialiser
+        self.serializer = serializer
 
     def __call__(self, *args) -> jax.Array:
         extracted = self.extractor(*args)
         return jax.vmap(jnp.dot)(extracted, self.weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serialiser(self.weight))
+        return jax.tree_map(_item_or_np, self.serializer(self.weight))
 
 
 class SigmoidReward(RewardFn):
     weight: jax.Array
     alpha: jax.Array
     extractor: Callable[..., tuple[jax.Array, jax.Array]]
-    serialiser: Callable[[jax.Array, jax.Array], dict[str, jax.Array]]
+    serializer: Callable[[jax.Array, jax.Array], dict[str, jax.Array]]
 
     def __init__(
         self,
+        *,
         key: chex.PRNGKey,
         n_agents: int,
         n_weights: int,
+        std: float,
+        mean: float,
         extractor: Callable[..., tuple[jax.Array, jax.Array]],
-        serialiser: Callable[[jax.Array, jax.Array], dict[str, jax.Array]],
+        serializer: Callable[[jax.Array, jax.Array], dict[str, jax.Array]],
     ) -> None:
         k1, k2 = jax.random.split(key)
-        self.weight = jax.random.normal(k1, (n_agents, n_weights))
-        self.alpha = jax.random.normal(k2, (n_agents, n_weights))
+        self.weight = jax.random.normal(k1, (n_agents, n_weights)) * std + mean
+        self.alpha = jax.random.normal(k2, (n_agents, n_weights)) * std + mean
         self.extractor = extractor
-        self.serialiser = serialiser
+        self.serializer = serializer
 
     def __call__(self, *args) -> jax.Array:
         extracted, energy = self.extractor(*args)
@@ -88,7 +94,7 @@ class SigmoidReward(RewardFn):
         return jax.vmap(jnp.dot)(filtered, self.weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serialiser(self.weight, self.alpha))
+        return jax.tree_map(_item_or_np, self.serializer(self.weight, self.alpha))
 
 
 def mutate_reward_fn(

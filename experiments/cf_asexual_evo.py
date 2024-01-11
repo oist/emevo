@@ -360,7 +360,7 @@ def evolve(
     n_total_steps: int = 1024 * 10000,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
-    gopsconfig_path: Path = here.joinpath("../config/gops/20231220-mutation-01.toml"),
+    gopsconfig_path: Path = here.joinpath("../config/gops/20240111-mutation-0401.toml"),
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
@@ -397,11 +397,13 @@ def evolve(
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     if reward_fn == RewardKind.LINEAR:
         reward_fn_instance = LinearReward(
-            reward_key,
-            cfconfig.n_max_agents,
-            4,
-            extract_reward_linear,
-            lambda w: {
+            key=reward_key,
+            n_agents=cfconfig.n_max_agents,
+            n_weights=4,
+            std=gopsconfig.init_std,
+            mean=gopsconfig.init_mean,
+            extractor=extract_reward_linear,
+            serializer=lambda w: {
                 "agent": slice_last(w, 0),
                 "food": slice_last(w, 1),
                 "wall": slice_last(w, 2),
@@ -410,11 +412,13 @@ def evolve(
         )
     elif reward_fn == RewardKind.SIGMOID:
         reward_fn_instance = SigmoidReward(
-            reward_key,
-            cfconfig.n_max_agents,
-            4,
-            extract_reward_sigmoid,
-            lambda w, alpha: {
+            key=reward_key,
+            n_agents=cfconfig.n_max_agents,
+            n_weights=4,
+            std=gopsconfig.init_std,
+            mean=gopsconfig.init_mean,
+            extractor=extract_reward_sigmoid,
+            serializer=lambda w, alpha: {
                 "w_agent": slice_last(w, 0),
                 "w_food": slice_last(w, 1),
                 "w_wall": slice_last(w, 2),
@@ -425,6 +429,8 @@ def evolve(
                 "alpha_action": slice_last(alpha, 3),
             },
         )
+        print(reward_fn_instance.alpha)
+        print(reward_fn_instance.weight)
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
 

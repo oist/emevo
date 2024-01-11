@@ -1,4 +1,6 @@
 path = "emevo.genetic_ops.BernoulliMixtureMutation"
+init_std = 0.1
+init_mean = 0.0
 
 [params]
 mutation_prob = 0.4
