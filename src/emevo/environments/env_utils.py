@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+from collections.abc import Iterable
 from typing import Any, Callable, Protocol, cast
 
 import chex
@@ -97,14 +98,12 @@ class ReprNumScheduled:
                 numfn_list.append(fn_or_base)
             else:
                 name, *args = fn_or_base
-                fn, state = ReprNum(name)(*args)
-                del state
+                fn, _ = ReprNum(name)(*args)
                 numfn_list.append(fn)
         self._numfn_list = numfn_list
-        if isinstance(int, intervals):
-            self._intervals = jnp.array([intervals])
-        else:
-            self._intervals = jnp.array(intervals)
+        if isinstance(intervals, int):
+            intervals = [intervals * (i + 1) for i in range(len(self._numfn_list))]
+        self._intervals = jnp.array(intervals, dtype=jnp.int32)
 
     @property
     def initial(self) -> int:
@@ -295,6 +294,18 @@ class LocPeriodic:
         return self._locations[state.n_trial % self._n]
 
 
+def _collect_loc_fns(fns: Iterable[tuple[str, ...] | LocatingFn]) -> list[LocatingFn]:
+    locfn_list = []
+    for fn_or_args in fns:
+        if callable(fn_or_args):
+            locfn_list.append(fn_or_args)
+        else:
+            name, *init_args = fn_or_args
+            fn, _ = Locating(name)(*init_args)
+            locfn_list.append(fn)
+    return locfn_list
+
+
 class LocSwitching:
     """Branching based on how many foods are produced."""
 
@@ -303,18 +314,9 @@ class LocSwitching:
         interval: int,
         *loc_fns: tuple[str, ...] | LocatingFn,
     ) -> None:
-        locfn_list = []
-        for fn_or_base in loc_fns:
-            if callable(fn_or_base):
-                locfn_list.append(fn_or_base)
-            else:
-                name, *args = fn_or_base
-                fn, state = Locating(name)(*args)
-                del state
-                locfn_list.append(fn)
-        self._locfn_list = locfn_list
+        self._locfn_list = _collect_loc_fns(loc_fns)
         self._interval = interval
-        self._n = len(locfn_list)
+        self._n = len(self._locfn_list)
 
     def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
         index = (state.n_produced // self._interval) % self._n
@@ -329,24 +331,13 @@ class LocScheduled:
         intervals: int | list[int],
         *loc_fns: tuple[str, ...] | LocatingFn,
     ) -> None:
-        locfn_list = []
-        for fn_or_base in loc_fns:
-            if callable(fn_or_base):
-                locfn_list.append(fn_or_base)
-            else:
-                name, *args = fn_or_base
-                fn, state = Locating(name)(*args)
-                del state
-                locfn_list.append(fn)
-        self._locfn_list = locfn_list
-        if isinstance(int, intervals):
-            self._intervals = jnp.array([intervals])
-        else:
-            self._intervals = jnp.array(intervals)
-
+        self._locfn_list = _collect_loc_fns(loc_fns)
+        if isinstance(intervals, int):
+            intervals = [intervals * (i + 1) for i in range(len(self._locfn_list))]
+        self._intervals = jnp.array(intervals, dtype=jnp.int32)
 
     def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
-        index = jnp.digitize(state.n_called, bins=self._intervals)
+        index = jnp.digitize(state.n_trial, bins=self._intervals)
         return jax.lax.switch(index, self._locfn_list, key, state)
 
 
