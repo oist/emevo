@@ -34,7 +34,7 @@ class CBarRenderer:
             Figure,
             plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi),
         )
-        self._ax: Axes = self._fig.add_axes([0.0, 0.2, 1.0, 0.6])
+        self._ax: Axes = self._fig.add_axes([0.0, 0.2, 1.0, 0.6])  # type: ignore
 
     def render(self, norm: Normalize, cm: Colormap, title: str = "Value") -> None:
         """Render cbar, but don't update figure"""
@@ -51,7 +51,10 @@ class CBarRenderer:
     ) -> NDArray:
         self.render(norm, cm, title)
         self._fig.canvas.draw()
-        array = np.frombuffer(self._fig.canvas.tostring_rgb(), dtype=np.uint8)
+        array = np.frombuffer(
+            self._fig.canvas.tostring_rgb(),  # type: ignore
+            dtype=np.uint8,
+        )
         w, h = self._fig.canvas.get_width_height()
         return array.reshape(h, w, -1)
 

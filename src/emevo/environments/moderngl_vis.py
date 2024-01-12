@@ -4,7 +4,7 @@ Currently, only supports circles and lines.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar, Protocol
+from typing import Any, Callable, ClassVar
 
 import jax.numpy as jnp
 import moderngl as mgl
@@ -14,10 +14,6 @@ from moderngl_window.context import headless
 from numpy.typing import NDArray
 
 from emevo.environments.phyjax2d import Circle, Segment, Space, State, StateDict
-
-
-class HasStateD(Protocol):
-    stated: StateDict
 
 
 NOWHERE: float = -1000.0
@@ -598,16 +594,15 @@ class MglVisualizer:
         w, h = self._figsize
         return output.reshape(h, w, -1)[::-1]
 
-    def overlay(self, name: str, value: Any) -> None:
+    def overlay(self, name: str, value: Any) -> Any:
         self._renderer.overlay(name, value)
 
-    def render(self, state: HasStateD) -> None:
+    def render(self, state: StateDict) -> None:
         self._window.clear(1.0, 1.0, 1.0)
         self._window.use()
-        self._renderer.render(stated=state.stated)
+        self._renderer.render(stated=state)
 
-    def show(self, *args, **kwargs) -> None:
-        del args, kwargs
+    def show(self) -> None:
         self._window.swap_buffers()
 
 

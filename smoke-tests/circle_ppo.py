@@ -61,8 +61,9 @@ def visualize(
 
     for key in keys[1:]:
         state, obs, act = step(key, state, obs)
+        del act
         # print(f"Act: {act[0]}")
-        visualizer.render(state)
+        visualizer.render(state.physics) # type: ignore
         visualizer.show()
 
 
@@ -201,7 +202,7 @@ def run_training(
         ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
         rewards = rewards + ri
         if visualizer is not None:
-            visualizer.render(env_state)
+            visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
             print(f"Rewards: {[x.item() for x in ri[: n_agents]]}")
         if reset:

@@ -288,7 +288,7 @@ def run_evolution(
         )
 
         if visualizer is not None:
-            visualizer.render(env_state)
+            visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
         # Extinct?
         n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
@@ -429,8 +429,6 @@ def evolve(
                 "alpha_action": slice_last(alpha, 3),
             },
         )
-        print(reward_fn_instance.alpha)
-        print(reward_fn_instance.weight)
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
 
@@ -491,9 +489,43 @@ def replay(
     for i in range(start, end_index):
         phys = phys_state.set_by_index(i, env_state.physics)
         env_state = dataclasses.replace(env_state, physics=phys)
-        visualizer.render(env_state)
+        visualizer.render(env_state.physics)
         visualizer.show()
     visualizer.close()
+
+
+@app.command()
+def widget(
+    physstate_path: Path,
+    n_agents: int = 20,
+    start: int = 0,
+    end: Optional[int] = None,
+    cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
+    env_override: str = "",
+) -> None:
+    import sys
+
+    from PySide6.QtWidgets import QApplication
+
+    from emevo.analysis.qt_widget import CFEnvReplayWidget
+
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+    cfconfig.n_initial_agents = n_agents
+    cfconfig.apply_override(env_override)
+    phys_state = SavedPhysicsState.load(physstate_path)
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    end_index = end if end is not None else phys_state.circle_axy.shape[0]
+
+    app = QApplication([])
+    widget = CFEnvReplayWidget(
+        int(cfconfig.xlim[1]),
+        int(cfconfig.ylim[1]),
+        env=env,  # type: ignore
+        saved_physics=phys_state,
+    )
+    widget.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
