@@ -22,12 +22,14 @@ def test_cfconfig() -> None:
 
 
 def test_gopsconfig() -> None:
-    with open("config/gops/20240111-mutation-0401.toml") as f:
+    with open("config/gops/20240112-mutation-0401-clipped.toml") as f:
         gopsconfig = toml.from_toml(GopsConfig, f.read())
 
     mutation = gopsconfig.load_model()
     assert isinstance(mutation, gops.BernoulliMixtureMutation)
-    assert mutation.mutation_prob == 0.2
+    assert mutation.mutation_prob == 0.4
     assert isinstance(mutation.mutator, gops.UniformMutation)
-    assert mutation.mutator.min_noise == -1
-    assert mutation.mutator.max_noise == 1
+    assert mutation.mutator.min_noise == -0.1
+    assert mutation.mutator.max_noise == 0.1
+    assert mutation.mutator.clip_min == -1
+    assert mutation.mutator.clip_max == 1

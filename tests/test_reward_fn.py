@@ -15,11 +15,15 @@ def slice_last(w: jax.Array, i: int) -> jax.Array:
 @pytest.fixture
 def reward_fn() -> LinearReward:
     return LinearReward(
-        jax.random.PRNGKey(43),
-        10,
-        3,
-        lambda x: x,  # Nothing to do
-        lambda w: {"a": slice_last(w, 0), "b": slice_last(w, 1), "c": slice_last(w, 2)},
+        key=jax.random.PRNGKey(43),
+        n_agents=10,
+        n_weights=3,
+        extractor=lambda x: x,  # Nothing to do
+        serializer=lambda w: {
+            "a": slice_last(w, 0),
+            "b": slice_last(w, 1),
+            "c": slice_last(w, 2),
+        },
     )
 
 
@@ -33,11 +37,11 @@ def test_sigmoid_reward_fn() -> None:
     inputs = jnp.zeros((10, 3))
     energy = jnp.zeros((10, 1))
     reward_fn = SigmoidReward(
-        jax.random.PRNGKey(43),
-        10,
-        3,
-        lambda x, y: (x, y),  # Nothing to do
-        lambda _, __: {},
+        key=jax.random.PRNGKey(43),
+        n_agents=10,
+        n_weights=3,
+        extractor=lambda x, y: (x, y),  # Nothing to do
+        serializer=lambda _, __: {},
     )
     reward = reward_fn(inputs, energy)
     chex.assert_shape(reward, (10,))
@@ -51,7 +55,7 @@ def test_serialise(reward_fn: LinearReward) -> None:
 def test_mutation(reward_fn: LinearReward) -> None:
     reward_fn_dict = {i + 1: get_slice(reward_fn, i) for i in range(5)}
     chex.assert_shape(tuple(map(lambda lr: lr.weight, reward_fn_dict.values())), (3,))
-    mutation = gops.GaussianMutation(std_dev=1.0)
+    mutation = gops.GaussianMutation(std_dev=1.0, clip_min=0.0)
     parents = jnp.array([-1, -1, -1, -1, -1, 2, 4, -1, -1, -1])
     mutated = mutate_reward_fn(
         jax.random.PRNGKey(23),
