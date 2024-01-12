@@ -100,7 +100,7 @@ def main(
                 print("Parents: ", parents)
 
         if visualizer is not None:
-            visualizer.render(state)
+            visualizer.render(state.physics)
             visualizer.show()
 
     print(f"Avg. μs for step: {np.mean(elapsed_list)}")

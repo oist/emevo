@@ -16,16 +16,17 @@ class Visualizer(Protocol[STATE]):
     def get_image(self) -> NDArray:
         ...
 
-    def render(self, state: STATE) -> Any:
+    def render(self, state: STATE) -> None:
         """Render image"""
         ...
 
-    def show(self, *args, **kwargs) -> None:
+    def show(self) -> None:
         """Open a GUI window"""
         ...
 
-    def overlay(self, name: str, _value: Any) -> Any:
+    def overlay(self, name: str, value: Any) -> Any:
         """Render additional value as an overlay"""
+        del value
         raise ValueError(f"Unsupported overlay: {name}")
 
 
@@ -38,10 +39,10 @@ class VisWrapper(Visualizer[STATE], Protocol):
     def get_image(self) -> NDArray:
         return self.unwrapped.get_image()
 
-    def render(self, state: STATE) -> Any:
-        return self.unwrapped.render(state)
+    def render(self, state: STATE) -> None:
+        self.unwrapped.render(state)
 
-    def show(self, *args, **kwargs) -> None:
+    def show(self) -> None:
         self.unwrapped.show()
 
     def overlay(self, name: str, value: Any) -> Any:
@@ -66,8 +67,7 @@ class SaveVideoWrapper(VisWrapper[STATE]):
         if self._writer is not None:
             self._writer.close()
 
-    def show(self, *args, **kwargs) -> None:
-        del args, kwargs
+    def show(self) -> None:
         self._count += 1
         image = self.unwrapped.get_image()
         if self._writer is None:

@@ -865,7 +865,7 @@ class CircleForaging(Env):
         figsize: tuple[float, float] | None = None,
         backend: str = "pyglet",
         **kwargs,
-    ) -> Visualizer:
+    ) -> Visualizer[StateDict]:
         """Create a visualizer for the environment"""
         from emevo.environments import moderngl_vis
 
