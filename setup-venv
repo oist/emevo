@@ -6,10 +6,6 @@ if [[ ! -d .exp-venv ]]; then
     python3 -m venv .exp-venv
 fi
 
-if [[ ! -f requirements/experiments.txt ]]; then
-    nox -s compile -- -k experiments
-fi
-
 source .exp-venv/bin/activate
-pip install pip-tools
-pip-sync requirements/experiments.txt
+pip install -e .[analysis,video]
+pip install typer

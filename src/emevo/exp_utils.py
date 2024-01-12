@@ -306,7 +306,7 @@ class Logger:
             return
 
         concat_physstates(self._physstate_list).save(
-            self.logdir.joinpath(f"state-{self._physstate_index + 1}.npz")
+            self.logdir.joinpath(f"state-{self._physstate_index}.npz")
         )
         self._physstate_index += 1
         self._physstate_list.clear()
