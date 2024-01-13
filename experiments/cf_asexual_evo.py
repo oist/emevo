@@ -98,6 +98,28 @@ def slice_last(w: jax.Array, i: int) -> jax.Array:
     return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
 
 
+def linear_reward_serializer(w: jax.Array) -> dict[str, jax.Array]:
+    return {
+        "agent": slice_last(w, 0),
+        "food": slice_last(w, 1),
+        "wall": slice_last(w, 2),
+        "action": slice_last(w, 3),
+    }
+
+
+def sigmoid_reward_serializer(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
+    return {
+        "w_agent": slice_last(w, 0),
+        "w_food": slice_last(w, 1),
+        "w_wall": slice_last(w, 2),
+        "w_action": slice_last(w, 3),
+        "alpha_agent": slice_last(alpha, 0),
+        "alpha_food": slice_last(alpha, 1),
+        "alpha_wall": slice_last(alpha, 2),
+        "alpha_action": slice_last(alpha, 3),
+    }
+
+
 def exec_rollout(
     state: State,
     initial_obs: Obs,
@@ -437,42 +459,19 @@ def evolve(
         reward_fn_instance = LinearReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
-            serializer=lambda w: {
-                "agent": slice_last(w, 0),
-                "food": slice_last(w, 1),
-                "wall": slice_last(w, 2),
-                "action": slice_last(w, 3),
-            },
+            serializer=linear_reward_serializer,
         )
     elif reward_fn == RewardKind.SIGMOID:
         reward_fn_instance = SigmoidReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
-            serializer=lambda w, alpha: {
-                "w_agent": slice_last(w, 0),
-                "w_food": slice_last(w, 1),
-                "w_wall": slice_last(w, 2),
-                "w_action": slice_last(w, 3),
-                "alpha_agent": slice_last(alpha, 0),
-                "alpha_food": slice_last(alpha, 1),
-                "alpha_wall": slice_last(alpha, 2),
-                "alpha_action": slice_last(alpha, 3),
-            },
+            serializer=sigmoid_reward_serializer,
         )
     elif reward_fn == RewardKind.SIGMOID_01:
         reward_fn_instance = SigmoidReward_01(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
-            serializer=lambda w, alpha: {
-                "w_agent": slice_last(w, 0),
-                "w_food": slice_last(w, 1),
-                "w_wall": slice_last(w, 2),
-                "w_action": slice_last(w, 3),
-                "alpha_agent": slice_last(alpha, 0),
-                "alpha_food": slice_last(alpha, 1),
-                "alpha_wall": slice_last(alpha, 2),
-                "alpha_action": slice_last(alpha, 3),
-            },
+            serializer=sigmoid_reward_serializer,
         )
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
