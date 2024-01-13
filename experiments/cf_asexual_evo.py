@@ -32,7 +32,13 @@ from emevo.exp_utils import (
     SavedPhysicsState,
     SavedProfile,
 )
-from emevo.reward_fn import LinearReward, RewardFn, SigmoidReward, mutate_reward_fn
+from emevo.reward_fn import (
+    LinearReward,
+    RewardFn,
+    SigmoidReward,
+    SigmoidReward_01,
+    mutate_reward_fn,
+)
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -49,6 +55,7 @@ from emevo.visualizer import SaveVideoWrapper
 class RewardKind(str, enum.Enum):
     LINEAR = "linear"
     SIGMOID = "sigmoid"
+    SIGMOID_01 = "sigmoid-01"
 
 
 @dataclasses.dataclass
@@ -209,7 +216,7 @@ def epoch(
         0.2,
         0.0,
     )
-    return env_state, obs, log, phys_state, opt_state, pponet, rollout.actions
+    return env_state, obs, log, phys_state, opt_state, pponet
 
 
 def run_evolution(
@@ -288,7 +295,7 @@ def run_evolution(
 
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key)
-        env_state, obs, log, phys_state, opt_state, pponet, act = epoch(
+        env_state, obs, log, phys_state, opt_state, pponet = epoch(
             env_state,
             obs,
             env,
@@ -305,14 +312,6 @@ def run_evolution(
             minibatch_size,
             n_optim_epochs,
         )
-
-        ###### Reward fn debug
-        for ac in act:
-            extracted = reward_fn.extractor(
-                jnp.ones((ac.shape[0], 3)), ac, log.energy[0]
-            )
-            print(jnp.max(extracted[:, 3]), jnp.min(extracted[:, 3]))
-        ###### End: Rewad fn debug
 
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
@@ -447,6 +446,21 @@ def evolve(
         )
     elif reward_fn == RewardKind.SIGMOID:
         reward_fn_instance = SigmoidReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
+            serializer=lambda w, alpha: {
+                "w_agent": slice_last(w, 0),
+                "w_food": slice_last(w, 1),
+                "w_wall": slice_last(w, 2),
+                "w_action": slice_last(w, 3),
+                "alpha_agent": slice_last(alpha, 0),
+                "alpha_food": slice_last(alpha, 1),
+                "alpha_wall": slice_last(alpha, 2),
+                "alpha_action": slice_last(alpha, 3),
+            },
+        )
+    elif reward_fn == RewardKind.SIGMOID_01:
+        reward_fn_instance = SigmoidReward_01(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
             serializer=lambda w, alpha: {

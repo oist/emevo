@@ -97,6 +97,16 @@ class SigmoidReward(RewardFn):
         return jax.tree_map(_item_or_np, self.serializer(self.weight, self.alpha))
 
 
+class SigmoidReward_01(SigmoidReward):
+    """Scaled to [0, 1] for all alpha in [-1, 1]"""
+
+    def __call__(self, *args) -> jax.Array:
+        extracted, energy = self.extractor(*args)
+        energy_alpha = energy.reshape(-1, 1) * self.alpha  # (N, n_weights)
+        filtered = 2.0 * extracted / (1.0 + jnp.exp(-energy_alpha)) - self.alpha > 0
+        return jax.vmap(jnp.dot)(filtered, self.weight)
+
+
 def mutate_reward_fn(
     key: chex.PRNGKey,
     reward_fn_dict: dict[int, RF],
