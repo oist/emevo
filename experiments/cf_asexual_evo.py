@@ -42,34 +42,53 @@ from emevo.rl.ppo_normal import (
     vmap_update,
     vmap_value,
 )
+from emevo.spaces import BoxSpace
 from emevo.visualizer import SaveVideoWrapper
-
-
-def extract_reward_linear(
-    collision: jax.Array,
-    action: jax.Array,
-    _: jax.Array,
-) -> jax.Array:
-    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
-    return jnp.concatenate((collision, action_norm), axis=1)
-
-
-def extract_reward_sigmoid(
-    collision: jax.Array,
-    action: jax.Array,
-    energy: jax.Array,
-) -> tuple[jax.Array, jax.Array]:
-    action_norm = jnp.sqrt(jnp.sum(action**2, axis=-1, keepdims=True))
-    return jnp.concatenate((collision, action_norm), axis=1), energy
-
-
-def slice_last(w: jax.Array, i: int) -> jax.Array:
-    return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
 
 
 class RewardKind(str, enum.Enum):
     LINEAR = "linear"
     SIGMOID = "sigmoid"
+
+
+@dataclasses.dataclass
+class RewardExtractor:
+    act_space: BoxSpace
+    act_coef: float
+    max_norm: jax.Array = dataclasses.field(init=False)
+
+    def __post_init__(self) -> None:
+        self.max_norm = jnp.sqrt(
+            jnp.sum(self.act_space.high**2, axis=-1, keepdims=True)
+        )
+
+    def normalize_action(self, action: jax.Array) -> jax.Array:
+        scaled = self.act_space.sigmoid_scale(action)
+        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
+        return norm / self.max_norm
+
+    def extract_linear(
+        self,
+        collision: jax.Array,
+        action: jax.Array,
+        energy: jax.Array,
+    ) -> jax.Array:
+        del energy
+        act_input = self.act_coef * self.normalize_action(action)
+        return jnp.concatenate((collision, act_input), axis=1)
+
+    def extract_sigmoid(
+        self,
+        collision: jax.Array,
+        action: jax.Array,
+        energy: jax.Array,
+    ) -> tuple[jax.Array, jax.Array]:
+        act_input = self.act_coef * self.normalize_action(action)
+        return jnp.concatenate((collision, act_input), axis=1), energy
+
+
+def slice_last(w: jax.Array, i: int) -> jax.Array:
+    return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
 
 
 def exec_rollout(
@@ -190,7 +209,7 @@ def epoch(
         0.2,
         0.0,
     )
-    return env_state, obs, log, phys_state, opt_state, pponet
+    return env_state, obs, log, phys_state, opt_state, pponet, rollout.actions
 
 
 def run_evolution(
@@ -269,7 +288,7 @@ def run_evolution(
 
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key)
-        env_state, obs, log, phys_state, opt_state, pponet = epoch(
+        env_state, obs, log, phys_state, opt_state, pponet, act = epoch(
             env_state,
             obs,
             env,
@@ -286,6 +305,14 @@ def run_evolution(
             minibatch_size,
             n_optim_epochs,
         )
+
+        ###### Reward fn debug
+        for ac in act:
+            extracted = reward_fn.extractor(
+                jnp.ones((ac.shape[0], 3)), ac, log.energy[0]
+            )
+            print(jnp.max(extracted[:, 3]), jnp.min(extracted[:, 3]))
+        ###### End: Rewad fn debug
 
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
@@ -358,6 +385,7 @@ def evolve(
     minibatch_size: int = 256,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
+    act_reward_coef: float = 0.01,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
     gopsconfig_path: Path = here.joinpath("../config/gops/20240111-mutation-0401.toml"),
@@ -395,14 +423,21 @@ def evolve(
     # Make env
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
+    reward_extracor = RewardExtractor(
+        act_space=env.act_space,  # type: ignore
+        act_coef=act_reward_coef,
+    )
+    common_rewardfn_args = {
+        "key": reward_key,
+        "n_agents": cfconfig.n_max_agents,
+        "n_weights": 4,
+        "std": gopsconfig.init_std,
+        "mean": gopsconfig.init_mean,
+    }
     if reward_fn == RewardKind.LINEAR:
         reward_fn_instance = LinearReward(
-            key=reward_key,
-            n_agents=cfconfig.n_max_agents,
-            n_weights=4,
-            std=gopsconfig.init_std,
-            mean=gopsconfig.init_mean,
-            extractor=extract_reward_linear,
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_linear,
             serializer=lambda w: {
                 "agent": slice_last(w, 0),
                 "food": slice_last(w, 1),
@@ -412,12 +447,8 @@ def evolve(
         )
     elif reward_fn == RewardKind.SIGMOID:
         reward_fn_instance = SigmoidReward(
-            key=reward_key,
-            n_agents=cfconfig.n_max_agents,
-            n_weights=4,
-            std=gopsconfig.init_std,
-            mean=gopsconfig.init_mean,
-            extractor=extract_reward_sigmoid,
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
             serializer=lambda w, alpha: {
                 "w_agent": slice_last(w, 0),
                 "w_food": slice_last(w, 1),
