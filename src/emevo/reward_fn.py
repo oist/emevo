@@ -103,7 +103,7 @@ class SigmoidReward_01(SigmoidReward):
     def __call__(self, *args) -> jax.Array:
         extracted, energy = self.extractor(*args)
         energy_alpha = energy.reshape(-1, 1) * self.alpha  # (N, n_weights)
-        filtered = 2.0 * extracted / (1.0 + jnp.exp(-energy_alpha)) - self.alpha > 0
+        filtered = 2.0 * extracted / (1.0 + jnp.exp(-energy_alpha)) - (self.alpha > 0)
         return jax.vmap(jnp.dot)(filtered, self.weight)
 
 
