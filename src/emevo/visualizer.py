@@ -24,11 +24,6 @@ class Visualizer(Protocol[STATE]):
         """Open a GUI window"""
         ...
 
-    def overlay(self, name: str, value: Any) -> Any:
-        """Render additional value as an overlay"""
-        del value
-        raise ValueError(f"Unsupported overlay: {name}")
-
 
 class VisWrapper(Visualizer[STATE], Protocol):
     unwrapped: Visualizer[STATE]
@@ -44,9 +39,6 @@ class VisWrapper(Visualizer[STATE], Protocol):
 
     def show(self) -> None:
         self.unwrapped.show()
-
-    def overlay(self, name: str, value: Any) -> Any:
-        return self.unwrapped.overlay(name, value)
 
 
 class SaveVideoWrapper(VisWrapper[STATE]):

@@ -284,33 +284,6 @@ def _collect_heads(circle: Circle, state: State) -> NDArray:
     return np.where(flag, np.concatenate((p1, p2), axis=1).reshape(-1, 2), NOWHERE)
 
 
-# def _collect_policies(
-#     circle: Circle,
-#     state: State,
-#     max_arrow_length: float,
-# ) -> NDArray:
-# max_f = max(map(lambda bp: bp[1].max(), bodies_and_policies))
-# policy_scaling = max_arrow_length / max_f
-# points = []
-# radius = None
-# for body, policy in bodies_and_policies:
-#     a = body.position
-#     if radius is None:
-#         radius = next(
-#             filter(lambda shape: isinstance(shape, pymunk.Circle), body.shapes)
-#         ).radius
-#     f1, f2 = policy
-#     from1 = a + pymunk.Vec2d(0, radius).rotated(body.angle + np.pi * 0.75)
-#     to1 = from1 + pymunk.Vec2d(0, -f1 * policy_scaling).rotated(body.angle)
-#     from2 = a + pymunk.Vec2d(0, radius).rotated(body.angle - np.pi * 0.75)
-#     to2 = from2 + pymunk.Vec2d(0, -f2 * policy_scaling).rotated(body.angle)
-#     points.append(from1)
-#     points.append(to1)
-#     points.append(from2)
-#     points.append(to2)
-# return np.array(points, dtype=np.float32)
-
-
 def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
     """Clip ranges to [-1, 1]"""
     total = sum(lengthes)
@@ -440,7 +413,6 @@ class MglRenderer:
             program=head_program,
             segments=_collect_heads(space.shaped.circle, stated.circle),
         )
-        self._overlays = {}
 
     def _make_gl_program(
         self,
@@ -469,50 +441,6 @@ class MglRenderer:
             prog[key].write(value)  # type: ignore
         return prog
 
-    def overlay(self, name: str, value: Any) -> Any:
-        """Render additional value as an overlay"""
-        key = name.lower()
-        if key == "arrow":
-            # Not implmented yet
-            # segments = _collect_policies(value, self._range_min * 0.1)
-            segments = np.zeros(1)
-            if "arrow" in self._overlays:
-                do_render = self._overlays["arrow"].update(segments)
-            else:
-                arrow_program = self._make_gl_program(
-                    vertex_shader=_LINE_VERTEX_SHADER,
-                    geometry_shader=_ARROW_GEOMETRY_SHADER,
-                    fragment_shader=_LINE_FRAGMENT_SHADER,
-                    color=np.array([0.98, 0.45, 0.45, 1.0], dtype=np.float32),
-                )
-                self._overlays["arrow"] = SegmentVA(
-                    ctx=self._context,
-                    program=arrow_program,
-                    segments=segments,
-                )
-                do_render = True
-            if do_render:
-                self._overlays["arrow"].render()
-        elif key.startswith("stack"):
-            xi, yi = map(int, key.split("-")[1:])
-            image = np.flipud(value)
-            h, w = image.shape[:2]
-            image_bytes = image.tobytes()
-            if key not in self._overlays:
-                texture = self._context.texture((w, h), 3, image_bytes)
-                texture.build_mipmaps()
-                program = self._make_gl_program(
-                    vertex_shader=_TEXTURE_VERTEX_SHADER,
-                    fragment_shader=_TEXTURE_FRAGMENT_SHADER,
-                    screen_idx=(xi, yi),
-                    game_x=(0.0, 1.0),
-                    game_y=(0.0, 1.0),
-                )
-                self._overlays[key] = TextureVA(self._context, program, texture)
-            self._overlays[key].update(image_bytes)
-            self._overlays[key].render()
-        else:
-            raise ValueError(f"Unsupported overlay in moderngl visualizer: {name}")
 
     def render(self, stated: StateDict) -> None:
         circles = _collect_circles(
@@ -593,9 +521,6 @@ class MglVisualizer:
         )
         w, h = self._figsize
         return output.reshape(h, w, -1)[::-1]
-
-    def overlay(self, name: str, value: Any) -> Any:
-        self._renderer.overlay(name, value)
 
     def render(self, state: StateDict) -> None:
         self._window.clear(1.0, 1.0, 1.0)
