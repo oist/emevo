@@ -406,7 +406,7 @@ def evolve(
     minibatch_size: int = 256,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
-    act_reward_coef: float = 0.01,
+    act_reward_coef: float = 0.001,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
     gopsconfig_path: Path = here.joinpath("../config/gops/20240111-mutation-0401.toml"),
