@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import dataclasses
+import sys
 from collections import deque
 from collections.abc import Iterable
 from functools import partial
-from typing import Callable
 
 import jax
 import matplotlib as mpl
@@ -15,7 +15,6 @@ import moderngl
 import numpy as np
 import pyarrow as pa
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from numpy.typing import NDArray
 from PySide6 import QtWidgets
 from PySide6.QtCharts import (
     QBarCategoryAxis,
@@ -46,13 +45,6 @@ def _mgl_qsurface_fmt() -> QSurfaceFormat:
     return fmt
 
 
-@dataclasses.dataclass
-class AppState:
-    selected: int | None = None
-    paused: bool = False
-    paused_before: bool = False
-
-
 class MglWidget(QOpenGLWidget):
     selectionChanged = Signal(int)
 
@@ -63,6 +55,10 @@ class MglWidget(QOpenGLWidget):
         env: CircleForaging,
         saved_physics: SavedPhysicsState,
         figsize: tuple[float, float],
+        start: int = 0,
+        end: int | None = None,
+        log_offset: int = 0,
+        log_table: pa.Table | None = None,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         # Set default format
@@ -84,8 +80,11 @@ class MglWidget(QOpenGLWidget):
             stated=self._get_stated(0),
             sensor_fn=env._get_sensors,
         )
-        self._index = 0
-        self._state = AppState()
+        self._log_offset = log_offset
+        self._log_table = log_table
+        self._index = start
+        self._end_index = self._phys_state.circle_axy.shape[0] if end is None else end
+        self._paused = False
         self._initialized = False
         self._overlay_fns = []
 
@@ -124,7 +123,8 @@ class MglWidget(QOpenGLWidget):
             self._fbo = self._ctx.detect_framebuffer()
             self._renderer = self._make_renderer(self._ctx)
             self._initialized = True
-        self._index += 1
+        if not self._paused and self._index < self._end_index - 1:
+            self._index += 1
         self._render(self._get_stated(self._index))
 
     def _render(self, stated: StateDict) -> None:
@@ -140,6 +140,7 @@ class MglWidget(QOpenGLWidget):
 
     def mousePressEvent(self, evt: QMouseEvent) -> None:  # type: ignore
         position = self._scale_position(evt.position())
+
         # query = self._env.get_space().point_query(
         #     position,
         #     0.0,
@@ -162,11 +163,11 @@ class MglWidget(QOpenGLWidget):
 
     @Slot()
     def pause(self) -> None:
-        self._state.paused = True
+        self._paused = True
 
     @Slot()
     def play(self) -> None:
-        self._state.paused = False
+        self._paused = False
 
 
 class BarChart(QtWidgets.QWidget):
@@ -275,7 +276,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         ylim: int,
         env: CircleForaging,
         saved_physics: SavedPhysicsState,
-        profile_and_reward: pa.Table | None = None,
+        start: int = 0,
+        end: int | None = None,
+v        log_offset: int = 0,
+        log_table: pa.Table | None = None,
     ) -> None:
         super().__init__()
 
@@ -286,6 +290,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             env=env,
             saved_physics=saved_physics,
             figsize=(xlim * 2, ylim * 2),
+            start=start,
+            end=end,
+            log_offset=log_offset,
+            log_table=log_table,
         )
         # Pause/Play
         self._pause_button = QtWidgets.QPushButton("⏸️")
@@ -344,3 +352,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
     def change_cbar(self) -> None:
         self._showing_energy = not self._showing_energy
         self._cbar_changed = True
+
+
+def start_widget(widget_cls: type[QtWidgets.QtWidget], **kwargs) -> None:
+    app = QtWidgets.QApplication([])
+    widget = widget_cls(**kwargs)
+    widget.show()
+    sys.exit(app.exec())

@@ -545,13 +545,11 @@ def widget(
     start: int = 0,
     end: Optional[int] = None,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
+    log_offset: int = 0,
+    log_path: Path | None = None,
     env_override: str = "",
 ) -> None:
-    import sys
-
-    from PySide6.QtWidgets import QApplication
-
-    from emevo.analysis.qt_widget import CFEnvReplayWidget
+    from emevo.analysis.qt_widget import CFEnvReplayWidget, start_widget
 
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
@@ -559,17 +557,34 @@ def widget(
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
-    end_index = end if end is not None else phys_state.circle_axy.shape[0]
+    end = phys_state.circle_axy.shape[0] if end is None else end
+    if log_path is None:
+        log_table = None
+    else:
+        import pyarrow.dataset as ds
 
-    app = QApplication([])
-    widget = CFEnvReplayWidget(
-        int(cfconfig.xlim[1]),
-        int(cfconfig.ylim[1]),
-        env=env,  # type: ignore
+        dataset = ds.dataset(log_path)
+        first_step = dataset.scanner(columns=["step"]).head(1)["step"][0].as_py()
+        log_start = first_step + start + log_offset
+        log_end = first_step + end + log_offset
+        scanner = dataset.scanner(
+            columns=["age", "energy", "step", "slots"],
+            filter=(ds.field("step") < log_end) & (ds.field("step") > log_start),
+        )
+        log_table = scanner.to_table()
+        log_offset = log_start
+
+    start_widget(
+        CFEnvReplayWidget,
+        xlim=int(cfconfig.xlim[1]),
+        ylim=int(cfconfig.ylim[1]),
+        env=env,
         saved_physics=phys_state,
+        start=start,
+        end=end,
+        log_table=log_table,
+        log_offset=log_start,
     )
-    widget.show()
-    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
