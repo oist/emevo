@@ -278,8 +278,9 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         saved_physics: SavedPhysicsState,
         start: int = 0,
         end: int | None = None,
-v        log_offset: int = 0,
+        log_offset: int = 0,
         log_table: pa.Table | None = None,
+        profile_and_reward: pa.Table | None = None,
     ) -> None:
         super().__init__()
 

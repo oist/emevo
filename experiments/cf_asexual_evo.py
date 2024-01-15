@@ -546,7 +546,8 @@ def widget(
     end: Optional[int] = None,
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     log_offset: int = 0,
-    log_path: Path | None = None,
+    log_path: Optional[Path] = None,
+    profile_and_reward_path: Optional[Path] = None,
     env_override: str = "",
 ) -> None:
     from emevo.analysis.qt_widget import CFEnvReplayWidget, start_widget
@@ -583,7 +584,7 @@ def widget(
         start=start,
         end=end,
         log_table=log_table,
-        log_offset=log_start,
+        log_offset=log_offset,
     )
 
 
