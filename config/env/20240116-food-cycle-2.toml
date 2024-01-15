@@ -1,7 +1,6 @@
 n_initial_agents = 50
 n_max_agents = 150
 n_max_foods = 60
-n_max_foods = 60
 food_num_fn = [
    "scheduled",
    1024000,
