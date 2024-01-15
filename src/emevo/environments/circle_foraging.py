@@ -60,7 +60,7 @@ MAX_VELOCITY: float = 10.0
 AGENT_COLOR: Color = Color(2, 204, 254)
 FOOD_COLOR: Color = Color(254, 2, 162)
 NOWHERE: float = 0.0
-N_OBJECTS: int = 3
+N_OBJECTS: int = 4
 
 
 class CFObs(NamedTuple):
@@ -90,6 +90,7 @@ class CFObs(NamedTuple):
 @chex.dataclass
 class CFState:
     physics: StateDict
+    is_poison: jax.Array
     solver: VelocitySolver
     food_num: FoodNumState
     agent_loc: LocatingState
@@ -219,6 +220,7 @@ def _observe_closest(
     shaped: ShapeDict,
     p1: jax.Array,
     p2: jax.Array,
+    is_poison: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
     def cr(shape: Circle, state: State) -> Raycast:
@@ -227,7 +229,7 @@ def _observe_closest(
     rc = cr(shaped.circle, stated.circle)
     to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = cr(shaped.static_circle, stated.static_circle)
-    to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    to_food = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     obs = jnp.concatenate(
@@ -312,6 +314,7 @@ class CircleForaging(Env):
         n_max_foods: int = 40,
         food_num_fn: ReprNumFn | str | tuple[str, ...] = "constant",
         food_loc_fn: LocatingFn | str | tuple[str, ...] = "gaussian",
+        poison_prob: float = 0.0,
         agent_loc_fn: LocatingFn | str | tuple[str, ...] = "uniform",
         xlim: tuple[float, float] = (0.0, 200.0),
         ylim: tuple[float, float] = (0.0, 200.0),
@@ -334,6 +337,8 @@ class CircleForaging(Env):
         init_energy: float = 20.0,
         energy_capacity: float = 100.0,
         force_energy_consumption: float = 0.01 / 40.0,
+        food_energy: float = 1.0,
+        poison_energy: float = -0.1,
         energy_share_ratio: float = 0.4,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
@@ -369,6 +374,9 @@ class CircleForaging(Env):
         self._init_energy = init_energy
         self._energy_capacity = energy_capacity
         self._energy_share_ratio = energy_share_ratio
+        self._food_energy = food_energy
+        self._poison_energy = poison_energy
+        self._poison_prob = poison_prob
         # Initial numbers
         assert n_max_agents > n_initial_agents
         assert n_max_foods > self._food_num_fn.initial
@@ -619,12 +627,13 @@ class CircleForaging(Env):
         energy_delta = food_collision - self._force_energy_consumption * force_norm
         # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)
-        stated, food_num, food_loc = self._remove_and_reproduce_foods(
+        stated, food_num, food_loc, is_poison = self._remove_and_reproduce_foods(
             food_key,
             jnp.max(c2sc, axis=0),
             stated,
             state.food_num,
             state.food_loc,
+            state.is_poison,
         )
         status = state.status.update(
             energy_delta=energy_delta,
@@ -642,6 +651,7 @@ class CircleForaging(Env):
         timestep = TimeStep(encount=c2c, obs=obs)
         state = CFState(
             physics=stated,
+            is_poison=is_poison,
             solver=solver,
             food_num=food_num,
             agent_loc=state.agent_loc,
@@ -731,16 +741,23 @@ class CircleForaging(Env):
         return replace(state, physics=physics, unique_id=unique_id, status=status)
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
-        physics, agent_loc, food_loc = self._initialize_physics_state(key)
+        key, physics_key, poison_key = jax.random.split(key, 3)
+        physics, agent_loc, food_loc = self._initialize_physics_state(physics_key)
         N = self.n_max_agents
         unique_id = init_uniqueid(self._n_initial_agents, N)
         status = init_status(N, self._init_energy)
+        is_poison = jax.random.bernoulli(
+            poison_key,
+            p=self._poison_prob,
+            shape=(self._n_max_foods,),
+        )
         state = CFState(
             physics=physics,
             solver=self._physics.init_solver(),
             agent_loc=agent_loc,
             food_loc=food_loc,
             food_num=self._initial_foodnum_state,
+            is_poison=is_poison,
             key=key,
             step=jnp.array(0, dtype=jnp.int32),
             unique_id=unique_id,
@@ -834,7 +851,8 @@ class CircleForaging(Env):
         sd: StateDict,
         food_num: FoodNumState,
         food_loc: LocatingState,
-    ) -> tuple[StateDict, FoodNumState, LocatingState]:
+        is_poison: jax.Array,
+    ) -> tuple[StateDict, FoodNumState, LocatingState, jax.Array]:
         # Remove foods
         xy = jnp.where(
             jnp.expand_dims(eaten, axis=1),
@@ -843,9 +861,12 @@ class CircleForaging(Env):
         )
         is_active = jnp.logical_and(sd.static_circle.is_active, jnp.logical_not(eaten))
         food_num = self._food_num_fn(food_num.eaten(jnp.sum(eaten)))
+        is_poison = jnp.where(eaten, False, is_poison)
         # Generate new foods
         first_inactive = first_true(jnp.logical_not(is_active))
-        new_food, ok = self._place_food(loc_state=food_loc, key=key, stated=sd)
+        new_food_key, poison_key = jax.random.split(key)
+        del key
+        new_food, ok = self._place_food(loc_state=food_loc, key=new_food_key, stated=sd)
         place = jnp.logical_and(jnp.logical_and(ok, food_num.appears()), first_inactive)
         xy = jnp.where(
             jnp.expand_dims(place, axis=1),
@@ -857,7 +878,13 @@ class CircleForaging(Env):
         sc = replace(sd.static_circle, p=p, is_active=is_active)
         sd = replace(sd, static_circle=sc)
         incr = jnp.sum(place)
-        return sd, food_num.recover(incr), food_loc.increment(incr)
+        new_poison = jax.random.bernoulli(
+            poison_key,
+            p=self._poison_prob,
+            shape=(self._n_max_foods,),
+        )
+        is_poison = jnp.where(place, new_poison, is_poison)
+        return sd, food_num.recover(incr), food_loc.increment(incr), is_poison
 
     def visualizer(
         self,
