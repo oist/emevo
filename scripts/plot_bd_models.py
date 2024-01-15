@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 
 import matplotlib as mpl
@@ -33,11 +34,9 @@ def plot_bd_models(
     simpletitle: bool = typer.Option(False, help="Make title simple"),
     birth2d: bool = typer.Option(False, help="Make 2D plot for birth rate"),
 ) -> None:
-    try:
-        import PySide6
-
+    if importlib.util.find_spec("PySide6") is not None:
         mpl.use("QtAgg")
-    except ImportError:
+    else:
         mpl.use("TkAgg")
 
     with config.open("r") as f:
@@ -85,7 +84,7 @@ def plot_bd_models(
         else:
             ax = fig.add_subplot(111, projection="3d")
         if simpletitle:
-            ax.set_title(f"Birth function")  # type: ignore
+            ax.set_title("Birth function")  # type: ignore
         else:
             ax.set_title(f"{type(birth_model).__name__} Birth function")  # type: ignore
         if birth2d:
@@ -110,9 +109,8 @@ def plot_bd_models(
     if yes or typer.confirm("Plot survivor ship curve?"):
         fig = plt.figure(figsize=(5, 10))
         ax = fig.add_subplot(111)
-        ax.set_title(
-            f"{type(birth_model).__name__} Survivor ship when energy={survivorship_energy}"
-        )
+        tname = type(birth_model).__name__
+        ax.set_title(f"{tname} Survivor ship when energy={survivorship_energy}")
         vis_survivorship(ax=ax, hazard_fn=hazard_model, age_max=age_max, initial=True)
         plt.show()
 
