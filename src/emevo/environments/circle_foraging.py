@@ -223,25 +223,30 @@ def _observe_closest(
     is_poison: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
-    def cr(shape: Circle, state: State) -> Raycast:
-        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
+    def cr(shape: Circle, state_p_xy: jax.Array) -> Raycast:
+        return circle_raycast(0.0, 1.0, p1, p2, shape, state_p_xy)
 
-    rc = cr(shaped.circle, stated.circle)
+    rc = cr(shaped.circle, stated.circle.p.xy)
     to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = cr(shaped.static_circle, stated.static_circle)
+    sc_xy = stated.static_circle.p.xy
+    dummy_sc_xy = jnp.ones_like(stated.static_circle.p.xy) * -100.0
+    expanded_is_poison = jnp.expand_dims(is_poison, axis=1)
+    rc = cr(shaped.static_circle, jnp.where(expanded_is_poison, dummy_sc_xy, sc_xy))
     to_food = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
+    rc = cr(shaped.static_circle, jnp.where(expanded_is_poison, sc_xy, dummy_sc_xy))
+    to_poison = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment.p)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     obs = jnp.concatenate(
         jax.tree_map(
             lambda arr: jnp.max(arr, keepdims=True),
-            (to_c, to_sc, to_seg),
+            (to_c, to_food, to_poison, to_seg),
         ),
     )
     return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
 
 
-_vmap_obs = jax.vmap(_observe_closest, in_axes=(None, 0, 0, None))
+_vmap_obs = jax.vmap(_observe_closest, in_axes=(None, 0, 0, None, None))
 
 
 def _get_sensors(
@@ -271,11 +276,12 @@ def get_sensor_obs(
     n_sensors: int,
     sensor_range: tuple[float, float],
     sensor_length: float,
+    is_poison: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
     assert stated.circle is not None
     p1, p2 = _get_sensors(shaped, n_sensors, sensor_range, sensor_length, stated)
-    return _vmap_obs(shaped, p1, p2, stated)
+    return _vmap_obs(shaped, p1, p2, is_poison, stated)
 
 
 @functools.partial(jax.jit, static_argnums=(0, 1))
@@ -614,14 +620,23 @@ class CircleForaging(Env):
         c2c = self._physics.get_contact_mat("circle", "circle", contacts)
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
-        # This is also used in computing energy_delta
-        food_collision = jnp.max(c2sc, axis=1)
+        is_poison_expanded = jnp.expand_dims(state.is_poison, axis=0)  # (1, MAX_FOODS)
+        c2food = jnp.where(is_poison_expanded, False, c2sc)
+        c2poison = jnp.where(is_poison_expanded, c2sc, False)
+        # These are also used in computing energy_delta
+        food_collision = jnp.max(c2food, axis=1)
+        poison_collision = jnp.max(c2food, axis=1)
         collision = jnp.stack(
-            (jnp.max(c2c, axis=1), food_collision, jnp.max(seg2c, axis=0)),
+            (
+                jnp.max(c2c, axis=1),
+                food_collision,
+                poison_collision,
+                jnp.max(seg2c, axis=0),
+            ),
             axis=1,
         )
         # Gather sensor obs
-        sensor_obs = self._sensor_obs(stated=stated)
+        sensor_obs = self._sensor_obs(is_poison=state.is_poison, stated=stated)
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_delta = food_collision - self._force_energy_consumption * force_norm
@@ -764,7 +779,7 @@ class CircleForaging(Env):
             status=status,
             n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
         )
-        sensor_obs = self._sensor_obs(stated=physics)
+        sensor_obs = self._sensor_obs(is_poison=is_poison, stated=physics)
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, N_OBJECTS),
             collision=jnp.zeros((N, N_OBJECTS), dtype=bool),

@@ -1128,10 +1128,10 @@ def circle_raycast(
     p1: jax.Array,
     p2: jax.Array,
     circle: Circle,
-    state: State,
+    state_p_xy: jax.Array,
 ) -> Raycast:
     # Suppose p1 and p2's shape has (2,)
-    s = jnp.expand_dims(p1, axis=0) - state.p.xy  # (N, 2)
+    s = jnp.expand_dims(p1, axis=0) - state_p_xy  # (N, 2)
     d, length = normalize(p2 - p1)
     t = -jnp.dot(s, d)  # (N,)
 
@@ -1160,11 +1160,11 @@ def segment_raycast(
     p1: jax.Array,
     p2: jax.Array,
     segment: Segment,
-    state: State,
+    statep: Position,
 ) -> Raycast:
     d = p2 - p1
     v1, v2 = segment.point1, segment.point2
-    v1, v2 = state.p.transform(v1), state.p.transform(v2)
+    v1, v2 = statep.transform(v1), statep.transform(v2)
     e = v2 - v1
     eunit, length = normalize(e)
     normal = _sv_cross(jnp.ones_like(length) * -1, eunit)
