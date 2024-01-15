@@ -2,7 +2,6 @@
 """
 from __future__ import annotations
 
-import dataclasses
 import sys
 from collections import deque
 from collections.abc import Iterable

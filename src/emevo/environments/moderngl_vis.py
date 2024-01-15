@@ -4,7 +4,7 @@ Currently, only supports circles and lines.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar
+from typing import Callable, ClassVar
 
 import jax.numpy as jnp
 import moderngl as mgl

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from os import PathLike
-from typing import Any, Protocol, TypeVar
+from typing import Protocol, TypeVar
 
 from numpy.typing import NDArray
 

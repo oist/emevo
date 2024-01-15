@@ -333,7 +333,7 @@ class Logger:
             ]
             pq.write_table(
                 pa.Table.from_pylist(profile_and_rewards),
-                self.logdir.joinpath(f"profile_and_rewards.parquet"),
+                self.logdir.joinpath("profile_and_rewards.parquet"),
             )
 
         if self.mode in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
