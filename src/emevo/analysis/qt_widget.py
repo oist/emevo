@@ -2,18 +2,26 @@
 """
 from __future__ import annotations
 
+import enum
+import functools
 import sys
+import warnings
 from collections import deque
 from collections.abc import Iterable
 from functools import partial
+from typing import Callable
 
 import jax
+import jax.numpy as jnp
 import matplotlib as mpl
 import matplotlib.colors as mc
 import moderngl
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from numpy.typing import NDArray
 from PySide6 import QtWidgets
 from PySide6.QtCharts import (
     QBarCategoryAxis,
@@ -29,7 +37,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from emevo.environments.circle_foraging import CircleForaging
 from emevo.environments.moderngl_vis import MglRenderer
-from emevo.environments.phyjax2d import StateDict
+from emevo.environments.phyjax2d import Circle, State, StateDict
 from emevo.exp_utils import SavedPhysicsState
 from emevo.plotting import CBarRenderer
 
@@ -44,6 +52,15 @@ def _mgl_qsurface_fmt() -> QSurfaceFormat:
     return fmt
 
 
+N_MAX_SCAN: int = 10000
+
+
+@jax.jit
+def _overlap(p: jax.Array, circle: Circle, state: State) -> jax.Array:
+    dist = jnp.linalg.norm(p.reshape(1, 2) - state.p.xy, axis=1)
+    return dist < circle.radius
+
+
 class MglWidget(QOpenGLWidget):
     selectionChanged = Signal(int)
 
@@ -56,8 +73,7 @@ class MglWidget(QOpenGLWidget):
         figsize: tuple[float, float],
         start: int = 0,
         end: int | None = None,
-        log_offset: int = 0,
-        log_table: pa.Table | None = None,
+        get_colors: Callable[[int], NDArray] | None = None,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         # Set default format
@@ -79,13 +95,14 @@ class MglWidget(QOpenGLWidget):
             stated=self._get_stated(0),
             sensor_fn=env._get_sensors,
         )
-        self._log_offset = log_offset
-        self._log_table = log_table
+        self._env = env
+        self._get_colors = get_colors
         self._index = start
         self._end_index = self._phys_state.circle_axy.shape[0] if end is None else end
         self._paused = False
         self._initialized = False
         self._overlay_fns = []
+        self._showing_energy = False
 
         # Set timer
         self._timer = timer
@@ -118,47 +135,32 @@ class MglWidget(QOpenGLWidget):
             else:
                 self._ctx = moderngl.create_context(require=410)
             if self._ctx.error != "GL_NO_ERROR":
-                raise RuntimeError(f"The following error occured: {self._ctx.error}")
+                warnings.warn(f"The qfollowing error occured: {self._ctx.error}")
             self._fbo = self._ctx.detect_framebuffer()
             self._renderer = self._make_renderer(self._ctx)
             self._initialized = True
         if not self._paused and self._index < self._end_index - 1:
             self._index += 1
-        self._render(self._get_stated(self._index))
-
-    def _render(self, stated: StateDict) -> None:
+        stated = self._get_stated(self._index)
+        if self._get_colors is None:
+            circle_colors = None
+        else:
+            circle_colors = self._get_colors(self._index)
         self._fbo.use()
         self._ctx.clear(1.0, 1.0, 1.0)
-        self._renderer.render(stated)  # type: ignore
-
-    def _emit_selected(self, index: int | None) -> None:
-        if index is None:
-            self.selectionChanged.emit(-1)
-        else:
-            self.selectionChanged.emit(index)
+        self._renderer.render(stated, circle_colors=circle_colors)  # type: ignore
 
     def mousePressEvent(self, evt: QMouseEvent) -> None:  # type: ignore
         position = self._scale_position(evt.position())
-
-        # query = self._env.get_space().point_query(
-        #     position,
-        #     0.0,
-        #     shape_filter=make_filter(CollisionType.AGENT, CollisionType.FOOD),
-        # )
-        # if len(query) == 1:
-        #     shape = query[0].shape
-        #     if shape is not None:
-        #         body_index = self._env.get_body_index(shape.body)
-        #         if body_index is not None:
-        #             self._state.pantool.start_drag(position, shape, body_index)
-        #             self._emit_selected(body_index)
-        #             self._paused_before = self._state.paused
-        #             self._state.paused = True
-        #             self._timer.stop()
-        #             self.update()
-
-    def mouseReleaseEvent(self, evt: QMouseEvent) -> None:  # type: ignore
-        pass
+        circle = self._get_stated(self._index).circle
+        overlap = _overlap(
+            jnp.array(position),
+            self._env._physics.shaped.circle,
+            circle,
+        )
+        (selected,) = jnp.nonzero(overlap)
+        if 0 < selected.shape[0]:
+            self.selectionChanged.emit(selected[0].item())
 
     @Slot()
     def pause(self) -> None:
@@ -227,7 +229,7 @@ class BarChart(QtWidgets.QWidget):
             for v in value:
                 barset.append(v)
         else:
-            raise ValueError(f"Invalid value for barset: {value}")
+            warnings.warn(f"Invalid value for barset: {value}")
         self.barsets[name] = barset
         self.series.append(barset)
         return barset
@@ -253,7 +255,7 @@ class BarChart(QtWidgets.QWidget):
                 for i, vi in enumerate(value):
                     self.barsets[name].replace(i, vi)
             else:
-                raise ValueError(f"Invalid value for barset {value}")
+                warnings.warn(f"Invalid value for barset {value}")
 
         for name in list(self.barsets.keys()):
             if name not in values:
@@ -263,11 +265,15 @@ class BarChart(QtWidgets.QWidget):
         self._update_yrange(values.values())
 
 
+class CBarState(enum.Enum):
+    AGE = 1
+    ENERGY = 2
+    N_CHILDREN = 3
+
+
 class CFEnvReplayWidget(QtWidgets.QWidget):
     energyUpdated = Signal(float)
     rewardUpdated = Signal(dict)
-    foodrankUpdated = Signal(dict)
-    valueUpdated = Signal(float)
 
     def __init__(
         self,
@@ -278,8 +284,8 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         start: int = 0,
         end: int | None = None,
         log_offset: int = 0,
-        log_table: pa.Table | None = None,
-        profile_and_reward: pa.Table | None = None,
+        log_ds: ds.Dataset | None = None,
+        profile_and_rewards: pa.Table | None = None,
     ) -> None:
         super().__init__()
 
@@ -292,38 +298,52 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             figsize=(xlim * 2, ylim * 2),
             start=start,
             end=end,
-            log_offset=log_offset,
-            log_table=log_table,
+            get_colors=None if log_ds is None else self._get_colors,
         )
+        self._n_max_agents = env.n_max_agents
+        # Log
+        self._log_offset = log_offset
+        self._log_ds = log_ds
+        self._log_cached = []
         # Pause/Play
-        self._pause_button = QtWidgets.QPushButton("⏸️")
-        self._pause_button.clicked.connect(self._mgl_widget.pause)
-        self._play_button = QtWidgets.QPushButton("▶️")
-        self._play_button.clicked.connect(self._mgl_widget.play)
-        self._cbar_select_button = QtWidgets.QPushButton("Switch Value/Energy")
-        self._cbar_select_button.clicked.connect(self.change_cbar)
+        pause_button = QtWidgets.QPushButton("⏸️")
+        pause_button.clicked.connect(self._mgl_widget.pause)
+        play_button = QtWidgets.QPushButton("▶️")
+        play_button.clicked.connect(self._mgl_widget.play)
         # Colorbar
+        radiobutton_1 = QtWidgets.QRadioButton("Age")
+        radiobutton_2 = QtWidgets.QRadioButton("Energy")
+        radiobutton_3 = QtWidgets.QRadioButton("Num. Children")
+        radiobutton_1.setChecked(True)
+        radiobutton_1.toggled.connect(self.cbarAge)
+        radiobutton_2.toggled.connect(self.cbarEnergy)
+        radiobutton_3.toggled.connect(self.cbarNChildren)
+        self._cbar_state = CBarState.AGE
         self._cbar_renderer = CBarRenderer(xlim * 2, ylim // 4)
         self._showing_energy = True
         self._cbar_changed = True
         self._cbar_canvas = FigureCanvasQTAgg(self._cbar_renderer._fig)
         self._value_cm = mpl.colormaps["YlOrRd"]
         self._energy_cm = mpl.colormaps["YlGnBu"]
+        self._n_children_cm = mpl.colormaps["PuBuGn"]
         self._norm = mc.Normalize(vmin=0.0, vmax=1.0)
-        if profile_and_reward is not None:
-            self._reward_widget = BarChart(
-                next(iter(self._rewards.values())).to_pydict()
-            )
+        if profile_and_rewards is not None:
+            self._profile_and_rewards = profile_and_rewards
+            self._reward_widget = BarChart(self._get_rewards(1))
         # Layout buttons
         buttons = QtWidgets.QHBoxLayout()
-        buttons.addWidget(self._pause_button)
-        buttons.addWidget(self._play_button)
-        buttons.addWidget(self._cbar_select_button)
+        buttons.addWidget(pause_button)
+        buttons.addWidget(play_button)
+        cbar_selector = QtWidgets.QVBoxLayout()
+        cbar_selector.addWidget(radiobutton_1)
+        cbar_selector.addWidget(radiobutton_2)
+        cbar_selector.addWidget(radiobutton_3)
+        buttons.addLayout(cbar_selector)
         # Total layout
         total_layout = QtWidgets.QVBoxLayout()
         total_layout.addLayout(buttons)
         total_layout.addWidget(self._cbar_canvas)
-        if profile_and_reward is None:
+        if profile_and_rewards is None:
             total_layout.addWidget(self._mgl_widget)
         else:
             env_and_reward_layout = QtWidgets.QHBoxLayout()
@@ -332,29 +352,108 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             total_layout.addLayout(env_and_reward_layout)
         self.setLayout(total_layout)
         timer.start(30)  # 40fps
-        self._arrow_cached = None
-        self._obs_cached = {}
         # Signals
         self._mgl_widget.selectionChanged.connect(self.updateRewards)
-        if profile_and_reward is not None:
+        if profile_and_rewards is not None:
             self.rewardUpdated.connect(self._reward_widget.updateValues)
         # Initial size
-        self.resize(xlim * 3, int(ylim * 2.4))
+        if profile_and_rewards is None:
+            self.resize(xlim * 3, ylim * 3)
+        else:
+            self.resize(xlim * 4, ylim * 3)
+
+    def _get_rewards(self, unique_id: int) -> dict[str, float]:
+        filtered = self._profile_and_rewards.filter(pc.field("unique_id") == unique_id)
+        return filtered.drop(["birthtime", "parent", "unique_id"]).to_pydict()
+
+    @functools.cache
+    def _get_n_children(self, unique_id: int) -> int:
+        if self._profile_and_rewards is None:
+            warnings.warn("N children requires profile_an_rewards.parquet")
+            return 0
+        if unique_id == 0:
+            return 0
+        return len(self._profile_and_rewards.filter(pc.field("parent") == unique_id))
+
+    def _get_colors(self, index: int) -> NDArray:
+        assert self._log_ds is not None
+        step = self._log_offset + index
+        if len(self._log_cached) == 0:
+            scanner = self._log_ds.scanner(
+                columns=["age", "energy", "step", "slots", "unique_id"],
+                filter=(
+                    (step <= pc.field("step")) & (pc.field("step") <= step + N_MAX_SCAN)
+                ),
+            )
+            table = scanner.to_table()
+            self._log_cached = [
+                table.filter(pc.field("step") == i).to_pydict()
+                for i in reversed(range(step, step + N_MAX_SCAN))
+            ]
+        log = self._log_cached.pop()
+        slots = np.array(log["slots"])
+        if self._cbar_state is CBarState.AGE:
+            title = "Age"
+            cm = self._value_cm
+            age = np.array(log["age"])
+            value = np.ones(self._n_max_agents) * np.min(age)
+            value[slots] = age
+        elif self._cbar_state is CBarState.ENERGY:
+            title = "Energy"
+            cm = self._energy_cm
+            energy = np.array(log["energy"])
+            value = np.ones(self._n_max_agents) * np.min(energy)
+            value[slots] = energy
+        elif self._cbar_state is CBarState.N_CHILDREN:
+            title = "Num. Children"
+            cm = self._n_children_cm
+            value = np.zeros(self._n_max_agents)
+            for slot, uid in zip(log["slots"], log["unique_id"]):
+                value[slot] = self._get_n_children(uid)
+        else:
+            warnings.warn(f"Invalid cbar state {self._cbar_state}")
+            return np.zeros((self._n_max_agents, 4))
+        self._norm.vmin = np.amin(value)  # type: ignore
+        self._norm.vmax = np.amax(value)  # type: ignore
+        if self._cbar_changed:
+            self._cbar_renderer.render(self._norm, cm, title)
+            self._cbar_changed = False
+            self._cbar_canvas.draw()
+        return cm(self._norm(value))
 
     @Slot(int)
-    def updateRewards(self, body_index: int) -> None:
-        pass
-        # if self._rewards is None or body_index == -1:
-        #     return
-        # self.rewardUpdated.emit(self._rewards[body_index].to_pydict())
+    def updateRewards(self, selected_slot: int) -> None:
+        if self._profile_and_rewards is None or selected_slot == -1:
+            return
 
-    @Slot()
-    def change_cbar(self) -> None:
-        self._showing_energy = not self._showing_energy
-        self._cbar_changed = True
+        if len(self._log_cached) == 0:
+            return
+        last_log = self._log_cached[-1]
+        for slot, uid in zip(last_log["slots"], last_log["unique_id"]):
+            if slot == selected_slot:
+                self.rewardUpdated.emit(self._get_rewards(uid))
+                return
+
+    @Slot(bool)
+    def cbarAge(self, checked: bool) -> None:
+        if checked:
+            self._cbar_state = CBarState.AGE
+            self._cbar_changed = True
+
+    @Slot(bool)
+    def cbarEnergy(self, checked: bool) -> None:
+        if checked:
+            self._cbar_state = CBarState.ENERGY
+            self._cbar_changed = True
+
+    @Slot(bool)
+    def cbarNChildren(self, checked: bool) -> None:
+        if checked:
+            self._cbar_state = CBarState.N_CHILDREN
+            self._cbar_changed = True
 
 
-def start_widget(widget_cls: type[QtWidgets.QtWidget], **kwargs) -> None:
+def start_widget(widget_cls: type[QtWidgets.QWidget], **kwargs) -> None:
     app = QtWidgets.QApplication([])
     widget = widget_cls(**kwargs)
     widget.show()
