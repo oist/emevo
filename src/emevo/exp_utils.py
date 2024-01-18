@@ -194,15 +194,6 @@ class SavedPhysicsState:
     static_circle_axy: jax.Array
     static_circle_is_active: jax.Array
 
-    def save(self, path: Path) -> None:
-        np.savez_compressed(
-            path,
-            circle_axy=np.array(self.circle_axy),
-            circle_is_active=np.array(self.circle_is_active),
-            static_circle_axy=np.array(self.static_circle_axy),
-            static_circle_is_active=np.array(self.static_circle_is_active),
-        )
-
     @staticmethod
     def load(path: Path) -> Self:
         npzfile = np.load(path)
@@ -230,9 +221,15 @@ class SavedPhysicsState:
         return phys
 
 
-@jax.jit
-def concat_physstates(states: list[SavedPhysicsState]) -> SavedPhysicsState:
-    return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
+def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
+    concatenated = jax.tree_map(lambda *args: np.concatenate(args), *phys_states)
+    np.savez_compressed(
+        path,
+        circle_axy=concatenated.circle_axy,
+        circle_is_active=concatenated.circle_is_active,
+        static_circle_axy=concatenated.static_circle_axy,
+        static_circle_is_active=concatenated.static_circle_is_active,
+    )
 
 
 class LogMode(str, enum.Enum):
@@ -267,7 +264,8 @@ class Logger:
         if self.mode not in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
             return
 
-        self._log_list.append(log)
+        # Move log to CPU
+        self._log_list.append(jax.tree_map(np.array, log))
 
         if len(self._log_list) % self.log_interval == 0:
             self._save_log()
@@ -277,7 +275,7 @@ class Logger:
             return
 
         all_log = jax.tree_map(
-            lambda *args: np.array(jnp.concatenate(args, axis=0)),
+            lambda *args: np.concatenate(args, axis=0),
             *self._log_list,
         )
         log_dict = dataclasses.asdict(all_log)
@@ -296,7 +294,8 @@ class Logger:
         if self.mode != LogMode.FULL:
             return
 
-        self._physstate_list.append(phys_state)
+        # Move it to CPU to save memory
+        self._physstate_list.append(jax.tree_map(np.array, phys_state))
 
         if len(self._physstate_list) % self.savestate_interval == 0:
             self._save_physstate()
@@ -305,8 +304,9 @@ class Logger:
         if len(self._physstate_list) == 0:
             return
 
-        concat_physstates(self._physstate_list).save(
-            self.logdir.joinpath(f"state-{self._physstate_index}.npz")
+        save_physstates(
+            self._physstate_list,
+            self.logdir.joinpath(f"state-{self._physstate_index}.npz"),
         )
         self._physstate_index += 1
         self._physstate_list.clear()
