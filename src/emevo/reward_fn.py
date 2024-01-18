@@ -63,6 +63,37 @@ class LinearReward(RewardFn):
     def serialise(self) -> dict[str, float | NDArray]:
         return jax.tree_map(_item_or_np, self.serializer(self.weight))
 
+class ExponentialReward(RewardFn):
+    weight: jax.Array
+    alpha: jax.Array
+    extractor: Callable[..., tuple[jax.Array, jax.Array]]
+    serializer: Callable[[jax.Array, jax.Array], dict[str, jax.Array]]
+
+    def __init__(
+        self,
+        *,
+        key: chex.PRNGKey,
+        n_agents: int,
+        n_weights: int,
+        extractor: Callable[..., tuple[jax.Array, jax.Array]],
+        serializer: Callable[[jax.Array, jax.Array], dict[str, jax.Array]],
+        std: float = 1.0,
+        mean: float = 0.0,
+    ) -> None:
+        k1, k2 = jax.random.split(key)
+        self.weight = jax.random.normal(k1, (n_agents, n_weights)) * std + mean
+        self.scale = jax.random.normal(k2, (n_agents, n_weights)) * std + mean
+        self.extractor = extractor
+        self.serializer = serializer
+
+    def __call__(self, *args) -> jax.Array:
+        extracted = self.extractor(*args)
+        weight = (10 ** self.scale) * self.weight
+        return jax.vmap(jnp.dot)(extracted, weight)
+
+    def serialise(self) -> dict[str, float | NDArray]:
+        return jax.tree_map(_item_or_np, self.serializer(self.weight, self.scale))
+
 
 class SigmoidReward(RewardFn):
     weight: jax.Array
