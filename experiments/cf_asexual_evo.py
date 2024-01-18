@@ -33,11 +33,13 @@ from emevo.exp_utils import (
     SavedProfile,
 )
 from emevo.reward_fn import (
+    ExponentialReward,
     LinearReward,
     RewardFn,
     SigmoidReward,
     SigmoidReward_01,
     mutate_reward_fn,
+    serialize_weight,
 )
 from emevo.rl.ppo_normal import (
     NormalPPONet,
@@ -54,6 +56,7 @@ from emevo.visualizer import SaveVideoWrapper
 
 class RewardKind(str, enum.Enum):
     LINEAR = "linear"
+    EXPONENTIAL = "exponential"
     SIGMOID = "sigmoid"
     SIGMOID_01 = "sigmoid-01"
 
@@ -94,30 +97,22 @@ class RewardExtractor:
         return jnp.concatenate((collision, act_input), axis=1), energy
 
 
-def slice_last(w: jax.Array, i: int) -> jax.Array:
-    return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
-
-
-def linear_reward_serializer(w: jax.Array) -> dict[str, jax.Array]:
-    return {
-        "agent": slice_last(w, 0),
-        "food": slice_last(w, 1),
-        "wall": slice_last(w, 2),
-        "action": slice_last(w, 3),
-    }
+def exp_reward_serializer(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
+    w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    scale_dict = serialize_weight(
+        scale,
+        ["scale_agent", "scale_food", "scale_wall", "scale_action"],
+    )
+    return w_dict | scale_dict
 
 
 def sigmoid_reward_serializer(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
-    return {
-        "w_agent": slice_last(w, 0),
-        "w_food": slice_last(w, 1),
-        "w_wall": slice_last(w, 2),
-        "w_action": slice_last(w, 3),
-        "alpha_agent": slice_last(alpha, 0),
-        "alpha_food": slice_last(alpha, 1),
-        "alpha_wall": slice_last(alpha, 2),
-        "alpha_action": slice_last(alpha, 3),
-    }
+    w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    alpha_dict = serialize_weight(
+        alpha,
+        ["alpha_agent", "alpha_food", "alpha_wall", "alpha_action"],
+    )
+    return w_dict | alpha_dict
 
 
 def exec_rollout(
@@ -459,7 +454,16 @@ def evolve(
         reward_fn_instance = LinearReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
-            serializer=linear_reward_serializer,
+            serializer=lambda w: serialize_weight(
+                w,
+                ["agent", "food", "wall", "action"],
+            ),
+        )
+    elif reward_fn == RewardKind.EXPONENTIAL:
+        reward_fn_instance = ExponentialReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_linear,
+            serializer=exp_reward_serializer,
         )
     elif reward_fn == RewardKind.SIGMOID:
         reward_fn_instance = SigmoidReward(
