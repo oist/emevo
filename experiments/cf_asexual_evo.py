@@ -33,11 +33,13 @@ from emevo.exp_utils import (
     SavedProfile,
 )
 from emevo.reward_fn import (
+    ExponentialReward,
     LinearReward,
     RewardFn,
     SigmoidReward,
     SigmoidReward_01,
     mutate_reward_fn,
+    serialize_weight,
 )
 from emevo.rl.ppo_normal import (
     NormalPPONet,
@@ -54,6 +56,7 @@ from emevo.visualizer import SaveVideoWrapper
 
 class RewardKind(str, enum.Enum):
     LINEAR = "linear"
+    EXPONENTIAL = "exponential"
     SIGMOID = "sigmoid"
     SIGMOID_01 = "sigmoid-01"
 
@@ -94,30 +97,22 @@ class RewardExtractor:
         return jnp.concatenate((collision, act_input), axis=1), energy
 
 
-def slice_last(w: jax.Array, i: int) -> jax.Array:
-    return jnp.squeeze(jax.lax.slice_in_dim(w, i, i + 1, axis=-1))
-
-
-def linear_reward_serializer(w: jax.Array) -> dict[str, jax.Array]:
-    return {
-        "agent": slice_last(w, 0),
-        "food": slice_last(w, 1),
-        "wall": slice_last(w, 2),
-        "action": slice_last(w, 3),
-    }
+def exp_reward_serializer(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
+    w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    scale_dict = serialize_weight(
+        scale,
+        ["scale_agent", "scale_food", "scale_wall", "scale_action"],
+    )
+    return w_dict | scale_dict
 
 
 def sigmoid_reward_serializer(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
-    return {
-        "w_agent": slice_last(w, 0),
-        "w_food": slice_last(w, 1),
-        "w_wall": slice_last(w, 2),
-        "w_action": slice_last(w, 3),
-        "alpha_agent": slice_last(alpha, 0),
-        "alpha_food": slice_last(alpha, 1),
-        "alpha_wall": slice_last(alpha, 2),
-        "alpha_action": slice_last(alpha, 3),
-    }
+    w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    alpha_dict = serialize_weight(
+        alpha,
+        ["alpha_agent", "alpha_food", "alpha_wall", "alpha_action"],
+    )
+    return w_dict | alpha_dict
 
 
 def exec_rollout(
@@ -459,7 +454,16 @@ def evolve(
         reward_fn_instance = LinearReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
-            serializer=linear_reward_serializer,
+            serializer=lambda w: serialize_weight(
+                w,
+                ["agent", "food", "wall", "action"],
+            ),
+        )
+    elif reward_fn == RewardKind.EXPONENTIAL:
+        reward_fn_instance = ExponentialReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_linear,
+            serializer=exp_reward_serializer,
         )
     elif reward_fn == RewardKind.SIGMOID:
         reward_fn_instance = SigmoidReward(
@@ -547,7 +551,7 @@ def widget(
     cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
     log_offset: int = 0,
     log_path: Optional[Path] = None,
-    profile_and_reward_path: Optional[Path] = None,
+    profile_and_rewards_path: Optional[Path] = None,
     env_override: str = "",
 ) -> None:
     from emevo.analysis.qt_widget import CFEnvReplayWidget, start_widget
@@ -560,20 +564,21 @@ def widget(
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
-        log_table = None
+        log_ds = None
     else:
         import pyarrow.dataset as ds
 
-        dataset = ds.dataset(log_path)
-        first_step = dataset.scanner(columns=["step"]).head(1)["step"][0].as_py()
+        log_ds = ds.dataset(log_path)
+        first_step = log_ds.scanner(columns=["step"]).head(1)["step"][0].as_py()
         log_start = first_step + start + log_offset
-        log_end = first_step + end + log_offset
-        scanner = dataset.scanner(
-            columns=["age", "energy", "step", "slots"],
-            filter=(ds.field("step") < log_end) & (ds.field("step") > log_start),
-        )
-        log_table = scanner.to_table()
         log_offset = log_start
+
+    if profile_and_rewards_path is None:
+        profile_and_rewards = None
+    else:
+        import pyarrow.parquet as pq
+
+        profile_and_rewards = pq.read_table(profile_and_rewards_path)
 
     start_widget(
         CFEnvReplayWidget,
@@ -583,8 +588,9 @@ def widget(
         saved_physics=phys_state,
         start=start,
         end=end,
-        log_table=log_table,
+        log_ds=log_ds,
         log_offset=log_offset,
+        profile_and_rewards=profile_and_rewards,
     )
 
 

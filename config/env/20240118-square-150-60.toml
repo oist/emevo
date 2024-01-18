@@ -1,24 +1,11 @@
 n_initial_agents = 50
 n_max_agents = 150
 n_max_foods = 60
-food_num_fn = [
-   "scheduled",
-   1024000,
-   ["logistic", 20, 0.01, 60],
-   ["logistic", 20, 0.01, 50],
-   ["logistic", 20, 0.01, 40],
-   ["logistic", 20, 0.01, 50],
-   ["logistic", 20, 0.01, 60],
-   ["logistic", 20, 0.01, 50],
-   ["logistic", 20, 0.01, 40],
-   ["logistic", 20, 0.01, 50],
-   ["logistic", 20, 0.01, 60],
-   ["logistic", 20, 0.01, 50],
-]
-xlim = [0.0, 480.0]
-ylim = [0.0, 360.0]
+food_num_fn = ["logistic", 20, 0.01, 60]
 food_loc_fn = "gaussian"
 agent_loc_fn = "uniform"
+xlim = [0.0, 480.0]
+ylim = [0.0, 360.0]
 env_shape = "square"
 neighbor_stddev = 100.0
 n_agent_sensors = 16

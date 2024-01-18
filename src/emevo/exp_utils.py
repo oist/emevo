@@ -325,16 +325,17 @@ class Logger:
             modelpath = self.logdir.joinpath(f"trained-{uid}.eqx")
             eqx.tree_serialise_leaves(modelpath, sliced_net)
 
+    def save_profile_and_rewards(self) -> None:
+        profile_and_rewards = [
+            v.serialise() | dataclasses.asdict(self.profile_dict[k])
+            for k, v in self.reward_fn_dict.items()
+        ]
+        table = pa.Table.from_pylist(profile_and_rewards)
+        pq.write_table(table, self.logdir.joinpath("profile_and_rewards.parquet"))
+
     def finalize(self) -> None:
         if self.mode != LogMode.NONE:
-            profile_and_rewards = [
-                v.serialise() | dataclasses.asdict(self.profile_dict[k])
-                for k, v in self.reward_fn_dict.items()
-            ]
-            pq.write_table(
-                pa.Table.from_pylist(profile_and_rewards),
-                self.logdir.joinpath("profile_and_rewards.parquet"),
-            )
+            self.save_profile_and_rewards()
 
         if self.mode in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
             self._save_log()

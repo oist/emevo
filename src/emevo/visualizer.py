@@ -16,7 +16,7 @@ class Visualizer(Protocol[STATE]):
     def get_image(self) -> NDArray:
         ...
 
-    def render(self, state: STATE) -> None:
+    def render(self, state: STATE, **kwargs) -> None:
         """Render image"""
         ...
 
@@ -34,7 +34,7 @@ class VisWrapper(Visualizer[STATE], Protocol):
     def get_image(self) -> NDArray:
         return self.unwrapped.get_image()
 
-    def render(self, state: STATE) -> None:
+    def render(self, state: STATE, **kwargs) -> None:
         self.unwrapped.render(state)
 
     def show(self) -> None:

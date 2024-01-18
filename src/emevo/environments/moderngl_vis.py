@@ -15,7 +15,6 @@ from numpy.typing import NDArray
 
 from emevo.environments.phyjax2d import Circle, Segment, Space, State, StateDict
 
-
 NOWHERE: float = -1000.0
 
 
@@ -441,21 +440,41 @@ class MglRenderer:
             prog[key].write(value)  # type: ignore
         return prog
 
+    @staticmethod
+    def _get_colors(default_colors: NDArray, colors: NDArray | None) -> NDArray:
+        if colors is None:
+            return default_colors
+        else:
+            clen = colors.shape[0]
+            if clen < default_colors.shape[0]:
+                return np.concatenate(
+                    (colors.astype(np.float32), default_colors[clen:]),
+                    axis=0,
+                )
+            else:
+                return colors.astype(np.float32)
 
-    def render(self, stated: StateDict) -> None:
-        circles = _collect_circles(
+    def render(
+        self,
+        stated: StateDict,
+        circle_colors: NDArray | None = None,
+        sc_colors: NDArray | None = None,
+    ) -> None:
+        circle_points, circle_scale, circle_colors_default = _collect_circles(
             self._space.shaped.circle,
             stated.circle,
             self._circle_scaling,
         )
-        static_circles = _collect_circles(
+        circle_colors = self._get_colors(circle_colors_default, circle_colors)
+        if self._circles.update(circle_points, circle_scale, circle_colors):
+            self._circles.render()
+        sc_points, sc_scale, sc_colors_default = _collect_circles(
             self._space.shaped.static_circle,
             stated.static_circle,
             self._circle_scaling,
         )
-        if self._circles.update(*circles):
-            self._circles.render()
-        if self._static_circles.update(*static_circles):
+        sc_colors = self._get_colors(sc_colors_default, sc_colors)
+        if self._static_circles.update(sc_points, sc_scale, sc_colors):
             self._static_circles.render()
         if self._sensors is not None and self._collect_sensors is not None:
             if self._sensors.update(self._collect_sensors(stated)):
@@ -522,10 +541,10 @@ class MglVisualizer:
         w, h = self._figsize
         return output.reshape(h, w, -1)[::-1]
 
-    def render(self, state: StateDict) -> None:
+    def render(self, state: StateDict, **kwargs) -> None:
         self._window.clear(1.0, 1.0, 1.0)
         self._window.use()
-        self._renderer.render(stated=state)
+        self._renderer.render(stated=state, **kwargs)
 
     def show(self) -> None:
         self._window.swap_buffers()
