@@ -243,7 +243,7 @@ class BarChart(QtWidgets.QWidget):
         self.axis_y.setRange(yrange_min, np.max(values_arr))
 
     @Slot(dict)
-    def updateValues(self, values: dict[str, float | list[float]]) -> None:
+    def updateValues(self, title: str, values: dict[str, float | list[float]]) -> None:
         new_barsets = deque()
         for name, value in values.items():
             if name not in self.barsets:
@@ -263,6 +263,7 @@ class BarChart(QtWidgets.QWidget):
                 new_barsets.popleft().setColor(old_bs.color())
                 self.series.remove(old_bs)
         self._update_yrange(values.values())
+        self.chart.setTitle(title)
 
 
 class CBarState(enum.Enum):
@@ -273,7 +274,7 @@ class CBarState(enum.Enum):
 
 class CFEnvReplayWidget(QtWidgets.QWidget):
     energyUpdated = Signal(float)
-    rewardUpdated = Signal(dict)
+    rewardUpdated = Signal(str, dict)
 
     def __init__(
         self,
@@ -431,7 +432,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         last_log = self._log_cached[-1]
         for slot, uid in zip(last_log["slots"], last_log["unique_id"]):
             if slot == selected_slot:
-                self.rewardUpdated.emit(self._get_rewards(uid))
+                self.rewardUpdated.emit(
+                    f"Reward function of {uid}",
+                    self._get_rewards(uid),
+                )
                 return
 
     @Slot(bool)
