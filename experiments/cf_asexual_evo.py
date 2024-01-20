@@ -53,6 +53,8 @@ from emevo.rl.ppo_normal import (
 from emevo.spaces import BoxSpace
 from emevo.visualizer import SaveVideoWrapper
 
+PROJECT_ROOT = Path(__file__).parent.parent
+
 
 class RewardKind(str, enum.Enum):
     LINEAR = "linear"
@@ -383,7 +385,6 @@ def run_evolution(
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
-here = Path(__file__).parent
 
 
 @app.command()
@@ -402,9 +403,9 @@ def evolve(
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.001,
-    cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
-    bdconfig_path: Path = here.joinpath("../config/bd/20230530-a035-e020.toml"),
-    gopsconfig_path: Path = here.joinpath("../config/gops/20240111-mutation-0401.toml"),
+    cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
+    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20230530-a035-e020.toml",
+    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240111-mutation-0401.toml",
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
@@ -511,17 +512,18 @@ def evolve(
 @app.command()
 def replay(
     physstate_path: Path,
-    n_agents: int = 20,
     backend: str = "pyglet",  # Use "headless" for headless rendering
     videopath: Optional[Path] = None,
     start: int = 0,
     end: Optional[int] = None,
-    cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
+    cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     env_override: str = "",
 ) -> None:
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
-    cfconfig.n_initial_agents = n_agents
+    # For speedup
+    cfconfig.n_initial_agents = 1
+    cfconfig.n_initial_foods = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
@@ -545,10 +547,9 @@ def replay(
 @app.command()
 def widget(
     physstate_path: Path,
-    n_agents: int = 20,
     start: int = 0,
     end: Optional[int] = None,
-    cfconfig_path: Path = here.joinpath("../config/env/20231214-square.toml"),
+    cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     log_offset: int = 0,
     log_path: Optional[Path] = None,
     profile_and_rewards_path: Optional[Path] = None,
@@ -558,7 +559,9 @@ def widget(
 
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
-    cfconfig.n_initial_agents = n_agents
+    # For speedup
+    cfconfig.n_initial_agents = 1
+    cfconfig.n_initial_foods = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
