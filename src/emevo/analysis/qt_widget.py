@@ -429,6 +429,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
 
         if len(self._log_cached) == 0:
             return
+
         last_log = self._log_cached[-1]
         for slot, uid in zip(last_log["slots"], last_log["unique_id"]):
             if slot == selected_slot:
