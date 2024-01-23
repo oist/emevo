@@ -70,5 +70,5 @@ def test_from_table() -> None:
             assert node.birth_time is not None
 
     data_dict = tree.as_datadict(split=10)
-    for key in ["index", "birth-step", "label", "in-label-0", "in-label-1"]:
+    for key in ["unique_id", "label", "in-label-0", "in-label-1"]:
         assert key in data_dict
