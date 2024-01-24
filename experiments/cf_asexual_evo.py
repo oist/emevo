@@ -523,7 +523,6 @@ def replay(
         cfconfig = toml.from_toml(CfConfig, f.read())
     # For speedup
     cfconfig.n_initial_agents = 1
-    cfconfig.n_initial_foods = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
@@ -561,20 +560,19 @@ def widget(
         cfconfig = toml.from_toml(CfConfig, f.read())
     # For speedup
     cfconfig.n_initial_agents = 1
-    cfconfig.n_initial_foods = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
         log_ds = None
+        step_offset = 0
     else:
         import pyarrow.dataset as ds
 
         log_ds = ds.dataset(log_path)
         first_step = log_ds.scanner(columns=["step"]).head(1)["step"][0].as_py()
-        log_start = first_step + start + log_offset
-        log_offset = log_start
+        step_offset = first_step + log_offset
 
     if profile_and_rewards_path is None:
         profile_and_rewards = None
@@ -592,7 +590,7 @@ def widget(
         start=start,
         end=end,
         log_ds=log_ds,
-        log_offset=log_offset,
+        step_offset=step_offset,
         profile_and_rewards=profile_and_rewards,
     )
 

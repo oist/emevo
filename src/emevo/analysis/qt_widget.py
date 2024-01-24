@@ -52,7 +52,8 @@ def _mgl_qsurface_fmt() -> QSurfaceFormat:
     return fmt
 
 
-N_MAX_SCAN: int = 10000
+N_MAX_SCAN: int = 4096
+N_MAX_CACHED_LOG: int = 200
 
 
 @jax.jit
@@ -62,7 +63,8 @@ def _overlap(p: jax.Array, circle: Circle, state: State) -> jax.Array:
 
 
 class MglWidget(QOpenGLWidget):
-    selectionChanged = Signal(int)
+    selectionChanged = Signal(int, int)
+    stepChanged = Signal(int)
 
     def __init__(
         self,
@@ -72,6 +74,7 @@ class MglWidget(QOpenGLWidget):
         saved_physics: SavedPhysicsState,
         figsize: tuple[float, float],
         start: int = 0,
+        slider_offset: int = 0,
         end: int | None = None,
         get_colors: Callable[[int], NDArray] | None = None,
         parent: QtWidgets.QWidget | None = None,
@@ -103,6 +106,7 @@ class MglWidget(QOpenGLWidget):
         self._initialized = False
         self._overlay_fns = []
         self._showing_energy = False
+        self._slider_offset = slider_offset
 
         # Set timer
         self._timer = timer
@@ -141,6 +145,7 @@ class MglWidget(QOpenGLWidget):
             self._initialized = True
         if not self._paused and self._index < self._end_index - 1:
             self._index += 1
+            self.stepChanged.emit(self._index)
         stated = self._get_stated(self._index)
         if self._get_colors is None:
             circle_colors = None
@@ -160,7 +165,7 @@ class MglWidget(QOpenGLWidget):
         )
         (selected,) = jnp.nonzero(overlap)
         if 0 < selected.shape[0]:
-            self.selectionChanged.emit(selected[0].item())
+            self.selectionChanged.emit(selected[0].item(), self._index)
 
     @Slot()
     def pause(self) -> None:
@@ -169,6 +174,10 @@ class MglWidget(QOpenGLWidget):
     @Slot()
     def play(self) -> None:
         self._paused = False
+
+    @Slot(int)
+    def sliderChanged(self, slider_index: int) -> None:
+        self._index = slider_index - self._slider_offset
 
 
 class BarChart(QtWidgets.QWidget):
@@ -284,7 +293,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         saved_physics: SavedPhysicsState,
         start: int = 0,
         end: int | None = None,
-        log_offset: int = 0,
+        step_offset: int = 0,
         log_ds: ds.Dataset | None = None,
         profile_and_rewards: pa.Table | None = None,
     ) -> None:
@@ -299,13 +308,23 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             figsize=(xlim * 2, ylim * 2),
             start=start,
             end=end,
+            slider_offset=step_offset,
             get_colors=None if log_ds is None else self._get_colors,
         )
         self._n_max_agents = env.n_max_agents
-        # Log
-        self._log_offset = log_offset
+        # Log / step
         self._log_ds = log_ds
-        self._log_cached = []
+        self._log_cached = {}
+        self._step_offset = step_offset
+        self._start = start
+        self._end = end
+        # Slider
+        self._slider = QtWidgets.QSlider(Qt.Horizontal)  # type: ignore
+        self._slider.setSingleStep(1)
+        self._slider.setMinimum(start + step_offset)
+        self._slider.setMaximum(self._mgl_widget._end_index + step_offset - 1)
+        self._slider.setValue(start + step_offset)
+        self._slider_label = QtWidgets.QLabel(f"Step {start + step_offset}")
         # Pause/Play
         pause_button = QtWidgets.QPushButton("⏸️")
         pause_button.clicked.connect(self._mgl_widget.pause)
@@ -330,19 +349,25 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._norm = mc.Normalize(vmin=0.0, vmax=1.0)
         if profile_and_rewards is not None:
             self._profile_and_rewards = profile_and_rewards
-            self._reward_widget = BarChart(self._get_rewards(1))
+            self._reward_widget = BarChart(self._get_rewards(1))  # type: ignore
         # Layout buttons
+        left_control = QtWidgets.QVBoxLayout()
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(pause_button)
         buttons.addWidget(play_button)
+        left_control.addLayout(buttons)
+        left_control.addWidget(self._slider_label)
+        left_control.addWidget(self._slider)
         cbar_selector = QtWidgets.QVBoxLayout()
         cbar_selector.addWidget(radiobutton_1)
         cbar_selector.addWidget(radiobutton_2)
         cbar_selector.addWidget(radiobutton_3)
-        buttons.addLayout(cbar_selector)
+        control = QtWidgets.QHBoxLayout()
+        control.addLayout(left_control)
+        control.addLayout(cbar_selector)
         # Total layout
         total_layout = QtWidgets.QVBoxLayout()
-        total_layout.addLayout(buttons)
+        total_layout.addLayout(control)
         total_layout.addWidget(self._cbar_canvas)
         if profile_and_rewards is None:
             total_layout.addWidget(self._mgl_widget)
@@ -355,6 +380,8 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         timer.start(30)  # 40fps
         # Signals
         self._mgl_widget.selectionChanged.connect(self.updateRewards)
+        self._mgl_widget.stepChanged.connect(self.updateStep)
+        self._slider.sliderMoved.connect(self._mgl_widget.sliderChanged)
         if profile_and_rewards is not None:
             self.rewardUpdated.connect(self._reward_widget.updateValues)
         # Initial size
@@ -376,10 +403,11 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             return 0
         return len(self._profile_and_rewards.filter(pc.field("parent") == unique_id))
 
-    def _get_colors(self, index: int) -> NDArray:
+    def _get_log(self, step: int) -> dict[str, NDArray]:
         assert self._log_ds is not None
-        step = self._log_offset + index
-        if len(self._log_cached) == 0:
+        log_key = step // N_MAX_SCAN
+        if log_key not in self._log_cached:
+            log_key = step // N_MAX_SCAN
             scanner = self._log_ds.scanner(
                 columns=["age", "energy", "step", "slots", "unique_id"],
                 filter=(
@@ -387,11 +415,17 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                 ),
             )
             table = scanner.to_table()
-            self._log_cached = [
+            if len(self._log_cached) > N_MAX_CACHED_LOG:
+                self._log_cached.clear()
+            self._log_cached[log_key] = [
                 table.filter(pc.field("step") == i).to_pydict()
                 for i in reversed(range(step, step + N_MAX_SCAN))
             ]
-        log = self._log_cached.pop()
+        return self._log_cached[log_key][step % N_MAX_SCAN]
+
+    def _get_colors(self, step_index: int) -> NDArray:
+        assert self._log_ds is not None
+        log = self._get_log(self._step_offset + step_index)
         slots = np.array(log["slots"])
         if self._cbar_state is CBarState.AGE:
             title = "Age"
@@ -423,15 +457,18 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         return cm(self._norm(value))
 
     @Slot(int)
-    def updateRewards(self, selected_slot: int) -> None:
+    def updateStep(self, step_index: int) -> None:
+        step = self._step_offset + step_index
+        self._slider.setValue(step)
+        self._slider_label.setText(f"Step {step}")
+
+    @Slot(int, int)
+    def updateRewards(self, selected_slot: int, step_index: int) -> None:
         if self._profile_and_rewards is None or selected_slot == -1:
             return
 
-        if len(self._log_cached) == 0:
-            return
-
-        last_log = self._log_cached[-1]
-        for slot, uid in zip(last_log["slots"], last_log["unique_id"]):
+        log = self._get_log(self._step_offset + step_index)
+        for slot, uid in zip(log["slots"], log["unique_id"]):
             if slot == selected_slot:
                 self.rewardUpdated.emit(
                     f"Reward function of {uid}",
