@@ -78,7 +78,14 @@ def exec_rollout(
     network: NormalPPONet,
     prng_key: jax.Array,
     n_rollout_steps: int,
+    action_reward_coef: float,
 ) -> tuple[State, Rollout, Obs, jax.Array]:
+    def normalize_action(action: jax.Array) -> jax.Array:
+        scaled = env.act_space.sigmoid_scale(action)
+        max_norm = jnp.sqrt(jnp.sum(env.act_space.high**2, axis=-1, keepdims=True))
+        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
+        return norm / max_norm
+
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
@@ -88,7 +95,8 @@ def exec_rollout(
         net_out = vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=key)
         state_t1, timestep = env.step(state_t, env.act_space.sigmoid_scale(actions))
-        rewards = obs_t.collision[:, 1].astype(jnp.float32).reshape(-1, 1)
+        food_rewards = obs_t.collision[:, 1].astype(jnp.float32).reshape(-1, 1)
+        rewards = food_rewards - action_reward_coef * normalize_action(actions)
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -124,6 +132,8 @@ def training_step(
     minibatch_size: int,
     n_optim_epochs: int,
     reset: jax.Array,
+    action_reward_coef: float,
+    entropy_weight: float,
 ) -> tuple[State, Obs, jax.Array, optax.OptState, NormalPPONet]:
     keys = jax.random.split(prng_key, N_MAX_AGENTS + 1)
     env_state, rollout, obs, next_value = exec_rollout(
@@ -133,6 +143,7 @@ def training_step(
         network,
         keys[0],
         n_rollout_steps,
+        action_reward_coef,
     )
     rollout = rollout.replace(terminations=rollout.terminations.at[-1].set(reset))
     batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
@@ -145,7 +156,7 @@ def training_step(
         minibatch_size,
         n_optim_epochs,
         0.2,
-        0.0,
+        entropy_weight,
     )
     return env_state, obs, rollout.rewards, opt_state, pponet
 
@@ -161,9 +172,11 @@ def run_training(
     minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
+    action_reward_coef: float,
+    entropy_weight: float,
     reset_interval: int | None = None,
     debug_vis: bool = False,
-) -> NormalPPONet:
+) -> tuple[NormalPPONet, jax.Array]:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
     input_size = np.prod(obs_space.shape)
@@ -202,6 +215,8 @@ def run_training(
             minibatch_size,
             n_optim_epochs,
             jnp.array(reset),
+            action_reward_coef,
+            entropy_weight,
         )
         ri = jnp.sum(jnp.squeeze(rewards_i, axis=-1), axis=0)
         rewards = rewards + ri
@@ -214,7 +229,7 @@ def run_training(
             obs = timestep.obs
         # weight_summary(pponet)
     print(f"Sum of rewards {[x.item() for x in rewards[: n_agents]]}")
-    return pponet
+    return pponet, rewards
 
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
@@ -233,9 +248,12 @@ def train(
     minibatch_size: int = 128,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 1000,
+    action_reward_coef: float = 1e-3,
+    entropy_weight: float = 1e-4,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     env_override: str = "",
     reset_interval: Optional[int] = None,
+    savelog_path: Optional[Path] = None,
     debug_vis: bool = False,
 ) -> None:
     # Load config
@@ -246,26 +264,31 @@ def train(
     cfconfig.n_initial_agents = n_agents
     cfconfig.n_max_agents = N_MAX_AGENTS
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
-    network = run_training(
-        jax.random.PRNGKey(seed),
-        n_agents,
-        env,
-        optax.adam(adam_lr, eps=adam_eps),
-        gamma,
-        gae_lambda,
-        n_optim_epochs,
-        minibatch_size,
-        n_rollout_steps,
-        n_total_steps,
-        reset_interval,
-        debug_vis,
+    network, rewards = run_training(
+        key=jax.random.PRNGKey(seed),
+        n_agents=n_agents,
+        env=env,
+        adam=optax.adam(adam_lr, eps=adam_eps),
+        gamma=gamma,
+        gae_lambda=gae_lambda,
+        n_optim_epochs=n_optim_epochs,
+        minibatch_size=minibatch_size,
+        n_rollout_steps=n_rollout_steps,
+        n_total_steps=n_total_steps,
+        action_reward_coef=action_reward_coef,
+        entropy_weight=entropy_weight,
+        reset_interval=reset_interval,
+        debug_vis=debug_vis,
     )
     eqx.tree_serialise_leaves(modelpath, network)
+    if savelog_path is not None:
+        np.savez(savelog_path, np.array(rewards))
 
 
 @app.command()
 def vis(
     modelpath: Path = Path("trained.eqx"),
+    n_agents: int = 2,
     n_total_steps: int = 1000,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     seed: int = 1,
