@@ -1,4 +1,4 @@
--e .[video,pyside6]
+-e .[video]
 py-spy  # for profiling
 tqdm
 typer

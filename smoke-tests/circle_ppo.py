@@ -1,5 +1,6 @@
 """Example of using circle foraging environment"""
 
+import dataclasses
 from pathlib import Path
 from typing import Optional
 
@@ -10,10 +11,12 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import typer
+from serde import toml
 
 from emevo import Env, make
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
+from emevo.exp_utils import CfConfig
 from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
@@ -25,7 +28,8 @@ from emevo.rl.ppo_normal import (
 )
 from emevo.visualizer import SaveVideoWrapper
 
-N_MAX_AGENTS: int = 10
+PROJECT_ROOT = Path(__file__).parent.parent
+N_MAX_AGENTS: int = 20
 
 
 def weight_summary(network):
@@ -63,7 +67,7 @@ def visualize(
         state, obs, act = step(key, state, obs)
         del act
         # print(f"Act: {act[0]}")
-        visualizer.render(state.physics) # type: ignore
+        visualizer.render(state.physics)  # type: ignore
         visualizer.show()
 
 
@@ -221,8 +225,6 @@ def train(
     modelpath: Path = Path("trained.eqx"),
     seed: int = 1,
     n_agents: int = 2,
-    n_foods: int = 10,
-    obstacles: str = "none",
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
     gamma: float = 0.999,
@@ -231,40 +233,19 @@ def train(
     minibatch_size: int = 128,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 1000,
-    n_sensors: int = 16,
-    sensor_length: float = 100.0,
-    food_loc_fn: str = "gaussian",
-    env_shape: str = "circle",
+    cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
+    env_override: str = "",
     reset_interval: Optional[int] = None,
-    xlim: int = 200,
-    ylim: int = 200,
-    linear_damping: float = 0.8,
-    angular_damping: float = 0.6,
-    max_force: float = 40.0,
-    min_force: float = -20.0,
     debug_vis: bool = False,
 ) -> None:
-    assert n_agents < N_MAX_AGENTS
-    env = make(
-        "CircleForaging-v0",
-        env_shape=env_shape,
-        n_max_agents=N_MAX_AGENTS,
-        n_initial_agents=n_agents,
-        food_num_fn=("constant", n_foods),
-        food_loc_fn=food_loc_fn,
-        agent_loc_fn="gaussian",
-        foodloc_interval=20,
-        obstacles=obstacles,
-        xlim=(0.0, float(xlim)),
-        ylim=(0.0, float(ylim)),
-        env_radius=min(xlim, ylim) * 0.5,
-        linear_damping=linear_damping,
-        angular_damping=angular_damping,
-        max_force=max_force,
-        min_force=min_force,
-        n_agent_sensors=n_sensors,
-        sensor_length=sensor_length,
-    )
+    # Load config
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+    # Apply overrides
+    cfconfig.apply_override(env_override)
+    cfconfig.n_initial_agents = n_agents
+    cfconfig.n_max_agents = N_MAX_AGENTS
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     network = run_training(
         jax.random.PRNGKey(seed),
         n_agents,
@@ -286,43 +267,20 @@ def train(
 def vis(
     modelpath: Path = Path("trained.eqx"),
     n_total_steps: int = 1000,
+    cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     seed: int = 1,
-    n_agents: int = 2,
-    n_foods: int = 10,
-    food_loc_fn: str = "gaussian",
-    env_shape: str = "circle",
-    obstacles: str = "none",
     videopath: Optional[Path] = None,
-    xlim: int = 200,
-    ylim: int = 200,
-    linear_damping: float = 0.8,
-    angular_damping: float = 0.6,
-    max_force: float = 40.0,
-    min_force: float = -20.0,
-    n_sensors: int = 16,
-    sensor_length: float = 100.0,
+    env_override: str = "",
     headless: bool = False,
 ) -> None:
-    assert n_agents < N_MAX_AGENTS
-    env = make(
-        "CircleForaging-v0",
-        env_shape=env_shape,
-        n_max_agents=N_MAX_AGENTS,
-        n_initial_agents=n_agents,
-        food_num_fn=("constant", n_foods),
-        food_loc_fn=food_loc_fn,
-        foodloc_interval=20,
-        obstacles=obstacles,
-        xlim=(0.0, float(xlim)),
-        ylim=(0.0, float(ylim)),
-        env_radius=min(xlim, ylim) * 0.5,
-        linear_damping=linear_damping,
-        angular_damping=angular_damping,
-        n_agent_sensors=n_sensors,
-        sensor_length=sensor_length,
-        max_force=max_force,
-        min_force=min_force,
-    )
+    # Load config
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+    # Apply overrides
+    cfconfig.apply_override(env_override)
+    cfconfig.n_initial_agents = n_agents
+    cfconfig.n_max_agents = N_MAX_AGENTS
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     obs_space = env.obs_space.flatten()
     input_size = np.prod(obs_space.shape)
     act_size = np.prod(env.act_space.shape)
