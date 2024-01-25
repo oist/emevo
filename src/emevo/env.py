@@ -85,7 +85,7 @@ def init_uniqueid(n: int, max_n: int) -> UniqueID:
     zeros = jnp.zeros(max_n - n, dtype=jnp.int32)
     return UniqueID(
         unique_id=jnp.concatenate((jnp.arange(1, n + 1, dtype=jnp.int32), zeros)),
-        max_uid=jnp.array(max_n),
+        max_uid=jnp.array(n + 1),
     )
 
 
