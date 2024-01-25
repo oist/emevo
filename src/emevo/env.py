@@ -62,18 +62,20 @@ def init_status(max_n: int, init_energy: float) -> Status:
 class UniqueID:
     """Unique ID for agents. Starts from 1."""
 
-    unique_id: jax.Array
+    unique_id: jax.Array  # (N,)
+    max_uid: jax.Array  # (1,)
 
     def activate(self, flag: jax.Array) -> Self:
         unique_id = jnp.where(
             flag,
-            jnp.cumsum(flag) + jnp.max(self.unique_id),
+            jnp.cumsum(flag) + self.max_uid,
             self.unique_id,
         )
-        return UniqueID(unique_id=unique_id)
+        max_uid = self.max_uid + jnp.sum(flag)
+        return UniqueID(unique_id=unique_id, max_uid=max_uid)
 
     def deactivate(self, flag: jax.Array) -> Self:
-        return UniqueID(unique_id=jnp.where(flag, -1, self.unique_id))
+        return dataclasses.replace(self, unique_id=jnp.where(flag, -1, self.unique_id))
 
     def is_active(self) -> jax.Array:
         return 1 <= self.unique_id
@@ -83,6 +85,7 @@ def init_uniqueid(n: int, max_n: int) -> UniqueID:
     zeros = jnp.zeros(max_n - n, dtype=jnp.int32)
     return UniqueID(
         unique_id=jnp.concatenate((jnp.arange(1, n + 1, dtype=jnp.int32), zeros)),
+        max_uid=jnp.array(max_n),
     )
 
 
