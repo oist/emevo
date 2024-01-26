@@ -46,12 +46,13 @@ def visualize(
     n_steps: int,
     videopath: Path | None,
     headless: bool,
+    figsize: tuple[float, float],
 ) -> None:
     keys = jax.random.split(key, n_steps + 1)
     state, ts = env.reset(keys[0])
     obs = ts.obs
     backend = "headless" if headless else "pyglet"
-    visualizer = env.visualizer(state, figsize=(640.0, 640.0), backend=backend)
+    visualizer = env.visualizer(state, figsize=figsize, backend=backend)
     if videopath is not None:
         visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
 
@@ -174,6 +175,7 @@ def run_training(
     n_total_steps: int,
     action_reward_coef: float,
     entropy_weight: float,
+    figsize: tuple[float, float],
     reset_interval: int | None = None,
     debug_vis: bool = False,
 ) -> tuple[NormalPPONet, jax.Array]:
@@ -196,7 +198,7 @@ def run_training(
     rewards = jnp.zeros(N_MAX_AGENTS)
     keys = jax.random.split(key, n_loop)
     if debug_vis:
-        visualizer = env.visualizer(env_state, figsize=(640.0, 640.0))
+        visualizer = env.visualizer(env_state, figsize=figsize)
     else:
         visualizer = None
     for i, key in enumerate(keys):
@@ -254,6 +256,8 @@ def train(
     env_override: str = "",
     reset_interval: Optional[int] = None,
     savelog_path: Optional[Path] = None,
+    xlim: Optional[float] = None,
+    ylim: Optional[float] = None,
     debug_vis: bool = False,
 ) -> None:
     # Load config
@@ -264,6 +268,8 @@ def train(
     cfconfig.n_initial_agents = n_agents
     cfconfig.n_max_agents = N_MAX_AGENTS
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    xsize = cfconfig.xlim[1] * 2 if xlim is None else xlim
+    ysize = cfconfig.ylim[1] * 2 if ylim is None else ylim
     network, rewards = run_training(
         key=jax.random.PRNGKey(seed),
         n_agents=n_agents,
@@ -277,6 +283,7 @@ def train(
         n_total_steps=n_total_steps,
         action_reward_coef=action_reward_coef,
         entropy_weight=entropy_weight,
+        figsize=(xsize, ysize),
         reset_interval=reset_interval,
         debug_vis=debug_vis,
     )
@@ -293,6 +300,8 @@ def vis(
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     seed: int = 1,
     videopath: Optional[Path] = None,
+    xlim: Optional[float] = None,
+    ylim: Optional[float] = None,
     env_override: str = "",
     headless: bool = False,
 ) -> None:
@@ -315,7 +324,17 @@ def vis(
         jax.random.split(net_key, N_MAX_AGENTS),
     )
     pponet = eqx.tree_deserialise_leaves(modelpath, pponet)
-    visualize(eval_key, env, pponet, n_total_steps, videopath, headless)
+    xsize = cfconfig.xlim[1] * 2 if xlim is None else xlim
+    ysize = cfconfig.ylim[1] * 2 if ylim is None else ylim
+    visualize(
+        key=eval_key,
+        env=env,
+        network=pponet,
+        n_steps=n_total_steps,
+        videopath=videopath,
+        headless=headless,
+        figsize=(xsize, ysize),
+    )
 
 
 if __name__ == "__main__":
