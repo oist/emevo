@@ -11,9 +11,9 @@ food_loc_fn = [
        ["gaussian", [360.0, 270.0], [48.0, 36.0]],
        ["gaussian", [240.0, 270.0], [48.0, 36.0]],
        ["gaussian", [120.0, 270.0], [48.0, 36.0]],
+       ["gaussian", [240.0, 270.0], [48.0, 36.0]],
    ],
 ]
-food_loc_fn = "gaussian"
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
 ylim = [0.0, 360.0]
