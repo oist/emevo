@@ -57,6 +57,7 @@ class CfConfig:
     init_energy: float = 20.0
     energy_capacity: float = 100.0
     force_energy_consumption: float = 0.01 / 40.0
+    basic_energy_consumption: float = 0.0
     energy_share_ratio: float = 0.4
     n_velocity_iter: int = 6
     n_position_iter: int = 2
