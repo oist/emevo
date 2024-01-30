@@ -5,7 +5,7 @@ import functools
 import warnings
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any, Callable, Literal, NamedTuple
+from typing import Any, Callable, Literal, NamedTuple, Union
 
 import chex
 import jax
@@ -304,6 +304,10 @@ def _nonzero(arr: jax.Array, n: int) -> jax.Array:
     return jnp.cumsum(bincount)
 
 
+_MaybeLocatingFn = Union[LocatingFn, str, tuple[str, ...]]
+_MaybeNumFn = Union[ReprNumFn, str, tuple[str, ...]]
+
+
 class CircleForaging(Env):
     def __init__(
         self,
@@ -311,7 +315,7 @@ class CircleForaging(Env):
         n_max_agents: int = 100,
         n_max_foods: int = 40,
         food_num_fn: ReprNumFn | str | tuple[str, ...] = "constant",
-        food_loc_fn: LocatingFn | str | tuple[str, ...] = "gaussian",
+        food_loc_fn: _MaybeLocatingFn | list[_MaybeLocatingFn] = "gaussian",
         agent_loc_fn: LocatingFn | str | tuple[str, ...] = "uniform",
         xlim: tuple[float, float] = (0.0, 200.0),
         ylim: tuple[float, float] = (0.0, 200.0),
