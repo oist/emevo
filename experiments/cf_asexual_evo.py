@@ -551,6 +551,7 @@ def widget(
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     log_offset: int = 0,
     log_path: Optional[Path] = None,
+    self_terminate: bool = False,
     profile_and_rewards_path: Optional[Path] = None,
     env_override: str = "",
 ) -> None:
@@ -591,6 +592,7 @@ def widget(
         end=end,
         log_ds=log_ds,
         step_offset=step_offset,
+        self_terminate=self_terminate,
         profile_and_rewards=profile_and_rewards,
     )
 

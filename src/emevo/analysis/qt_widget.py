@@ -155,6 +155,9 @@ class MglWidget(QOpenGLWidget):
         self._ctx.clear(1.0, 1.0, 1.0)
         self._renderer.render(stated, circle_colors=circle_colors)  # type: ignore
 
+    def exitable(self) -> bool:
+        return self._end_index - 1 <= self._index
+
     def mousePressEvent(self, evt: QMouseEvent) -> None:  # type: ignore
         position = self._scale_position(evt.position())
         circle = self._get_stated(self._index).circle
@@ -279,6 +282,7 @@ class CBarState(enum.Enum):
     AGE = 1
     ENERGY = 2
     N_CHILDREN = 3
+    FOOD_REWARD = 4
 
 
 class CFEnvReplayWidget(QtWidgets.QWidget):
@@ -292,6 +296,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         env: CircleForaging,
         saved_physics: SavedPhysicsState,
         start: int = 0,
+        self_terminate: bool = False,
         end: int | None = None,
         step_offset: int = 0,
         log_ds: ds.Dataset | None = None,
@@ -300,6 +305,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         super().__init__()
 
         timer = QTimer()
+        timer.timeout.connect(self._check_exit)
         # Environment
         self._mgl_widget = MglWidget(
             timer=timer,
@@ -334,18 +340,21 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         radiobutton_1 = QtWidgets.QRadioButton("Age")
         radiobutton_2 = QtWidgets.QRadioButton("Energy")
         radiobutton_3 = QtWidgets.QRadioButton("Num. Children")
+        radiobutton_4 = QtWidgets.QRadioButton("Food Reward")
         radiobutton_1.setChecked(True)
         radiobutton_1.toggled.connect(self.cbarAge)
         radiobutton_2.toggled.connect(self.cbarEnergy)
         radiobutton_3.toggled.connect(self.cbarNChildren)
+        radiobutton_4.toggled.connect(self.cbarFood)
         self._cbar_state = CBarState.AGE
-        self._cbar_renderer = CBarRenderer(xlim * 2, ylim // 4)
+        self._cbar_renderer = CBarRenderer(int(xlim * 2), int(ylim * 0.4))
         self._showing_energy = True
         self._cbar_changed = True
         self._cbar_canvas = FigureCanvasQTAgg(self._cbar_renderer._fig)
         self._value_cm = mpl.colormaps["YlOrRd"]
         self._energy_cm = mpl.colormaps["YlGnBu"]
         self._n_children_cm = mpl.colormaps["PuBuGn"]
+        self._food_cm = mpl.colormaps["YlOrRd"]
         self._norm = mc.Normalize(vmin=0.0, vmax=1.0)
         if profile_and_rewards is not None:
             self._profile_and_rewards = profile_and_rewards
@@ -362,6 +371,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         cbar_selector.addWidget(radiobutton_1)
         cbar_selector.addWidget(radiobutton_2)
         cbar_selector.addWidget(radiobutton_3)
+        cbar_selector.addWidget(radiobutton_4)
         control = QtWidgets.QHBoxLayout()
         control.addLayout(left_control)
         control.addLayout(cbar_selector)
@@ -390,9 +400,18 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         else:
             self.resize(xlim * 4, ylim * 3)
 
+        self._self_terminate = self_terminate
+
+    def _check_exit(self) -> None:
+        if self._mgl_widget.exitable() and self._self_terminate:
+            print("Safely exited app because it reached the final frame")
+            self.close()
+
+    @functools.cache
     def _get_rewards(self, unique_id: int) -> dict[str, float]:
         filtered = self._profile_and_rewards.filter(pc.field("unique_id") == unique_id)
-        return filtered.drop(["birthtime", "parent", "unique_id"]).to_pydict()
+        d = filtered.drop(["birthtime", "parent", "unique_id"]).to_pydict()
+        return {k: v[0] for k, v in d.items()}
 
     @functools.cache
     def _get_n_children(self, unique_id: int) -> int:
@@ -445,6 +464,20 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             value = np.zeros(self._n_max_agents)
             for slot, uid in zip(log["slots"], log["unique_id"]):
                 value[slot] = self._get_n_children(uid)
+        elif self._cbar_state is CBarState.FOOD_REWARD:
+            title = "Food Reward"
+            cm = self._n_children_cm
+            value = np.zeros(self._n_max_agents)
+            for slot, uid in zip(log["slots"], log["unique_id"]):
+                rew = self._get_rewards(uid)
+                if "scale_food" in rew:
+                    rew_food = rew["w_food"] * (10 ** rew["scale_food"])
+                elif "food" in rew:
+                    rew_food = rew["food"]
+                else:
+                    warnings.warn("Unsupported reward")
+                    rew_food = 0.0
+                value[slot] = rew_food
         else:
             warnings.warn(f"Invalid cbar state {self._cbar_state}")
             return np.zeros((self._n_max_agents, 4))
@@ -492,6 +525,12 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
     def cbarNChildren(self, checked: bool) -> None:
         if checked:
             self._cbar_state = CBarState.N_CHILDREN
+            self._cbar_changed = True
+
+    @Slot(bool)
+    def cbarFood(self, checked: bool) -> None:
+        if checked:
+            self._cbar_state = CBarState.FOOD_REWARD
             self._cbar_changed = True
 
 
