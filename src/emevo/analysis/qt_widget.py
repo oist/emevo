@@ -52,7 +52,7 @@ def _mgl_qsurface_fmt() -> QSurfaceFormat:
     return fmt
 
 
-N_MAX_SCAN: int = 4096
+N_MAX_SCAN: int = 10240
 N_MAX_CACHED_LOG: int = 200
 
 
