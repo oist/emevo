@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import enum
-import functools
 import sys
 import warnings
 from collections import deque
@@ -139,7 +138,7 @@ class MglWidget(QOpenGLWidget):
             else:
                 self._ctx = moderngl.create_context(require=410)
             if self._ctx.error != "GL_NO_ERROR":
-                warnings.warn(f"The qfollowing error occured: {self._ctx.error}")
+                warnings.warn(f"The qfollowing error occured: {self._ctx.error}", stacklevel=1)
             self._fbo = self._ctx.detect_framebuffer()
             self._renderer = self._make_renderer(self._ctx)
             self._initialized = True
@@ -206,6 +205,7 @@ class BarChart(QtWidgets.QWidget):
         self.chart.setTitle(title)
         if animation:
             self.chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+
         else:
             self.chart.setAnimationOptions(QChart.AnimationOption.NoAnimation)
 
@@ -241,7 +241,7 @@ class BarChart(QtWidgets.QWidget):
             for v in value:
                 barset.append(v)
         else:
-            warnings.warn(f"Invalid value for barset: {value}")
+            warnings.warn(f"Invalid value for barset: {value}", stacklevel=1)
         self.barsets[name] = barset
         self.series.append(barset)
         return barset
@@ -319,6 +319,9 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             get_colors=None if log_ds is None else self._get_colors,
         )
         self._n_max_agents = env.n_max_agents
+        # cache
+        self._cached_rewards = {}
+        self._cached_n_children = {}
         # Log / step
         self._log_ds = log_ds
         self._log_cached = {}
@@ -355,7 +358,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._value_cm = mpl.colormaps["YlOrRd"]
         self._energy_cm = mpl.colormaps["YlGnBu"]
         self._n_children_cm = mpl.colormaps["PuBuGn"]
-        self._food_cm = mpl.colormaps["YlOrRd"]
+        self._food_cm = mpl.colormaps["plasma"]
         self._norm = mc.Normalize(vmin=0.0, vmax=1.0)
         self._cm_fixed_minmax = {} if cm_fixed_minmax is None else cm_fixed_minmax
         if profile_and_rewards is not None:
@@ -401,28 +404,37 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             self.resize(xlim * 3, ylim * 3)
         else:
             self.resize(xlim * 4, ylim * 3)
-
         self._self_terminate = self_terminate
+
 
     def _check_exit(self) -> None:
         if self._mgl_widget.exitable() and self._self_terminate:
             print("Safely exited app because it reached the final frame")
             self.close()
 
-    @functools.cache
     def _get_rewards(self, unique_id: int) -> dict[str, float]:
+        if unique_id in self._cached_rewards:
+            return self._cached_rewards[unique_id]
         filtered = self._profile_and_rewards.filter(pc.field("unique_id") == unique_id)
-        d = filtered.drop(["birthtime", "parent", "unique_id"]).to_pydict()
-        return {k: v[0] for k, v in d.items()}
+        rd = filtered.drop(["birthtime", "parent", "unique_id"]).to_pydict()
+        rd = {k: v[0] for k, v in rd.items()}
+        self._cached_rewards[unique_id] = rd
+        return rd
 
-    @functools.cache
     def _get_n_children(self, unique_id: int) -> int:
         if self._profile_and_rewards is None:
-            warnings.warn("N children requires profile_an_rewards.parquet")
+            warnings.warn(
+                "N children requires profile_an_rewards.parquet",
+                stacklevel=1,
+            )
             return 0
         if unique_id == 0:
             return 0
-        return len(self._profile_and_rewards.filter(pc.field("parent") == unique_id))
+        if unique_id in self._cached_n_children:
+            return self._cached_n_children[unique_id]
+        nc = len(self._profile_and_rewards.filter(pc.field("parent") == unique_id))
+        self._cached_n_children[unique_id] = nc
+        return nc
 
     def _get_log(self, step: int) -> dict[str, NDArray]:
         assert self._log_ds is not None
@@ -468,7 +480,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                 value[slot] = self._get_n_children(uid)
         elif self._cbar_state is CBarState.FOOD_REWARD:
             title = "Food Reward"
-            cm = self._n_children_cm
+            cm = self._food_cm
             value = np.zeros(self._n_max_agents)
             for slot, uid in zip(log["slots"], log["unique_id"]):
                 rew = self._get_rewards(uid)
@@ -477,11 +489,11 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                 elif "food" in rew:
                     rew_food = rew["food"]
                 else:
-                    warnings.warn("Unsupported reward")
+                    warnings.warn("Unsupported reward", stacklevel=1)
                     rew_food = 0.0
                 value[slot] = rew_food
         else:
-            warnings.warn(f"Invalid cbar state {self._cbar_state}")
+            warnings.warn(f"Invalid cbar state {self._cbar_state}", stacklevel=1)
             return np.zeros((self._n_max_agents, 4))
         if self._cbar_state.value in self._cm_fixed_minmax:
             self._norm.vmin, self._norm.vmax = self._cm_fixed_minmax[
