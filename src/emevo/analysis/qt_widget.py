@@ -52,8 +52,8 @@ def _mgl_qsurface_fmt() -> QSurfaceFormat:
     return fmt
 
 
-N_MAX_SCAN: int = 10240
-N_MAX_CACHED_LOG: int = 200
+N_MAX_SCAN: int = 20480
+N_MAX_CACHED_LOG: int = 100
 
 
 @jax.jit
@@ -278,11 +278,11 @@ class BarChart(QtWidgets.QWidget):
         self.chart.setTitle(title)
 
 
-class CBarState(enum.Enum):
-    AGE = 1
-    ENERGY = 2
-    N_CHILDREN = 3
-    FOOD_REWARD = 4
+class CBarState(str, enum.Enum):
+    AGE = "age"
+    ENERGY = "energy"
+    N_CHILDREN = "n-children"
+    FOOD_REWARD = "food-reward"
 
 
 class CFEnvReplayWidget(QtWidgets.QWidget):
@@ -301,6 +301,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         step_offset: int = 0,
         log_ds: ds.Dataset | None = None,
         profile_and_rewards: pa.Table | None = None,
+        cm_fixed_minmax: dict[str, tuple[float, float]] | None = None,
     ) -> None:
         super().__init__()
 
@@ -356,6 +357,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._n_children_cm = mpl.colormaps["PuBuGn"]
         self._food_cm = mpl.colormaps["YlOrRd"]
         self._norm = mc.Normalize(vmin=0.0, vmax=1.0)
+        self._cm_fixed_minmax = {} if cm_fixed_minmax is None else cm_fixed_minmax
         if profile_and_rewards is not None:
             self._profile_and_rewards = profile_and_rewards
             self._reward_widget = BarChart(self._get_rewards(1))  # type: ignore
@@ -481,8 +483,13 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         else:
             warnings.warn(f"Invalid cbar state {self._cbar_state}")
             return np.zeros((self._n_max_agents, 4))
-        self._norm.vmin = np.amin(value)  # type: ignore
-        self._norm.vmax = np.amax(value)  # type: ignore
+        if self._cbar_state.value in self._cm_fixed_minmax:
+            self._norm.vmin, self._norm.vmax = self._cm_fixed_minmax[
+                self._cbar_state.value
+            ]
+        else:
+            self._norm.vmin = float(np.amin(value))
+            self._norm.vmax = float(np.amax(value))
         if self._cbar_changed:
             self._cbar_renderer.render(self._norm, cm, title)
             self._cbar_changed = False
