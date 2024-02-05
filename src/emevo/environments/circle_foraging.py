@@ -338,6 +338,7 @@ class CircleForaging(Env):
         init_energy: float = 20.0,
         energy_capacity: float = 100.0,
         force_energy_consumption: float = 0.01 / 40.0,
+        basic_energy_consumption: float = 0.0,
         energy_share_ratio: float = 0.4,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
@@ -370,6 +371,7 @@ class CircleForaging(Env):
         )
         # Energy
         self._force_energy_consumption = force_energy_consumption
+        self._basic_energy_consumption = basic_energy_consumption
         self._init_energy = init_energy
         self._energy_capacity = energy_capacity
         self._energy_share_ratio = energy_share_ratio
@@ -620,7 +622,11 @@ class CircleForaging(Env):
         sensor_obs = self._sensor_obs(stated=stated)
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
-        energy_delta = food_collision - self._force_energy_consumption * force_norm
+        energy_delta = (
+            food_collision
+            - self._force_energy_consumption * force_norm
+            - self._basic_energy_consumption
+        )
         # Remove and reproduce foods
         key, food_key = jax.random.split(state.key)
         stated, food_num, food_loc = self._remove_and_reproduce_foods(

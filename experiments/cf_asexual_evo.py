@@ -2,6 +2,7 @@
  evolution with Circle Foraging"""
 import dataclasses
 import enum
+import json
 from pathlib import Path
 from typing import Optional, cast
 
@@ -551,7 +552,9 @@ def widget(
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     log_offset: int = 0,
     log_path: Optional[Path] = None,
+    self_terminate: bool = False,
     profile_and_rewards_path: Optional[Path] = None,
+    cm_fixed_minmax: str = "",
     env_override: str = "",
 ) -> None:
     from emevo.analysis.qt_widget import CFEnvReplayWidget, start_widget
@@ -581,6 +584,11 @@ def widget(
 
         profile_and_rewards = pq.read_table(profile_and_rewards_path)
 
+    if len(cm_fixed_minmax) > 0:
+        cm_fixed_minmax_dict = json.loads(cm_fixed_minmax)
+    else:
+        cm_fixed_minmax_dict = {}
+
     start_widget(
         CFEnvReplayWidget,
         xlim=int(cfconfig.xlim[1]),
@@ -591,7 +599,9 @@ def widget(
         end=end,
         log_ds=log_ds,
         step_offset=step_offset,
+        self_terminate=self_terminate,
         profile_and_rewards=profile_and_rewards,
+        cm_fixed_minmax=cm_fixed_minmax_dict,
     )
 
 
