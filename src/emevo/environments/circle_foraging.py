@@ -304,8 +304,28 @@ def _nonzero(arr: jax.Array, n: int) -> jax.Array:
     return jnp.cumsum(bincount)
 
 
+def _as_list(obj: Any) -> list[Any]:
+    if isinstance(obj, list):
+        return obj
+    else:
+        return [obj]
+
+
 _MaybeLocatingFn = Union[LocatingFn, str, tuple[str, ...]]
 _MaybeNumFn = Union[ReprNumFn, str, tuple[str, ...]]
+
+
+def _assert_n_food_sources(loc: Any, num: Any) -> int:
+    is_loc_list = isinstance(loc, list)
+    is_num_list = isinstance(num, list)
+    if is_loc_list and is_num_list:
+        n = len(loc)
+        assert n == len(num), "Number of food sources doesn't match"
+        return n
+    elif is_loc_list or is_num_list:
+        raise ValueError("Both of num and loc fns should be list")
+    else:
+        return 1
 
 
 class CircleForaging(Env):
@@ -314,7 +334,7 @@ class CircleForaging(Env):
         n_initial_agents: int = 6,
         n_max_agents: int = 100,
         n_max_foods: int = 40,
-        food_num_fn: ReprNumFn | str | tuple[str, ...] = "constant",
+        food_num_fn: _MaybeNumFn | list[_MaybeNumFn] = "constant",
         food_loc_fn: _MaybeLocatingFn | list[_MaybeLocatingFn] = "gaussian",
         agent_loc_fn: LocatingFn | str | tuple[str, ...] = "uniform",
         xlim: tuple[float, float] = (0.0, 200.0),
@@ -360,11 +380,24 @@ class CircleForaging(Env):
         self._agent_radius = agent_radius
         self._food_radius = food_radius
         self._foodloc_interval = foodloc_interval
-        self._food_loc_fn, self._initial_foodloc_state = self._make_food_loc_fn(
-            food_loc_fn
+        self._n_food_sources = _assert_n_food_sources(food_loc_fn, food_num_fn)
+        self._food_loc_fns, initial_foodloc_states = [], []
+        self._food_num_fns, initial_foodnum_states = [], []
+        for maybe_loc_fn in _as_list(food_loc_fn):
+            fn, state = self._make_food_loc_fn(maybe_loc_fn)
+            self._food_loc_fns.append(fn)
+            initial_foodloc_states.append(state)
+        for maybe_num_fn in _as_list(food_num_fn):
+            fn, state = self._make_food_num_fn(maybe_num_fn)
+            self._food_num_fns.append(fn)
+            initial_foodnum_states.append(state)
+        self._initial_foodloc_state = jax.tree_map(
+            lambda *args: jnp.concatenate([arg.reshape(1) for arg in args]),
+            *initial_foodloc_states,
         )
-        self._food_num_fn, self._initial_foodnum_state = self._make_food_num_fn(
-            food_num_fn
+        self._initial_foodnum_state = jax.tree_map(
+            lambda *args: jnp.concatenate(args),
+            *initial_foodnum_states,
         )
         self._agent_loc_fn, self._initial_agentloc_state = self._make_agent_loc_fn(
             agent_loc_fn
@@ -377,10 +410,10 @@ class CircleForaging(Env):
         self._energy_share_ratio = energy_share_ratio
         # Initial numbers
         assert n_max_agents > n_initial_agents
-        assert n_max_foods > self._food_num_fn.initial
+        self._n_initial_foods = sum([num_fn.initial for num_fn in self._food_num_fns])
+        assert n_max_foods > self._n_initial_foods
         self._n_initial_agents = n_initial_agents
         self.n_max_agents = n_max_agents
-        self._n_initial_foods = self._food_num_fn.initial
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
         # Physics
@@ -433,16 +466,21 @@ class CircleForaging(Env):
                 shaped=self._physics.shaped,
             )
         )
-        self._place_food = jax.jit(
-            functools.partial(
-                place,
-                n_trial=self._max_place_attempts,
-                radius=self._food_radius,
-                coordinate=self._coordinate,
-                loc_fn=self._food_loc_fn,
-                shaped=self._physics.shaped,
+
+        self._place_food_fns = []
+        for loc_fn in self._food_loc_fns:
+            place_fn = jax.jit(
+                functools.partial(
+                    place,
+                    n_trial=self._max_place_attempts,
+                    radius=self._food_radius,
+                    coordinate=self._coordinate,
+                    loc_fn=loc_fn,
+                    shaped=self._physics.shaped,
+                )
             )
-        )
+            self._place_food_fns.append(place_fn)
+
         if newborn_loc == "uniform":
 
             def place_newborn_uniform(
@@ -459,6 +497,7 @@ class CircleForaging(Env):
                     shaped=self._physics.shaped,
                     loc_state=state,
                     key=key,
+                    n_steps=0,
                     stated=stated,
                 )
 
@@ -488,6 +527,7 @@ class CircleForaging(Env):
                     shaped=self._physics.shaped,
                     loc_state=state,
                     key=key,
+                    n_steps=0,
                     stated=stated,
                 )
 
@@ -804,9 +844,14 @@ class CircleForaging(Env):
         )
         keys = jax.random.split(key, self._n_initial_agents + self._n_initial_foods)
         agent_failed = 0
-        agentloc_state = self._initial_foodloc_state
+        agentloc_state = self._initial_agentloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
-            xy, ok = self._init_agent(loc_state=agentloc_state, key=key, stated=stated)
+            xy, ok = self._init_agent(
+                loc_state=agentloc_state,
+                key=key,
+                n_steps=i,
+                stated=stated,
+            )
             if ok:
                 stated = stated.nested_replace(
                     "circle.p.xy",
@@ -814,6 +859,7 @@ class CircleForaging(Env):
                 )
                 agentloc_state = agentloc_state.increment()
             else:
+                del xy
                 agent_failed += 1
 
         if agent_failed > 0:
@@ -821,15 +867,28 @@ class CircleForaging(Env):
 
         food_failed = 0
         foodloc_state = self._initial_foodloc_state
+        food_increment = jnp.zeros(self._n_food_sources, dtype=jnp.int32)
         for i, key in enumerate(keys[self._n_initial_agents :]):
-            xy, ok = self._place_food(loc_state=foodloc_state, key=key, stated=stated)
+            idx = i % self._n_food_sources
+            xy, ok = self._place_food_fns[idx](
+                loc_state=foodloc_state.get_slice(idx),
+                key=key,
+                n_steps=i,
+                stated=stated,
+            )
             if ok:
                 stated = stated.nested_replace(
                     "static_circle.p.xy",
                     stated.static_circle.p.xy.at[i].set(xy),
                 )
-                foodloc_state = foodloc_state.increment()
+                # Set food label
+                stated = stated.nested_replace(
+                    "static_circle.label",
+                    stated.static_circle.label.at[i].set(idx),
+                )
+                foodloc_state = foodloc_state.increment(food_increment.at[idx].set(1))
             else:
+                del xy
                 food_failed += 1
 
         if food_failed > 0:
@@ -852,7 +911,13 @@ class CircleForaging(Env):
             sd.static_circle.p.xy,
         )
         is_active = jnp.logical_and(sd.static_circle.is_active, jnp.logical_not(eaten))
-        food_num = self._food_num_fn(food_num.eaten(jnp.sum(eaten)))
+        eaten_per_source = (
+            jnp.zeros(self._n_food_sources, dtype=jnp.int32)
+            .at[sd.static_circle.label]
+            .add(eaten)
+        )
+        food_num = food_num.eaten(eaten_per_source)
+        food_num = self._food_num_fn()
         # Generate new foods
         first_inactive = first_true(jnp.logical_not(is_active))
         new_food, ok = self._place_food(loc_state=food_loc, key=key, stated=sd)

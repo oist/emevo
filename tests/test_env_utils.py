@@ -38,7 +38,7 @@ def test_square_coordinate(key: chex.PRNGKey) -> None:
 
 def test_loc_gaussian(key: chex.PRNGKey) -> None:
     loc_g, state = Locating.GAUSSIAN((3.0, 3.0), (1.0, 1.0))
-    loc = jax.vmap(loc_g, in_axes=(0, None))(jax.random.split(key, 10), state)
+    loc = jax.vmap(loc_g, in_axes=(0, None, None))(jax.random.split(key, 10), 0, state)
     chex.assert_shape(loc, (10, 2))
     x_mean = jnp.mean(loc[:, 0])
     y_mean = jnp.mean(loc[:, 1])
@@ -47,7 +47,7 @@ def test_loc_gaussian(key: chex.PRNGKey) -> None:
 
 def test_loc_uniform(key: chex.PRNGKey) -> None:
     loc_u, state = Locating.UNIFORM(CircleCoordinate((3.0, 3.0), 3.0))
-    loc = jax.vmap(loc_u, in_axes=(0, None))(jax.random.split(key, 10), state)
+    loc = jax.vmap(loc_u, in_axes=(0, None, None))(jax.random.split(key, 10), 0, state)
     chex.assert_shape(loc, (10, 2))
     bigger_circle = CircleCoordinate((3.0, 3.0), 4.0)
     assert jnp.all(jax.vmap(bigger_circle.contains_circle)(loc, jnp.ones(10)))
@@ -59,7 +59,7 @@ def test_loc_gm(key: chex.PRNGKey) -> None:
         ((0.0, 0.0), (10.0, 10.0)),
         ((1.0, 1.0), (1.0, 1.0)),
     )
-    loc = jax.vmap(loc_gm, in_axes=(0, None))(jax.random.split(key, 20), state)
+    loc = jax.vmap(loc_gm, in_axes=(0, None, None))(jax.random.split(key, 20), 0, state)
     chex.assert_shape(loc, (20, 2))
     x_mean = jnp.mean(loc[:, 0])
     y_mean = jnp.mean(loc[:, 1])
@@ -70,7 +70,7 @@ def test_loc_periodic(key: chex.PRNGKey) -> None:
     points = [(0.0, 0.0), (1.0, 1.0), (2.0, 2.0)]
     loc_p, state = Locating.PERIODIC(*points)
     for i in range(10):
-        loc = loc_p(key, state)
+        loc = loc_p(key, i, state)
         state = state.increment()
         assert jnp.all(loc == jnp.array(points[i % 3]))
 
@@ -79,8 +79,9 @@ def test_loc_switching(key: chex.PRNGKey) -> None:
     loc_g, _ = Locating.GAUSSIAN((3.0, 3.0), (1.0, 1.0))
     loc_u, _ = Locating.UNIFORM(CircleCoordinate((3.0, 3.0), 3.0))
     loc_s, state = Locating.SWITCHING(10, loc_g, loc_u)
-    loc = jax.vmap(loc_s)(
+    loc = jax.vmap(loc_s, in_axes=(0, None, 0))(
         jax.random.split(key, 10),
+        0,
         jax.tree_map(lambda a: jnp.tile(a, (10,)), state),
     )
     chex.assert_shape(loc, (10, 2))
@@ -88,8 +89,9 @@ def test_loc_switching(key: chex.PRNGKey) -> None:
     y_mean = jnp.mean(loc[:, 1])
     assert (x_mean - 3) ** 2 < 1.0 and (y_mean - 3) ** 2 < 1.0
 
-    loc = jax.vmap(loc_s)(
+    loc = jax.vmap(loc_s, in_axes=(0, None, 0))(
         jax.random.split(key, 10),
+        0,
         jax.tree_map(lambda a: jnp.tile(a * 10, (10,)), state),
     )
     chex.assert_shape(loc, (10, 2))
@@ -99,6 +101,6 @@ def test_loc_switching(key: chex.PRNGKey) -> None:
 
 def test_foodnum_const() -> None:
     const, state = ReprNum.CONSTANT(10)
-    assert const(state.eaten(3)).appears()
-    assert const(state.eaten(3).recover(2)).appears()
-    assert not const(state.eaten(3).recover(3)).appears()
+    assert const(0, state.eaten(3)).appears()
+    assert const(0, state.eaten(3).recover(2)).appears()
+    assert not const(0, state.eaten(3).recover(3)).appears()

@@ -21,7 +21,6 @@ Self = Any
 class FoodNumState:
     current: jax.Array
     internal: jax.Array
-    n_called: jax.Array
 
     def appears(self) -> jax.Array:
         return (self.internal - self.current) >= 1.0
@@ -30,7 +29,6 @@ class FoodNumState:
         return FoodNumState(
             current=self.current - n,
             internal=self.internal - n,
-            n_called=self.n_called,
         )
 
     def recover(self, n: int | jax.Array = 1) -> Self:
@@ -40,14 +38,16 @@ class FoodNumState:
         return FoodNumState(
             current=self.current,
             internal=internal,
-            n_called=self.n_called + 1,
         )
+
+    def get_slice(self, index: int) -> Self:
+        return jax.tree_map(lambda x: x[index], self)
 
 
 class ReprNumFn(Protocol):
     initial: int
 
-    def __call__(self, state: FoodNumState) -> FoodNumState:
+    def __call__(self, n_steps: int, state: FoodNumState) -> FoodNumState:
         ...
 
 
@@ -55,7 +55,7 @@ class ReprNumFn(Protocol):
 class ReprNumConstant:
     initial: int
 
-    def __call__(self, state: FoodNumState) -> FoodNumState:
+    def __call__(self, _: int, state: FoodNumState) -> FoodNumState:
         # Do nothing here
         return state._update(jnp.array(self.initial, dtype=jnp.float32))
 
@@ -65,7 +65,7 @@ class ReprNumLinear:
     initial: int
     dn_dt: float
 
-    def __call__(self, state: FoodNumState) -> FoodNumState:
+    def __call__(self, _: int, state: FoodNumState) -> FoodNumState:
         # Increase the number of foods by dn_dt
         internal = jnp.fmax(state.current, state.internal)
         max_value = jnp.array(self.initial, dtype=jnp.float32)
@@ -78,7 +78,7 @@ class ReprNumLogistic:
     growth_rate: float
     capacity: float
 
-    def __call__(self, state: FoodNumState) -> FoodNumState:
+    def __call__(self, _: int, state: FoodNumState) -> FoodNumState:
         internal = jnp.fmax(state.current, state.internal)
         dn_dt = self.growth_rate * internal * (1 - internal / self.capacity)
         return state._update(internal + dn_dt)
@@ -109,8 +109,8 @@ class ReprNumScheduled:
     def initial(self) -> int:
         return self._numfn_list[0].initial
 
-    def __call__(self, state: FoodNumState) -> FoodNumState:
-        index = jnp.digitize(state.n_called, bins=self._intervals)
+    def __call__(self, n_steps: int, state: FoodNumState) -> FoodNumState:
+        index = jnp.digitize(n_steps, bins=self._intervals)
         return jax.lax.switch(index, self._numfn_list, state)
 
 
@@ -136,9 +136,8 @@ class ReprNum(str, enum.Enum):
 
         initial = fn.initial
         state = FoodNumState(
-            current=jnp.array(int(initial), dtype=jnp.int32),
-            internal=jnp.array(float(initial), dtype=jnp.float32),
-            n_called=jnp.array(1, dtype=jnp.int32),
+            current=jnp.ones(1, dtype=jnp.int32) * int(initial),
+            internal=jnp.ones(1, dtype=jnp.float32) * initial,
         )
         return cast(ReprNumFn, fn), state
 
@@ -215,13 +214,15 @@ class SquareCoordinate(Coordinate):
 @chex.dataclass
 class LocatingState:
     n_produced: jax.Array
-    n_trial: jax.Array
 
     def increment(self, n: jax.Array | int = 1) -> Self:
-        return LocatingState(n_produced=self.n_produced + n, n_trial=self.n_trial + 1)
+        return LocatingState(n_produced=self.n_produced + n)
+
+    def get_slice(self, index: int) -> Self:
+        return jax.tree_map(lambda x: x[index], self)
 
 
-LocatingFn = Callable[[chex.PRNGKey, LocatingState], jax.Array]
+LocatingFn = Callable[[chex.PRNGKey, int, LocatingState], jax.Array]
 
 
 class Locating(str, enum.Enum):
@@ -235,9 +236,9 @@ class Locating(str, enum.Enum):
     UNIFORM = "uniform"
 
     def __call__(self, *args: Any, **kwargs: Any) -> tuple[LocatingFn, LocatingState]:
+        # Make sure it has shape () because it's also used for agents as singleton
         state = LocatingState(
             n_produced=jnp.array(0, dtype=jnp.int32),
-            n_trial=jnp.array(0, dtype=jnp.int32),
         )
         if self is Locating.GAUSSIAN:
             return loc_gaussian(*args, **kwargs), state
@@ -259,7 +260,12 @@ def loc_gaussian(mean: ArrayLike, stddev: ArrayLike) -> LocatingFn:
     mean_a = jnp.array(mean)
     std_a = jnp.array(stddev)
     shape = mean_a.shape
-    return lambda key, _: jax.random.normal(key, shape=shape) * std_a + mean_a
+
+    def sample(key: chex.PRNGKey, _n_steps: int, _state: LocatingState) -> jax.Array:
+        del _n_steps, _state
+        return jax.random.normal(key, shape=shape) * std_a + mean_a
+
+    return sample
 
 
 def loc_gaussian_mixture(
@@ -272,7 +278,8 @@ def loc_gaussian_mixture(
     probs_a = jnp.array(probs)
     n = probs_a.shape[0]
 
-    def sample(key: chex.PRNGKey, _: LocatingState) -> jax.Array:
+    def sample(key: chex.PRNGKey, _n_steps: int, _state: LocatingState) -> jax.Array:
+        del _n_steps, _state
         k1, k2 = jax.random.split(key)
         i = jax.random.choice(k1, n, p=probs_a)
         mi, si = mean_a[i], stddev_a[i]
@@ -282,7 +289,11 @@ def loc_gaussian_mixture(
 
 
 def loc_uniform(coordinate: Coordinate) -> LocatingFn:
-    return lambda key, _: coordinate.uniform(key)
+    def sample(key: chex.PRNGKey, _n_steps: int, _state: LocatingState) -> jax.Array:
+        del _n_steps, _state
+        return coordinate.uniform(key)
+
+    return sample
 
 
 class LocPeriodic:
@@ -290,8 +301,14 @@ class LocPeriodic:
         self._locations = jnp.array(locations)
         self._n = self._locations.shape[0]
 
-    def __call__(self, _: chex.PRNGKey, state: LocatingState) -> jax.Array:
-        return self._locations[state.n_trial % self._n]
+    def __call__(
+        self,
+        _key: chex.PRNGKey,
+        _n_steps: int,
+        state: LocatingState,
+    ) -> jax.Array:
+        del _key, _n_steps
+        return self._locations[state.n_produced % self._n]
 
 
 def _collect_loc_fns(fns: Iterable[tuple[str, ...] | LocatingFn]) -> list[LocatingFn]:
@@ -318,9 +335,14 @@ class LocSwitching:
         self._interval = interval
         self._n = len(self._locfn_list)
 
-    def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        n_steps: int,
+        state: LocatingState,
+    ) -> jax.Array:
         index = (state.n_produced // self._interval) % self._n
-        return jax.lax.switch(index, self._locfn_list, key, state)
+        return jax.lax.switch(index, self._locfn_list, key, n_steps, state)
 
 
 class LocScheduled:
@@ -336,8 +358,13 @@ class LocScheduled:
             intervals = [intervals * (i + 1) for i in range(len(self._locfn_list))]
         self._intervals = jnp.array(intervals, dtype=jnp.int32)
 
-    def __call__(self, key: chex.PRNGKey, state: LocatingState) -> jax.Array:
-        index = jnp.digitize(state.n_trial, bins=self._intervals)
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        n_steps: int,
+        state: LocatingState,
+    ) -> jax.Array:
+        index = jnp.digitize(n_steps, bins=self._intervals)
         return jax.lax.switch(index, self._locfn_list, key, state)
 
 
@@ -352,11 +379,12 @@ def place(
     loc_fn: LocatingFn,
     loc_state: LocatingState,
     key: chex.PRNGKey,
+    n_steps: int,
     shaped: ShapeDict,
     stated: StateDict,
 ) -> tuple[jax.Array, jax.Array]:
     keys = jax.random.split(key, n_trial)
-    locations = jax.vmap(loc_fn, in_axes=(0, None))(keys, loc_state)
+    locations = jax.vmap(loc_fn, in_axes=(0, None, None))(keys, n_steps, loc_state)
     overlap = jax.vmap(circle_overlap, in_axes=(None, None, 0, None))(
         shaped,
         stated,
