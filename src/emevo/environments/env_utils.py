@@ -136,8 +136,8 @@ class ReprNum(str, enum.Enum):
 
         initial = fn.initial
         state = FoodNumState(
-            current=jnp.ones(1, dtype=jnp.int32) * int(initial),
-            internal=jnp.ones(1, dtype=jnp.float32) * initial,
+            current=jnp.array(int(initial), dtype=jnp.int32),
+            internal=jnp.array(float(initial), dtype=jnp.float32),
         )
         return cast(ReprNumFn, fn), state
 
@@ -166,7 +166,9 @@ class CircleCoordinate(Coordinate):
         return (cx - r, cx + r), (cy - r, cy + r)
 
     def contains_circle(
-        self, center: jax.Array, radius: jax.Array | float
+        self,
+        center: jax.Array,
+        radius: jax.Array | float,
     ) -> jax.Array:
         a2b = center - jnp.array(self.center)
         distance = jnp.linalg.norm(a2b, ord=2)
@@ -368,8 +370,8 @@ class LocScheduled:
         return jax.lax.switch(index, self._locfn_list, key, state)
 
 
-def first_true(boolean_array: jax.Array) -> jax.Array:
-    return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) == 1)
+def nth_true(boolean_array: jax.Array, n: int) -> jax.Array:
+    return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) == n)
 
 
 def place(
@@ -393,5 +395,5 @@ def place(
     )
     contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
     ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
-    mask = jnp.expand_dims(first_true(ok), axis=1)
+    mask = jnp.expand_dims(nth_true(ok, 1), axis=1)
     return jnp.sum(mask * locations, axis=0), jnp.any(ok)
