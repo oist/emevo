@@ -304,28 +304,8 @@ def _nonzero(arr: jax.Array, n: int) -> jax.Array:
     return jnp.cumsum(bincount)
 
 
-def _as_list(obj: Any) -> list[Any]:
-    if isinstance(obj, list):
-        return obj
-    else:
-        return [obj]
-
-
 _MaybeLocatingFn = Union[LocatingFn, str, tuple[str, ...]]
 _MaybeNumFn = Union[ReprNumFn, str, tuple[str, ...]]
-
-
-def _assert_n_food_sources(loc: Any, num: Any) -> int:
-    is_loc_list = isinstance(loc, list)
-    is_num_list = isinstance(num, list)
-    if is_loc_list and is_num_list:
-        n = len(loc)
-        assert n == len(num), "Number of food sources doesn't match"
-        return n
-    elif is_loc_list or is_num_list:
-        raise ValueError("Both of num and loc fns should be list")
-    else:
-        return 1
 
 
 class CircleForaging(Env):
@@ -334,6 +314,7 @@ class CircleForaging(Env):
         n_initial_agents: int = 6,
         n_max_agents: int = 100,
         n_max_foods: int = 40,
+        n_food_sources: int = 1,
         food_num_fn: _MaybeNumFn | list[_MaybeNumFn] = "constant",
         food_loc_fn: _MaybeLocatingFn | list[_MaybeLocatingFn] = "gaussian",
         agent_loc_fn: LocatingFn | str | tuple[str, ...] = "uniform",
@@ -380,14 +361,23 @@ class CircleForaging(Env):
         self._agent_radius = agent_radius
         self._food_radius = food_radius
         self._foodloc_interval = foodloc_interval
-        self._n_food_sources = _assert_n_food_sources(food_loc_fn, food_num_fn)
+        self._n_food_sources = n_food_sources
         self._food_loc_fns, self._initial_foodloc_states = [], []
         self._food_num_fns, self._initial_foodnum_states = [], []
-        for maybe_loc_fn in _as_list(food_loc_fn):
+        if n_food_sources > 1:
+            assert isinstance(food_loc_fn, (list, tuple)) and n_food_sources == len(
+                food_loc_fn
+            )
+            assert isinstance(food_num_fn, (list, tuple)) and n_food_sources == len(
+                food_num_fn
+            )
+        else:
+            food_loc_fn, food_num_fn = [food_loc_fn], [food_num_fn]  # type: ignore
+        for maybe_loc_fn in food_loc_fn:  # type: ignore
             fn, state = self._make_food_loc_fn(maybe_loc_fn)
             self._food_loc_fns.append(fn)
             self._initial_foodloc_states.append(state)
-        for maybe_num_fn in _as_list(food_num_fn):
+        for maybe_num_fn in food_num_fn:  # type: ignore
             fn, state = self._make_food_num_fn(maybe_num_fn)
             self._food_num_fns.append(fn)
             self._initial_foodnum_states.append(state)
@@ -860,8 +850,10 @@ class CircleForaging(Env):
 
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
+        n_initial = [fn.initial for fn in self._food_num_fns]
+        n_initial_cumsum = jnp.cumsum(jnp.array(n_initial))
         for i, key in enumerate(keys[self._n_initial_agents :]):
-            idx = i % self._n_food_sources
+            idx = jnp.digitize(i, n_initial_cumsum).astype(np.uint8)
             xy, ok = self._place_food_fns[idx](
                 loc_state=foodloc_states[idx],
                 key=key,

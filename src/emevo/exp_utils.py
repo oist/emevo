@@ -33,6 +33,7 @@ class CfConfig:
     n_initial_agents: int = 6
     n_max_agents: int = 100
     n_max_foods: int = 40
+    n_food_sources: int = 1
     food_num_fn: Union[str, Tuple[str, ...]] = "constant"
     food_loc_fn: Union[str, Tuple[str, ...]] = "gaussian"
     agent_loc_fn: Union[str, Tuple[str, ...]] = "uniform"
