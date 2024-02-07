@@ -3,8 +3,8 @@ n_max_agents = 150
 n_max_foods = 80
 n_food_sources = 2
 food_num_fn = [
-    ["logistic", 20, 0.01, 40],
-    ["logistic", 20, 0.01, 40],
+    ["logistic", 15, 0.01, 30],
+    ["logistic", 15, 0.01, 30],
 ]
 food_loc_fn = [
    ["gaussian", [360.0, 270.0], [48.0, 36.0]],

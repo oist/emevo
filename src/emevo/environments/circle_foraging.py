@@ -902,13 +902,13 @@ class CircleForaging(Env):
             .add(eaten)
         )
         sc = sd.static_circle
+        # Regenerate food for each source
         for i in range(self._n_food_sources):
             food_num = self._food_num_fns[i](
                 n_steps,
                 food_num_states[i].eaten(eaten_per_source[i]),
             )
             food_loc = food_loc_states[i]
-            # Generate new foods
             first_inactive = nth_true(jnp.logical_not(is_active), i + 1)
             new_food, ok = self._place_food_fns[i](
                 loc_state=food_loc,
@@ -927,7 +927,8 @@ class CircleForaging(Env):
             )
             is_active = jnp.logical_or(is_active, place)
             p = replace(sc.p, xy=xy)
-            sc = replace(sc, p=p, is_active=is_active)
+            label = jnp.where(place, i, sc.label)
+            sc = replace(sc, p=p, is_active=is_active, label=label)
             incr = jnp.sum(place)
             food_num_states[i] = food_num.recover(incr)
             food_loc_states[i] = food_loc.increment(incr)
