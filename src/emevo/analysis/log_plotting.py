@@ -47,7 +47,7 @@ def plot_rewards_3d(
     ax.set_xlabel(r1)
     ax.set_ylabel(r2)
     ax.set_zlabel("Birth Step")
-    if tree != None:
+    if tree is not None:
         x, y, z = scatter._offsets3d  # type: ignore
         x = x.data
         y = y.data
@@ -80,7 +80,7 @@ def plot_rewards_2d(
     palette = sns.color_palette("husl", len(labels))
     colors = [palette[label] for label in tr["label"]]
     ax.scatter(tr["birthtime"], tr[reward_axis], c=colors, s=5, marker="o")
-    if tree != None:
+    if tree is not None:
 
         def get_pos(ij: tuple[int, int]) -> tuple | None:
             stepi = tr.filter(pl.col("unique_id") == ij[0])
@@ -102,7 +102,7 @@ def plot_rewards_2d(
         ax.add_collection(edge_collection)
 
     for label in labels:
-        tr_selected = tr.filter(pl.col(f"in-label-{label}") == True).to_pandas()
+        tr_selected = tr.filter(pl.col(f"in-label-{label}")).to_pandas()
         order = 2 if len(tr_selected) > 100 else 1
         sns.regplot(
             data=tr_selected,

@@ -138,7 +138,10 @@ class MglWidget(QOpenGLWidget):
             else:
                 self._ctx = moderngl.create_context(require=410)
             if self._ctx.error != "GL_NO_ERROR":
-                warnings.warn(f"The qfollowing error occured: {self._ctx.error}", stacklevel=1)
+                warnings.warn(
+                    f"The qfollowing error occured: {self._ctx.error}",
+                    stacklevel=1,
+                )
             self._fbo = self._ctx.detect_framebuffer()
             self._renderer = self._make_renderer(self._ctx)
             self._initialized = True
@@ -267,7 +270,7 @@ class BarChart(QtWidgets.QWidget):
                 for i, vi in enumerate(value):
                     self.barsets[name].replace(i, vi)
             else:
-                warnings.warn(f"Invalid value for barset {value}")
+                warnings.warn(f"Invalid value for barset {value}", stacklevel=1)
 
         for name in list(self.barsets.keys()):
             if name not in values:
@@ -405,7 +408,6 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         else:
             self.resize(xlim * 4, ylim * 3)
         self._self_terminate = self_terminate
-
 
     def _check_exit(self) -> None:
         if self._mgl_widget.exitable() and self._self_terminate:

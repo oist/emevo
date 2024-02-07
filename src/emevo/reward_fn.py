@@ -72,6 +72,36 @@ class LinearReward(RewardFn):
         return jax.tree_map(_item_or_np, self.serializer(self.weight))
 
 
+class SinhReward(RewardFn):
+    weight: jax.Array
+    scale: float
+    extractor: Callable[..., jax.Array]
+    serializer: Callable[[jax.Array], dict[str, jax.Array]]
+
+    def __init__(
+        self,
+        *,  # order of arguments are a bit confusing here...
+        key: chex.PRNGKey,
+        n_agents: int,
+        n_weights: int,
+        extractor: Callable[..., jax.Array],
+        serializer: Callable[[jax.Array], dict[str, jax.Array]],
+        scale: float = 2.0,
+        std: float = 1.0,
+        mean: float = 0.0,
+    ) -> None:
+        self.weight = jax.random.normal(key, (n_agents, n_weights)) * std + mean
+        self.extractor = extractor
+        self.serializer = serializer
+
+    def __call__(self, *args) -> jax.Array:
+        extracted = self.extractor(*args)
+        return jax.vmap(jnp.dot)(extracted, self.weight)
+
+    def serialise(self) -> dict[str, float | NDArray]:
+        return jax.tree_map(_item_or_np, self.serializer(self.weight))
+
+
 class ExponentialReward(RewardFn):
     weight: jax.Array
     scale: jax.Array
