@@ -49,6 +49,7 @@ def test_place_agents(key) -> None:
             loc_fn=initloc_fn,
             loc_state=initloc_state,
             key=key,
+            n_steps=0,
             shaped=space.shaped,
             stated=stated,
         )
@@ -83,6 +84,7 @@ def test_place_foods(key) -> None:
             loc_fn=reprloc_fn,
             loc_state=reprloc_state,
             key=key,
+            n_steps=0,
             shaped=space.shaped,
             stated=stated,
         )

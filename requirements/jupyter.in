@@ -7,4 +7,5 @@ jupyterlab_code_formatter
 jupyterlab-lsp
 matplotlib
 polars
+pygraphviz
 seaborn

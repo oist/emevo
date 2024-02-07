@@ -213,6 +213,7 @@ class State(PyTreeOps):
     v: Velocity
     f: Force
     is_active: jax.Array
+    label: jax.Array
 
     @staticmethod
     def empty() -> Self:
@@ -221,16 +222,7 @@ class State(PyTreeOps):
             v=Velocity.zeros(0),
             f=Force.zeros(0),
             is_active=jnp.empty(0),
-        )
-
-    @staticmethod
-    def from_position(p: Position) -> Self:
-        n = p.batch_size()
-        return State(
-            p=p,
-            v=Velocity.zeros(n),
-            f=Force.zeros(n),
-            is_active=jnp.ones(n, dtype=bool),
+            label=jnp.zeros(0),
         )
 
     @staticmethod
@@ -240,6 +232,7 @@ class State(PyTreeOps):
             v=Velocity.zeros(n),
             f=Force.zeros(n),
             is_active=jnp.ones(n, dtype=bool),
+            label=jnp.zeros(n, dtype=jnp.uint8),
         )
 
     def apply_force_global(self, point: jax.Array, force: jax.Array) -> Self:
