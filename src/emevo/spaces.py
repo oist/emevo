@@ -1,4 +1,5 @@
 """Similar to gym.spaces.Space, but for jax"""
+
 from __future__ import annotations
 
 import abc

@@ -1,4 +1,5 @@
 """Utility for experiments"""
+
 from __future__ import annotations
 
 import dataclasses

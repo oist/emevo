@@ -1,4 +1,5 @@
 """Example of using circle foraging environment"""
+
 from __future__ import annotations
 
 import abc

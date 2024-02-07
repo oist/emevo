@@ -2,6 +2,7 @@
 A simple,  fast visualizer based on moderngl.
 Currently, only supports circles and lines.
 """
+
 from __future__ import annotations
 
 from typing import Callable, ClassVar

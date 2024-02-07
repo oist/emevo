@@ -1,5 +1,6 @@
 """ Evaluate birth and death probabilities.
 """
+
 import dataclasses
 from typing import Protocol
 

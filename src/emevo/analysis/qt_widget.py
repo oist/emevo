@@ -1,5 +1,6 @@
 """Qt widget with moderngl visualizer for advanced visualization.
 """
+
 from __future__ import annotations
 
 import enum
