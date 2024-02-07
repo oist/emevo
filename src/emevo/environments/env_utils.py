@@ -111,7 +111,7 @@ class ReprNumScheduled:
 
     def __call__(self, n_steps: int, state: FoodNumState) -> FoodNumState:
         index = jnp.digitize(n_steps, bins=self._intervals)
-        return jax.lax.switch(index, self._numfn_list, state)
+        return jax.lax.switch(index, self._numfn_list, n_steps, state)
 
 
 class ReprNum(str, enum.Enum):
@@ -364,7 +364,7 @@ class LocScheduled:
         state: LocatingState,
     ) -> jax.Array:
         index = jnp.digitize(n_steps, bins=self._intervals)
-        return jax.lax.switch(index, self._locfn_list, key, state)
+        return jax.lax.switch(index, self._locfn_list, key, n_steps, state)
 
 
 def nth_true(boolean_array: jax.Array, n: int) -> jax.Array:
