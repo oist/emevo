@@ -75,9 +75,9 @@ class LinearReward(RewardFn):
 
 class SinhReward(RewardFn):
     weight: jax.Array
-    scale: float
     extractor: Callable[..., jax.Array]
     serializer: Callable[[jax.Array], dict[str, jax.Array]]
+    scale: float
 
     def __init__(
         self,
@@ -87,17 +87,18 @@ class SinhReward(RewardFn):
         n_weights: int,
         extractor: Callable[..., jax.Array],
         serializer: Callable[[jax.Array], dict[str, jax.Array]],
-        scale: float = 2.0,
+        scale: float = 2.5,
         std: float = 1.0,
         mean: float = 0.0,
     ) -> None:
         self.weight = jax.random.normal(key, (n_agents, n_weights)) * std + mean
         self.extractor = extractor
         self.serializer = serializer
+        self.scale = scale
 
     def __call__(self, *args) -> jax.Array:
         extracted = self.extractor(*args)
-        return jax.vmap(jnp.dot)(extracted, self.weight)
+        return jax.vmap(jnp.dot)(extracted, jnp.sinh(self.weight * self.scale))
 
     def serialise(self) -> dict[str, float | NDArray]:
         return jax.tree_map(_item_or_np, self.serializer(self.weight))

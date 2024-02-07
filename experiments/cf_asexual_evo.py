@@ -39,6 +39,7 @@ from emevo.reward_fn import (
     RewardFn,
     SigmoidReward,
     SigmoidReward_01,
+    SinhReward,
     mutate_reward_fn,
     serialize_weight,
 )
@@ -62,6 +63,7 @@ class RewardKind(str, enum.Enum):
     EXPONENTIAL = "exponential"
     SIGMOID = "sigmoid"
     SIGMOID_01 = "sigmoid-01"
+    SINH = "sinh"
 
 
 @dataclasses.dataclass
@@ -98,6 +100,10 @@ class RewardExtractor:
     ) -> tuple[jax.Array, jax.Array]:
         act_input = self.act_coef * self.normalize_action(action)
         return jnp.concatenate((collision, act_input), axis=1), energy
+
+
+def linear_reward_serializer(w: jax.Array) -> dict[str, jax.Array]:
+    return serialize_weight(w, ["agent", "food", "wall", "action"])
 
 
 def exp_reward_serializer(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
@@ -456,10 +462,7 @@ def evolve(
         reward_fn_instance = LinearReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
-            serializer=lambda w: serialize_weight(
-                w,
-                ["agent", "food", "wall", "action"],
-            ),
+            serializer=linear_reward_serializer,
         )
     elif reward_fn == RewardKind.EXPONENTIAL:
         reward_fn_instance = ExponentialReward(
@@ -478,6 +481,12 @@ def evolve(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
             serializer=sigmoid_reward_serializer,
+        )
+    elif reward_fn == RewardKind.SINH:
+        reward_fn_instance = SinhReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_linear,
+            serializer=linear_reward_serializer,
         )
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")
