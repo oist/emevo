@@ -468,17 +468,6 @@ class CircleForaging(Env):
         self._agent_indices = jnp.arange(n_max_agents)
         self._food_indices = jnp.arange(n_max_foods)
         self._n_physics_iter = n_physics_iter
-        # Spaces
-        self.act_space = BoxSpace(low=min_force, high=max_force, shape=(2,))
-        self.obs_space = NamedTupleSpace(
-            CFObs,
-            sensor=BoxSpace(low=0.0, high=1.0, shape=(n_agent_sensors, N_OBJECTS)),
-            collision=BoxSpace(low=0.0, high=1.0, shape=(N_OBJECTS,)),
-            velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(2,)),
-            angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=()),
-            angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=()),
-            energy=BoxSpace(low=0.0, high=energy_capacity, shape=()),
-        )
         # Obs
         self._n_sensors = n_agent_sensors
         # Some cached constants
@@ -594,10 +583,11 @@ class CircleForaging(Env):
             ) -> jax.Array:
                 onehot = jax.nn.one_hot(label, self._n_food_sources)  # (FOOD, LABEL)
                 expanded_c2sc = jnp.expand_dims(c2sc, axis=2)  # (AGENT, FOOD, 1)
-                expanded_onehot = jnp.expand_dims(onehot, axis=2)  # (1, FOOD, LABEL)
+                expanded_onehot = jnp.expand_dims(onehot, axis=0)  # (1, FOOD, LABEL)
                 return jnp.max(expanded_c2sc * expanded_onehot, axis=1)
 
             self._food_collision = food_collision_with_labels
+            self._n_obj = N_OBJECTS + self._n_food_sources - 1
 
         else:
             self._sensor_obs = jax.jit(
@@ -612,6 +602,19 @@ class CircleForaging(Env):
             )
 
             self._food_collision = lambda c2sc, _: jnp.max(c2sc, axis=1, keepdims=True)
+            self._n_obj = N_OBJECTS
+
+        # Spaces
+        self.act_space = BoxSpace(low=min_force, high=max_force, shape=(2,))
+        self.obs_space = NamedTupleSpace(
+            CFObs,
+            sensor=BoxSpace(low=0.0, high=1.0, shape=(n_agent_sensors, self._n_obj)),
+            collision=BoxSpace(low=0.0, high=1.0, shape=(self._n_obj,)),
+            velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(2,)),
+            angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=()),
+            angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=()),
+            energy=BoxSpace(low=0.0, high=energy_capacity, shape=()),
+        )
 
         # For visualization
         self._food_color = np.array(list(food_color))
@@ -716,7 +719,7 @@ class CircleForaging(Env):
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
         food_collision = self._food_collision(c2sc, stated.static_circle.label)
-        collision = jnp.stack(
+        collision = jnp.concatenate(
             (
                 jnp.max(c2c, axis=1, keepdims=True),  # (N, 1)
                 food_collision,  # (N, N_LABELS)
@@ -749,7 +752,7 @@ class CircleForaging(Env):
         )
         # Construct obs
         obs = CFObs(
-            sensor=sensor_obs.reshape(-1, self._n_sensors, 3),
+            sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
             collision=collision,
             angle=stated.circle.p.angle,
             velocity=stated.circle.v.xy,
@@ -866,7 +869,7 @@ class CircleForaging(Env):
         )
         sensor_obs = self._sensor_obs(stated=physics)
         obs = CFObs(
-            sensor=sensor_obs.reshape(-1, self._n_sensors, N_OBJECTS),
+            sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
             collision=jnp.zeros((N, N_OBJECTS), dtype=bool),
             angle=physics.circle.p.angle,
             velocity=physics.circle.v.xy,

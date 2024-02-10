@@ -86,6 +86,7 @@ def reset_multifood_env(
         ],
         agent_radius=AGENT_RADIUS,
         food_radius=FOOD_RADIUS,
+        observe_food_label=True,
     )
     state, timestep = env.reset(key)
     return typing.cast(CircleForaging, env), state, timestep
@@ -248,6 +249,49 @@ def test_encount_and_collision(key: chex.PRNGKey) -> None:
 
         if p2p4_ok and p3_ok:
             break
+        n_iter += 1
+
+    assert n_iter < 99
+
+
+def test_collision_with_foodlabels(key: chex.PRNGKey) -> None:
+    #   O->x
+    # O->x O->x
+    env, state, _ = reset_multifood_env(key)
+    step = jax.jit(env.step)
+    # Rotate agent to right
+    act1 = jnp.zeros((10, 2)).at[:3, 0].set(20)
+    while True:
+        state, ts = step(state, act1)
+        assert jnp.all(jnp.logical_not(ts.encount))
+        if state.physics.circle.p.angle[0] <= jnp.pi * 1.51:
+            break
+
+    # Move it to right
+    act2 = act1.at[:3, 1].set(20.0)
+    n_iter = 0
+    for _ in range(100):
+        p = state.physics.circle.p.xy[:3]
+        state, ts = step(state, act2)
+
+        to_food = jnp.linalg.norm(
+            p - jnp.array([[60.0, 60.0], [80.0, 90.0], [100.0, 60.0]]),
+            axis=1,
+        )
+        if jnp.any(ts.obs.collision):
+            assert jnp.all(to_food <= AGENT_RADIUS + FOOD_RADIUS + 0.1)
+            chex.assert_trees_all_close(
+                ts.obs.collision[:3],
+                jnp.array(
+                    [
+                        [0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 0.0],
+                    ]
+                ),
+            )
+            break
+
         n_iter += 1
 
     assert n_iter < 99
