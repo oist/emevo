@@ -188,6 +188,7 @@ def exec_rollout(
             static_circle_axy=phys.static_circle.p.into_axy(),
             circle_is_active=phys.circle.is_active,
             static_circle_is_active=phys.static_circle.is_active,
+            static_circle_label=phys.static_circle.label,
         )
         return (state_t1db, obs_t1), (rollout, log, phys_state)
 

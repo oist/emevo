@@ -296,6 +296,12 @@ def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
     return res
 
 
+def _get_sc_color(colors: NDArray, state: State) -> NDArray:
+    label = np.array(state.label)
+    c = colors[label].astype(np.float32) / 255.0
+    return c
+
+
 class MglRenderer:
     """Render pymunk environments to the given moderngl context."""
 
@@ -310,6 +316,7 @@ class MglRenderer:
         stated: StateDict,
         voffsets: tuple[int, ...] = (),
         hoffsets: tuple[int, ...] = (),
+        sc_color_opt: NDArray | None = None,
         sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
     ) -> None:
         self._context = context
@@ -325,6 +332,11 @@ class MglRenderer:
         else:
             self._range_min = y_range
             self._circle_scaling = screen_height / y_range * 2
+
+        if sc_color_opt is None:
+            self._sc_color = np.array([[254, 2, 162]])
+        else:
+            self._sc_color = sc_color_opt
 
         self._space = space
         circle_program = self._make_gl_program(
@@ -343,7 +355,7 @@ class MglRenderer:
             scales=scales,
             colors=colors,
         )
-        points, scales, colors = _collect_circles(
+        points, scales, _ = _collect_circles(
             space.shaped.static_circle,
             stated.static_circle,
             self._circle_scaling,
@@ -353,7 +365,7 @@ class MglRenderer:
             program=circle_program,
             points=points,
             scales=scales,
-            colors=colors,
+            colors=_get_sc_color(self._sc_color, stated.static_circle),
         )
         static_segment_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
@@ -469,12 +481,15 @@ class MglRenderer:
         circle_colors = self._get_colors(circle_colors_default, circle_colors)
         if self._circles.update(circle_points, circle_scale, circle_colors):
             self._circles.render()
-        sc_points, sc_scale, sc_colors_default = _collect_circles(
+        sc_points, sc_scale, _ = _collect_circles(
             self._space.shaped.static_circle,
             stated.static_circle,
             self._circle_scaling,
         )
-        sc_colors = self._get_colors(sc_colors_default, sc_colors)
+        sc_colors = self._get_colors(
+            _get_sc_color(self._sc_color, stated.static_circle),
+            sc_colors,
+        )
         if self._static_circles.update(sc_points, sc_scale, sc_colors):
             self._static_circles.render()
         if self._sensors is not None and self._collect_sensors is not None:
@@ -497,6 +512,7 @@ class MglVisualizer:
         y_range: float,
         space: Space,
         stated: StateDict,
+        food_color: NDArray,
         figsize: tuple[float, float] | None = None,
         voffsets: tuple[int, ...] = (),
         hoffsets: tuple[int, ...] = (),
@@ -528,6 +544,7 @@ class MglVisualizer:
             stated=stated,
             voffsets=voffsets,
             hoffsets=hoffsets,
+            sc_color_opt=food_color,
             sensor_fn=sensor_fn,
         )
 

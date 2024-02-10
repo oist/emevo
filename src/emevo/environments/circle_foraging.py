@@ -239,7 +239,44 @@ def _observe_closest(
     return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
 
 
-_vmap_obs = jax.vmap(_observe_closest, in_axes=(None, 0, 0, None))
+def _observe_closest_with_food_labels(
+    n_food_labels: int,
+    shaped: ShapeDict,
+    p1: jax.Array,
+    p2: jax.Array,
+    stated: StateDict,
+) -> jax.Array:
+    def cr(shape: Circle, state: State) -> Raycast:
+        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
+
+    rc = cr(shaped.circle, stated.circle)
+    to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    rc = cr(shaped.static_circle, stated.static_circle)
+    to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    foodlabel_onehot = jax.nn.one_hot(
+        stated.static_circle.label,
+        n_food_labels,
+        dtype=bool,
+    )
+    to_sc_all = jnp.where(foodlabel_onehot, jnp.expand_dims(to_sc, axis=1), -1.0)
+    rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
+    to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    obs = jnp.concatenate(
+        (
+            jnp.max(to_c, keepdims=True),
+            # (N_FOOD, N_LABEL) -> (N_LABEL,)
+            jnp.max(to_sc_all, axis=0),
+            jnp.max(to_seg, keepdims=True),
+        )
+    )
+    return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
+
+
+_vmap_obs_closest = jax.vmap(_observe_closest, in_axes=(None, 0, 0, None))
+_vmap_obs_closest_with_food = jax.vmap(
+    _observe_closest_with_food_labels,
+    in_axes=(None, None, 0, 0, None),
+)
 
 
 def _get_sensors(
@@ -269,11 +306,15 @@ def get_sensor_obs(
     n_sensors: int,
     sensor_range: tuple[float, float],
     sensor_length: float,
+    n_food_labels: int | None,
     stated: StateDict,
 ) -> jax.Array:
     assert stated.circle is not None
     p1, p2 = _get_sensors(shaped, n_sensors, sensor_range, sensor_length, stated)
-    return _vmap_obs(shaped, p1, p2, stated)
+    if n_food_labels is None:
+        return _vmap_obs_closest(shaped, p1, p2, stated)
+    else:
+        return _vmap_obs_closest_with_food(n_food_labels, shaped, p1, p2, stated)
 
 
 @functools.partial(jax.jit, static_argnums=(0, 1))
@@ -318,6 +359,8 @@ class CircleForaging(Env):
         food_num_fn: _MaybeNumFn | list[_MaybeNumFn] = "constant",
         food_loc_fn: _MaybeLocatingFn | list[_MaybeLocatingFn] = "gaussian",
         agent_loc_fn: LocatingFn | str | tuple[str, ...] = "uniform",
+        food_energy_coef: Iterable[float] = (1.0,),
+        food_color: Iterable[tuple] = (FOOD_COLOR,),
         xlim: tuple[float, float] = (0.0, 200.0),
         ylim: tuple[float, float] = (0.0, 200.0),
         env_radius: float = 120.0,
@@ -338,6 +381,7 @@ class CircleForaging(Env):
         min_force: float = -20.0,
         init_energy: float = 20.0,
         energy_capacity: float = 100.0,
+        observe_food_label: bool = False,
         force_energy_consumption: float = 0.01 / 40.0,
         basic_energy_consumption: float = 0.0,
         energy_share_ratio: float = 0.4,
@@ -362,6 +406,10 @@ class CircleForaging(Env):
         self._food_radius = food_radius
         self._foodloc_interval = foodloc_interval
         self._n_food_sources = n_food_sources
+        self._food_energy_coef = jnp.expand_dims(
+            jnp.array(list(food_energy_coef)),
+            axis=0,
+        )
         self._food_loc_fns, self._initial_foodloc_states = [], []
         self._food_num_fns, self._initial_foodnum_states = [], []
         if n_food_sources > 1:
@@ -523,17 +571,50 @@ class CircleForaging(Env):
             sensor_range_tuple = SensorRange(sensor_range).as_tuple()
         else:
             sensor_range_tuple = sensor_range
-        self._sensor_obs = jax.jit(
-            functools.partial(
-                get_sensor_obs,
-                shaped=self._physics.shaped,
-                n_sensors=n_agent_sensors,
-                sensor_range=sensor_range_tuple,
-                sensor_length=sensor_length,
+
+        if observe_food_label:
+            assert (
+                self._n_food_sources > 1
+            ), "n_food_sources should be larager than 1 to include food label obs"
+
+            self._sensor_obs = jax.jit(
+                functools.partial(
+                    get_sensor_obs,
+                    shaped=self._physics.shaped,
+                    n_sensors=n_agent_sensors,
+                    sensor_range=sensor_range_tuple,
+                    sensor_length=sensor_length,
+                    n_food_labels=self._n_food_sources,
+                )
             )
-        )
+
+            def food_collision_with_labels(
+                c2sc: jax.Array,
+                label: jax.Array,
+            ) -> jax.Array:
+                onehot = jax.nn.one_hot(label, self._n_food_sources)  # (FOOD, LABEL)
+                expanded_c2sc = jnp.expand_dims(c2sc, axis=2)  # (AGENT, FOOD, 1)
+                expanded_onehot = jnp.expand_dims(onehot, axis=2)  # (1, FOOD, LABEL)
+                return jnp.max(expanded_c2sc * expanded_onehot, axis=1)
+
+            self._food_collision = food_collision_with_labels
+
+        else:
+            self._sensor_obs = jax.jit(
+                functools.partial(
+                    get_sensor_obs,
+                    shaped=self._physics.shaped,
+                    n_sensors=n_agent_sensors,
+                    sensor_range=sensor_range_tuple,
+                    sensor_length=sensor_length,
+                    n_food_labels=None,
+                )
+            )
+
+            self._food_collision = lambda c2sc, _: jnp.max(c2sc, axis=1, keepdims=True)
 
         # For visualization
+        self._food_color = np.array(list(food_color))
         self._get_sensors = jax.jit(
             functools.partial(
                 _get_sensors,
@@ -634,10 +715,13 @@ class CircleForaging(Env):
         c2c = self._physics.get_contact_mat("circle", "circle", contacts)
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
-        # This is also used in computing energy_delta
-        food_collision = jnp.max(c2sc, axis=1)
+        food_collision = self._food_collision(c2sc, stated.static_circle.label)
         collision = jnp.stack(
-            (jnp.max(c2c, axis=1), food_collision, jnp.max(seg2c, axis=0)),
+            (
+                jnp.max(c2c, axis=1, keepdims=True),  # (N, 1)
+                food_collision,  # (N, N_LABELS)
+                jnp.max(seg2c, axis=0, keepdims=True).T,
+            ),
             axis=1,
         )
         # Gather sensor obs
@@ -645,7 +729,7 @@ class CircleForaging(Env):
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_delta = (
-            food_collision
+            jnp.sum(food_collision * self._food_energy_coef, axis=1)
             - self._force_energy_consumption * force_norm
             - self._basic_energy_consumption
         )
@@ -949,6 +1033,7 @@ class CircleForaging(Env):
             y_range=self._y_range,
             space=self._physics,
             stated=state.physics,
+            food_color=self._food_color,
             figsize=figsize,
             backend=backend,
             sensor_fn=self._get_sensors,

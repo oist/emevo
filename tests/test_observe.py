@@ -11,6 +11,7 @@ from emevo.environments.circle_foraging import (
     CFState,
     CircleForaging,
     _observe_closest,
+    _observe_closest_with_food_labels,
     get_sensor_obs,
 )
 
@@ -56,36 +57,81 @@ def reset_env(key: chex.PRNGKey) -> tuple[CircleForaging, CFState, TimeStep[CFOb
     return typing.cast(CircleForaging, env), state, timestep
 
 
+def reset_multifood_env(
+    key: chex.PRNGKey,
+) -> tuple[CircleForaging, CFState, TimeStep[CFObs]]:
+    #   O x
+    # O x O x  (O: agent, x: food)
+    env = make(
+        "CircleForaging-v0",
+        env_shape="square",
+        n_max_agents=N_MAX_AGENTS,
+        n_initial_agents=3,
+        agent_loc_fn=(
+            "periodic",
+            [40.0, 60.0],
+            [60.0, 90.0],
+            [80.0, 60.0],
+        ),
+        n_food_sources=3,
+        food_loc_fn=[
+            ("periodic", [60.0, 60.0]),  # 0
+            ("periodic", [80.0, 90.0]),  # 1
+            ("periodic", [100.0, 60.0]),  # 2
+        ],
+        food_num_fn=[
+            ("constant", 1),
+            ("constant", 1),
+            ("constant", 1),
+        ],
+        agent_radius=AGENT_RADIUS,
+        food_radius=FOOD_RADIUS,
+    )
+    state, timestep = env.reset(key)
+    return typing.cast(CircleForaging, env), state, timestep
+
+
 def test_observe_closest(key: chex.PRNGKey) -> None:
     env, state, _ = reset_env(key)
-    obs = _observe_closest(
-        env._physics.shaped,
-        jnp.array([40.0, 10.0]),
-        jnp.array([40.0, 30.0]),
-        state.physics,
-    )
+
+    def observe(p1: jax.Array, p2: jax.Array) -> jax.Array:
+        return _observe_closest(
+            env._physics.shaped,
+            jnp.array(p1),
+            jnp.array(p2),
+            state.physics,
+        )
+
+    obs = observe([40.0, 10.0], [40.0, 30.0])
     chex.assert_trees_all_close(obs, jnp.ones(3) * -1)
-    obs = _observe_closest(
-        env._physics.shaped,
-        jnp.array([40.0, 10.0]),
-        jnp.array([40.0, 110.0]),
-        state.physics,
-    )
+    obs = observe([40.0, 10.0], [40.0, 110.0])
     chex.assert_trees_all_close(obs, jnp.array([0.6, -1.0, -1.0]))
-    obs = _observe_closest(
-        env._physics.shaped,
-        jnp.array([60.0, 10.0]),
-        jnp.array([60.0, 110.0]),
-        state.physics,
-    )
+    obs = observe([60.0, 10.0], [60.0, 110.0])
     chex.assert_trees_all_close(obs, jnp.array([-1.0, 0.54, -1.0]))
-    obs = _observe_closest(
-        env._physics.shaped,
-        jnp.array([130.0, 60.0]),
-        jnp.array([230.0, 60.0]),
-        state.physics,
-    )
+    obs = observe([130.0, 60.0], [230.0, 60.0])
     chex.assert_trees_all_close(obs, jnp.array([-1.0, -1.0, 0.3]))
+
+
+def test_observe_closest_with_foodlabels(key: chex.PRNGKey) -> None:
+    env, state, _ = reset_multifood_env(key)
+
+    def observe(p1: jax.Array, p2: jax.Array) -> jax.Array:
+        return _observe_closest_with_food_labels(
+            3,
+            env._physics.shaped,
+            jnp.array(p1),
+            jnp.array(p2),
+            state.physics,
+        )
+
+    obs = observe([40.0, 10.0], [40.0, 110.0])
+    chex.assert_trees_all_close(obs, jnp.array([0.6, -1.0, -1.0, -1.0, -1.0]))
+    obs = observe([60.0, 10.0], [60.0, 110.0])
+    chex.assert_trees_all_close(obs, jnp.array([-1.0, 0.54, -1.0, -1.0, -1.0]))
+    obs = observe([100.0, 10.0], [100.0, 110.0])
+    chex.assert_trees_all_close(obs, jnp.array([-1.0, -1.0, -1.0, 0.54, -1.0]))
+    obs = observe([100.0, 90.0], [0.0, 90.0])
+    chex.assert_trees_all_close(obs, jnp.array([-1.0, -1.0, 0.84, -1.0, -1.0]))
 
 
 def test_sensor_obs(key: chex.PRNGKey) -> None:
@@ -95,6 +141,7 @@ def test_sensor_obs(key: chex.PRNGKey) -> None:
         3,
         (-90, 90),
         100.0,
+        None,
         state.physics,
     )
     chex.assert_shape(sensor_obs, (30, 3))
@@ -129,6 +176,40 @@ def test_sensor_obs(key: chex.PRNGKey) -> None:
         sensor_obs[1],
         sensor_obs[13],
         jnp.array([-1.0, -1.0, -1.0]),
+    )
+
+
+def test_sensor_obs_with_foodlabels(key: chex.PRNGKey) -> None:
+    env, state, _ = reset_multifood_env(key)
+    sensor_obs = get_sensor_obs(
+        env._physics.shaped,
+        3,
+        (-90, 90),
+        100.0,
+        3,
+        state.physics,
+    )
+    chex.assert_shape(sensor_obs, (30, 5))
+    # Food 0 is to the right/left
+    chex.assert_trees_all_close(
+        sensor_obs[0],
+        sensor_obs[8],
+        jnp.array([-1.0, 0.94, -1.0, -1.0, -1.0]),
+    )
+    # Food 1 is to the right
+    chex.assert_trees_all_close(
+        sensor_obs[3],
+        jnp.array([-1.0, -1.0, 0.94, -1.0, -1.0]),
+    )
+    # Food 1 is above
+    chex.assert_trees_all_close(
+        sensor_obs[7],
+        jnp.array([-1.0, -1.0, 0.84, -1.0, -1.0]),
+    )
+    # Food 2 is to the right
+    chex.assert_trees_all_close(
+        sensor_obs[6],
+        jnp.array([-1.0, -1.0, -1.0, 0.94, -1.0]),
     )
 
 

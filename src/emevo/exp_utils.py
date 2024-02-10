@@ -38,6 +38,8 @@ class CfConfig:
     food_num_fn: Union[str, Tuple[str, ...]] = "constant"
     food_loc_fn: Union[str, Tuple[str, ...]] = "gaussian"
     agent_loc_fn: Union[str, Tuple[str, ...]] = "uniform"
+    food_energy_coef: Tuple[float, ...] = (1.0,)
+    food_color: Tuple[Tuple[int, int, int, int], ...] = ((254, 2, 162, 255),)
     xlim: Tuple[float, float] = (0.0, 200.0)
     ylim: Tuple[float, float] = (0.0, 200.0)
     env_radius: float = 120.0
@@ -196,15 +198,23 @@ class SavedPhysicsState:
     circle_is_active: jax.Array
     static_circle_axy: jax.Array
     static_circle_is_active: jax.Array
+    static_circle_label: jax.Array
 
     @staticmethod
     def load(path: Path) -> Self:
         npzfile = np.load(path)
+        static_circle_is_active=jnp.array(npzfile["static_circle_is_active"])
+        # For backward compatibility
+        if "static_circle_label" in npzfile:
+            static_circle_label = jnp.array(npzfile["static_circle_label"])
+        else:
+            static_circle_label = jnp.zeros(static_circle_is_active.shape[0], dtype=jnp.uint8)
         return SavedPhysicsState(
             circle_axy=jnp.array(npzfile["circle_axy"]),
             circle_is_active=jnp.array(npzfile["circle_is_active"]),
             static_circle_axy=jnp.array(npzfile["static_circle_axy"]),
-            static_circle_is_active=jnp.array(npzfile["static_circle_is_active"]),
+            static_circle_is_active=static_circle_is_active,
+            static_circle_label=static_circle_label,
         )
 
     def set_by_index(self, i: int, phys: StateDict) -> StateDict:
@@ -220,6 +230,10 @@ class SavedPhysicsState:
         phys = phys.nested_replace(
             "static_circle.is_active",
             self.static_circle_is_active[i],
+        )
+        phys = phys.nested_replace(
+            "static_circle.label",
+            self.static_circle_label[i],
         )
         return phys
 
