@@ -69,17 +69,21 @@ class RewardKind(str, enum.Enum):
 class RewardExtractor:
     act_space: BoxSpace
     act_coef: float
-    max_norm: jax.Array = dataclasses.field(init=False)
+    mask: dataclasses.InitVar[str] = "1111"
+    _mask_array: jax.Array = dataclasses.field(init=False)
+    _max_norm: jax.Array = dataclasses.field(init=False)
 
-    def __post_init__(self) -> None:
-        self.max_norm = jnp.sqrt(
+    def __post_init__(self, mask: str) -> None:
+        mask_array = jnp.array([x == "1" for x in mask])
+        self._mask_array = jnp.expand_dims(mask_array, axis=0)
+        self._max_norm = jnp.sqrt(
             jnp.sum(self.act_space.high**2, axis=-1, keepdims=True)
         )
 
     def normalize_action(self, action: jax.Array) -> jax.Array:
         scaled = self.act_space.sigmoid_scale(action)
         norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
-        return norm / self.max_norm
+        return norm / self._max_norm
 
     def extract_linear(
         self,
@@ -89,7 +93,7 @@ class RewardExtractor:
     ) -> jax.Array:
         del energy
         act_input = self.act_coef * self.normalize_action(action)
-        return jnp.concatenate((collision, act_input), axis=1)
+        return jnp.concatenate((collision, act_input), axis=1) * self._mask_array
 
     def extract_sigmoid(
         self,
@@ -98,7 +102,8 @@ class RewardExtractor:
         energy: jax.Array,
     ) -> tuple[jax.Array, jax.Array]:
         act_input = self.act_coef * self.normalize_action(action)
-        return jnp.concatenate((collision, act_input), axis=1), energy
+        reward_input = jnp.concatenate((collision, act_input), axis=1)
+        return reward_input * self._mask_array, energy
 
 
 def linear_reward_serializer(w: jax.Array) -> dict[str, jax.Array]:
@@ -416,6 +421,7 @@ def evolve(
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
+    reward_mask: str = "1111",
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.FULL,
@@ -450,6 +456,7 @@ def evolve(
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
+        mask=reward_mask,
     )
     common_rewardfn_args = {
         "key": reward_key,
