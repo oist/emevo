@@ -1,4 +1,4 @@
-"""Asexual reward evolution with Circle Foraging"""
+"""[WIP] Asexual reward evolution with CircleForagingWithSmell"""
 import dataclasses
 import enum
 import json
@@ -445,7 +445,7 @@ def evolve(
     cfconfig.force_energy_consumption = action_cost
     gopsconfig.params["mutation_prob"] = mutation_prob
     # Make env
-    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
@@ -535,7 +535,7 @@ def replay(
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
     end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
@@ -574,7 +574,7 @@ def widget(
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
         log_ds = None
