@@ -95,7 +95,7 @@ def reset_multifood_env(
 def test_observe_closest(key: chex.PRNGKey) -> None:
     env, state, _ = reset_env(key)
 
-    def observe(p1: jax.Array, p2: jax.Array) -> jax.Array:
+    def observe(p1: list[float], p2: list[float]) -> jax.Array:
         return _observe_closest(
             env._physics.shaped,
             jnp.array(p1),
@@ -116,7 +116,7 @@ def test_observe_closest(key: chex.PRNGKey) -> None:
 def test_observe_closest_with_foodlabels(key: chex.PRNGKey) -> None:
     env, state, _ = reset_multifood_env(key)
 
-    def observe(p1: jax.Array, p2: jax.Array) -> jax.Array:
+    def observe(p1: list[float], p2: list[float]) -> jax.Array:
         return _observe_closest_with_food_labels(
             3,
             env._physics.shaped,

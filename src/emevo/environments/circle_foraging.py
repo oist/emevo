@@ -389,6 +389,8 @@ class CircleForaging(Env):
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
         max_place_attempts: int = 10,
+        # Only for CircleForagingWithSmell, but placed here to keep config class simple
+        smell_decay_factor: float = 0.01,
     ) -> None:
         # Coordinate and range
         if env_shape == "square":
@@ -627,6 +629,9 @@ class CircleForaging(Env):
                 sensor_length=sensor_length,
             )
         )
+
+        # Smell
+        self._smell_decay_factor = smell_decay_factor
 
     @staticmethod
     def _make_food_num_fn(

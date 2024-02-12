@@ -1,5 +1,6 @@
 -r format.in
 -e .[analysis,video]
+celluloid
 ipympl
 ipywidgets
 jupyterlab
