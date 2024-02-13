@@ -67,6 +67,9 @@ class CfConfig:
     n_position_iter: int = 2
     n_physics_iter: int = 5
     max_place_attempts: int = 10
+    smell_decay_factor: float = 0.01
+    smell_diff_max: float = 1.0
+    smell_diff_coef: float = 100.0
 
     def apply_override(self, override: str) -> None:
         if 0 < len(override):

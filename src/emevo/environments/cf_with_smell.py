@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import NamedTuple
+from dataclasses import replace
+from typing import NamedTuple, overload
 
 import chex
 import jax
@@ -110,7 +111,11 @@ class CircleForagingWithSmell(CircleForaging):
                 high=float(self._n_max_foods),
                 shape=(self._n_food_sources,),
             ),
-            smell_diff=BoxSpace(low=0.0, high=1.0, shape=(self._n_food_sources,)),
+            smell_diff=BoxSpace(
+                low=-self._smell_diff_max,
+                high=self._smell_diff_max,
+                shape=(self._n_food_sources,),
+            ),
         )
 
     def step(  # type: ignore
@@ -126,7 +131,11 @@ class CircleForagingWithSmell(CircleForaging):
             cf_state.physics.static_circle,
             sensor_xy,
         )
-        smell_diff = smell - state.smell
+        smell_diff = jnp.clip(
+            (smell - state.smell) * self._smell_diff_coef,
+            a_min=-self._smell_diff_max,
+            a_max=self._smell_diff_max,
+        )
         state = _as_cfsstate(cf_state, smell)
         obs = _as_cfsobs(ts.obs, smell, smell_diff)
         return state, TimeStep(encount=ts.encount, obs=obs)
@@ -136,12 +145,11 @@ class CircleForagingWithSmell(CircleForaging):
         key: chex.PRNGKey,
     ) -> tuple[CFSState, TimeStep[CFSObs]]:
         cf_state, ts = super().reset(key)
-        sensor_xy = cf_state.physics.circle.p.xy.at[:, 1].add(self._agent_radius)
         smell = _vmap_compute_smell(
             self._n_food_sources,
             self._smell_decay_factor,
             cf_state.physics.static_circle,
-            sensor_xy,
+            cf_state.physics.circle.p.xy.at[:, 1].add(self._agent_radius),
         )
         state = _as_cfsstate(cf_state, smell)
         obs = _as_cfsobs(
@@ -150,3 +158,18 @@ class CircleForagingWithSmell(CircleForaging):
             jnp.zeros((self.n_max_agents, self._n_food_sources)),
         )
         return state, TimeStep(encount=ts.encount, obs=obs)
+
+    def activate(  # type: ignore
+        self,
+        state: CFSState,
+        is_parent: jax.Array,
+    ) -> tuple[CFSState, jax.Array]:
+        cf_state, parent_id = super().activate(state, is_parent)
+        smell = _vmap_compute_smell(
+            self._n_food_sources,
+            self._smell_decay_factor,
+            cf_state.physics.static_circle,
+            cf_state.physics.circle.p.xy.at[:, 1].add(self._agent_radius),
+        )
+        new_state = _as_cfsstate(cf_state, smell)
+        return new_state, parent_id
