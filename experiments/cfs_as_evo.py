@@ -119,7 +119,7 @@ def exp_reward_serializer(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array
     w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action", "w_smell"])
     scale_dict = serialize_weight(
         scale,
-        ["scale_agent", "scale_food", "scale_wall", "scale_action", "alpha_smell"],
+        ["scale_agent", "scale_food", "scale_wall", "scale_action", "scale_smell"],
     )
     return w_dict | scale_dict
 
