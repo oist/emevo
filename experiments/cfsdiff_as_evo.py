@@ -1,4 +1,4 @@
-""" Asexual reward evolution with CircleForagingWithSmell"""
+"""Asexual reward evolution with CircleForagingWithSmell"""
 import dataclasses
 import enum
 import json
@@ -159,7 +159,7 @@ def exec_rollout(
         )
         obs_t1 = timestep.obs
         energy = state_t.status.energy
-        smell = state_t.smell  # type: ignore
+        smell = obs_t.smell_diff  # type: ignore
         rewards = reward_fn(obs_t1.collision, actions, energy, smell).reshape(-1, 1)
         rollout = Rollout(
             observations=obs_t_array,
@@ -462,7 +462,7 @@ def evolve(
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
-        smell_coef=1.0 / cfconfig.n_max_foods,
+        smell_coef=0.01,
         mask=reward_mask,
     )
     common_rewardfn_args = {
