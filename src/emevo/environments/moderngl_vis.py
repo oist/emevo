@@ -337,7 +337,7 @@ class MglRenderer:
             self._circle_scaling = screen_height / y_range * 2
 
         if sc_color_opt is None:
-            self._sc_color = np.array([[254, 2, 162]])
+            self._sc_color = np.array([[254, 2, 162, 255]])
         else:
             self._sc_color = sc_color_opt
 
