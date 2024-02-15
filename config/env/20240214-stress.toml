@@ -4,7 +4,6 @@ n_max_foods = 60
 food_num_fn = [
    "scheduled",
    1024000,
-   ["logistic", 20, 0.01, 60],
    ["logistic", 20, 0.01, 50],
    ["logistic", 20, 0.01, 40],
    ["logistic", 20, 0.01, 30],
