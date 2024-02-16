@@ -250,7 +250,7 @@ class BarChart(QtWidgets.QWidget):
         self.series.append(barset)
         if "_" in name:  # Shorten name
             us_ind = name.index("_")
-            barset.setLabel(f"{name[0]}_{name[us_ind + 1: us_ind + 3]}")
+            barset.setLabel(f"{name[0]}_{name[us_ind + 1: us_ind + 4]}")
         return barset
 
     def _update_yrange(self, values: Iterable[float | list[float]]) -> None:
