@@ -1,7 +1,7 @@
 n_initial_agents = 50
 n_max_agents = 150
-n_max_foods = 60
-food_num_fn = ["logistic", 20, 0.01, 60]
+n_max_foods = 80
+food_num_fn = ["logistic", 40, 0.01, 80]
 food_loc_fn = [
    "scheduled",
    1024000,
