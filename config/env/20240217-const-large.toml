@@ -1,6 +1,6 @@
 n_initial_agents = 50
 n_max_agents = 200
-n_max_foods = 50
+n_max_foods = 60
 food_num_fn = ["constant", 50]
 food_loc_fn = "gaussian"
 agent_loc_fn = "uniform"
