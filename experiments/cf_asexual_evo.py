@@ -106,11 +106,11 @@ class RewardExtractor:
         return reward_input * self._mask_array, energy
 
 
-def linear_reward_serializer(w: jax.Array) -> dict[str, jax.Array]:
+def linear_rs(w: jax.Array) -> dict[str, jax.Array]:
     return serialize_weight(w, ["agent", "food", "wall", "action"])
 
 
-def exp_reward_serializer(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
+def exp_rs(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
     w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
     scale_dict = serialize_weight(
         scale,
@@ -119,11 +119,38 @@ def exp_reward_serializer(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array
     return w_dict | scale_dict
 
 
-def sigmoid_reward_serializer(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
+def sigmoid_rs(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
     w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
     alpha_dict = serialize_weight(
         alpha,
         ["alpha_agent", "alpha_food", "alpha_wall", "alpha_action"],
+    )
+    return w_dict | alpha_dict
+
+
+def linear_rs_withp(w: jax.Array) -> dict[str, jax.Array]:
+    return serialize_weight(w, ["agent", "food", "poison", "wall", "action"])
+
+
+def exp_rs_withp(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
+    w_dict = serialize_weight(
+        w,
+        ["w_agent", "w_food", "w_poison", "w_wall", "w_action"],
+    )
+    scale_dict = serialize_weight(
+        scale,
+        ["scale_agent", "scale_food", "scale_poison", "scale_wall", "scale_action"],
+    )
+    return w_dict | scale_dict
+
+
+def sigmoid_rs_withp(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
+    w_dict = serialize_weight(
+        w, ["w_agent", "w_food", "w_poison", "w_wall", "w_action"]
+    )
+    alpha_dict = serialize_weight(
+        alpha,
+        ["alpha_agent", "alpha_food", "w_poison", "alpha_wall", "alpha_action"],
     )
     return w_dict | alpha_dict
 
@@ -421,12 +448,13 @@ def evolve(
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
-    reward_mask: str = "1111",
+    reward_mask: Optional[str] = None,
     reward_fn: RewardKind = RewardKind.LINEAR,
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.FULL,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
+    poison_reward: bool = False,
     debug_vis: bool = False,
 ) -> None:
     # Load config
@@ -441,6 +469,12 @@ def evolve(
     cfconfig.apply_override(env_override)
     bdconfig.apply_birth_override(birth_override)
     bdconfig.apply_hazard_override(hazard_override)
+
+    if reward_mask is None:
+        if poison_reward:
+            reward_mask = "11111"
+        else:
+            reward_mask = "1111"
 
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
@@ -461,7 +495,7 @@ def evolve(
     common_rewardfn_args = {
         "key": reward_key,
         "n_agents": cfconfig.n_max_agents,
-        "n_weights": 4,
+        "n_weights": 5 if poison_reward else 4,
         "std": gopsconfig.init_std,
         "mean": gopsconfig.init_mean,
     }
@@ -469,31 +503,31 @@ def evolve(
         reward_fn_instance = LinearReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
-            serializer=linear_reward_serializer,
+            serializer=linear_rs_withp if poison_reward else linear_rs,
         )
     elif reward_fn == RewardKind.EXPONENTIAL:
         reward_fn_instance = ExponentialReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
-            serializer=exp_reward_serializer,
+            serializer=exp_rs_withp if poison_reward else exp_rs,
         )
     elif reward_fn == RewardKind.SIGMOID:
         reward_fn_instance = SigmoidReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
-            serializer=sigmoid_reward_serializer,
+            serializer=sigmoid_rs_withp if poison_reward else sigmoid_rs,
         )
     elif reward_fn == RewardKind.SIGMOID_01:
         reward_fn_instance = SigmoidReward_01(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
-            serializer=sigmoid_reward_serializer,
+            serializer=sigmoid_rs_withp if poison_reward else sigmoid_rs,
         )
     elif reward_fn == RewardKind.SINH:
         reward_fn_instance = SinhReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
-            serializer=linear_reward_serializer,
+            serializer=linear_rs_withp if poison_reward else linear_rs,
         )
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")

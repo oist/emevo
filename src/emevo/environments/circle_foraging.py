@@ -585,7 +585,7 @@ class CircleForaging(Env):
                 c2sc: jax.Array,
                 label: jax.Array,
             ) -> jax.Array:
-                onehot = jax.nn.one_hot(label, self._n_food_sources)  # (FOOD, LABEL)
+                onehot = jax.nn.one_hot(label, self._n_food_sources, dtype=bool)
                 expanded_c2sc = jnp.expand_dims(c2sc, axis=2)  # (AGENT, FOOD, 1)
                 expanded_onehot = jnp.expand_dims(onehot, axis=0)  # (1, FOOD, LABEL)
                 return jnp.max(expanded_c2sc * expanded_onehot, axis=1)
@@ -879,7 +879,7 @@ class CircleForaging(Env):
         sensor_obs = self._sensor_obs(stated=physics)
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
-            collision=jnp.zeros((N, N_OBJECTS), dtype=bool),
+            collision=jnp.zeros((N, self._n_obj), dtype=bool),
             angle=physics.circle.p.angle,
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
