@@ -83,6 +83,34 @@ class ReprNumLogistic:
         dn_dt = self.growth_rate * internal * (1 - internal / self.capacity)
         return state._update(internal + dn_dt)
 
+class ReprNumCycle:
+    def __init__(
+        self,
+        interval: int,
+        *num_fns: tuple[str, ...] | ReprNumFn,
+    ) -> None:
+        numfn_list = []
+        for fn_or_base in num_fns:
+            if callable(fn_or_base):
+                numfn_list.append(fn_or_base)
+            else:
+                name, *args = fn_or_base
+                fn, _ = ReprNum(name)(*args)
+                numfn_list.append(fn)
+        self._numfn_list = numfn_list
+        self._n_fn = len(numfn_list)
+        self._interval = interval
+
+    @property
+    def initial(self) -> int:
+        return self._numfn_list[0].initial
+
+    def __call__(self, n_steps: int, state: FoodNumState) -> FoodNumState:
+        n = n_steps // self._interval
+        index = n % self._n_fn
+        return jax.lax.switch(index, self._numfn_list, n_steps, state)
+
+
 
 class ReprNumScheduled:
     """Branching based on steps."""
@@ -118,6 +146,7 @@ class ReprNum(str, enum.Enum):
     """Methods to determine the number of foods reproduced."""
 
     CONSTANT = "constant"
+    CYCLE = "cycle"
     LINEAR = "linear"
     LOGISTIC = "logistic"
     SCHEDULED = "scheduled"
@@ -125,6 +154,8 @@ class ReprNum(str, enum.Enum):
     def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprNumFn, FoodNumState]:
         if self is ReprNum.CONSTANT:
             fn = ReprNumConstant(*args, **kwargs)
+        elif self is ReprNum.CYCLE:
+            fn = ReprNumCycle(*args, **kwargs)
         elif self is ReprNum.LINEAR:
             fn = ReprNumLinear(*args, **kwargs)
         elif self is ReprNum.LOGISTIC:
