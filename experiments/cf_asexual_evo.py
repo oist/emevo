@@ -18,6 +18,7 @@ from emevo import Env
 from emevo import birth_and_death as bd
 from emevo import genetic_ops as gops
 from emevo import make
+from emevo import reward_fn as rfn
 from emevo.env import ObsProtocol as Obs
 from emevo.env import StateProtocol as State
 from emevo.eqx_utils import get_slice
@@ -31,16 +32,6 @@ from emevo.exp_utils import (
     LogMode,
     SavedPhysicsState,
     SavedProfile,
-)
-from emevo.reward_fn import (
-    ExponentialReward,
-    LinearReward,
-    RewardFn,
-    SigmoidReward,
-    SigmoidReward_01,
-    SinhReward,
-    mutate_reward_fn,
-    serialize_weight,
 )
 from emevo.rl.ppo_normal import (
     NormalPPONet,
@@ -62,6 +53,7 @@ class RewardKind(str, enum.Enum):
     EXPONENTIAL = "exponential"
     SIGMOID = "sigmoid"
     SIGMOID_01 = "sigmoid-01"
+    SIGMOID_EXP = "sigmoid-exp"
     SINH = "sinh"
 
 
@@ -107,12 +99,12 @@ class RewardExtractor:
 
 
 def linear_rs(w: jax.Array) -> dict[str, jax.Array]:
-    return serialize_weight(w, ["agent", "food", "wall", "action"])
+    return rfn.serialize_weight(w, ["agent", "food", "wall", "action"])
 
 
 def exp_rs(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
-    w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
-    scale_dict = serialize_weight(
+    w_dict = rfn.serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    scale_dict = rfn.serialize_weight(
         scale,
         ["scale_agent", "scale_food", "scale_wall", "scale_action"],
     )
@@ -120,24 +112,41 @@ def exp_rs(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
 
 
 def sigmoid_rs(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
-    w_dict = serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
-    alpha_dict = serialize_weight(
+    w_dict = rfn.serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    alpha_dict = rfn.serialize_weight(
         alpha,
         ["alpha_agent", "alpha_food", "alpha_wall", "alpha_action"],
     )
     return w_dict | alpha_dict
 
 
+def sigmoid_exp_rs(
+    w: jax.Array,
+    scale: jax.Array,
+    alpha: jax.Array,
+) -> dict[str, jax.Array]:
+    w_dict = rfn.serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    alpha_dict = rfn.serialize_weight(
+        alpha,
+        ["alpha_agent", "alpha_food", "alpha_wall", "alpha_action"],
+    )
+    scale_dict = rfn.serialize_weight(
+        scale,
+        ["scale_agent", "scale_food", "scale_wall", "scale_action"],
+    )
+    return (w_dict | alpha_dict) | scale_dict
+
+
 def linear_rs_withp(w: jax.Array) -> dict[str, jax.Array]:
-    return serialize_weight(w, ["agent", "food", "poison", "wall", "action"])
+    return rfn.serialize_weight(w, ["agent", "food", "poison", "wall", "action"])
 
 
 def exp_rs_withp(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
-    w_dict = serialize_weight(
+    w_dict = rfn.serialize_weight(
         w,
         ["w_agent", "w_food", "w_poison", "w_wall", "w_action"],
     )
-    scale_dict = serialize_weight(
+    scale_dict = rfn.serialize_weight(
         scale,
         ["scale_agent", "scale_food", "scale_poison", "scale_wall", "scale_action"],
     )
@@ -145,14 +154,31 @@ def exp_rs_withp(w: jax.Array, scale: jax.Array) -> dict[str, jax.Array]:
 
 
 def sigmoid_rs_withp(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
-    w_dict = serialize_weight(
+    w_dict = rfn.serialize_weight(
         w, ["w_agent", "w_food", "w_poison", "w_wall", "w_action"]
     )
-    alpha_dict = serialize_weight(
+    alpha_dict = rfn.serialize_weight(
         alpha,
         ["alpha_agent", "alpha_food", "w_poison", "alpha_wall", "alpha_action"],
     )
     return w_dict | alpha_dict
+
+
+def sigmoid_exp_rs_withp(
+    w: jax.Array, scale: jax.Array, alpha: jax.Array
+) -> dict[str, jax.Array]:
+    w_dict = rfn.serialize_weight(
+        w, ["w_agent", "w_food", "w_poison", "w_wall", "w_action"]
+    )
+    alpha_dict = rfn.serialize_weight(
+        alpha,
+        ["alpha_agent", "alpha_food", "w_poison", "alpha_wall", "alpha_action"],
+    )
+    scale_dict = rfn.serialize_weight(
+        scale,
+        ["scale_agent", "scale_food", "scale_poison", "scale_wall", "scale_action"],
+    )
+    return (w_dict | alpha_dict) | scale_dict
 
 
 def exec_rollout(
@@ -160,7 +186,7 @@ def exec_rollout(
     initial_obs: Obs,
     env: Env,
     network: NormalPPONet,
-    reward_fn: RewardFn,
+    reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
@@ -238,7 +264,7 @@ def epoch(
     initial_obs: Obs,
     env: Env,
     network: NormalPPONet,
-    reward_fn: RewardFn,
+    reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
@@ -289,7 +315,7 @@ def run_evolution(
     minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
-    reward_fn: RewardFn,
+    reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     mutation: gops.Mutation,
@@ -391,7 +417,7 @@ def run_evolution(
             pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
 
         # Mutation
-        reward_fn = mutate_reward_fn(
+        reward_fn = rfn.mutate_reward_fn(
             key,
             logger.reward_fn_dict,
             reward_fn,
@@ -500,31 +526,37 @@ def evolve(
         "mean": gopsconfig.init_mean,
     }
     if reward_fn == RewardKind.LINEAR:
-        reward_fn_instance = LinearReward(
+        reward_fn_instance = rfn.LinearReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
             serializer=linear_rs_withp if poison_reward else linear_rs,
         )
     elif reward_fn == RewardKind.EXPONENTIAL:
-        reward_fn_instance = ExponentialReward(
+        reward_fn_instance = rfn.ExponentialReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
             serializer=exp_rs_withp if poison_reward else exp_rs,
         )
     elif reward_fn == RewardKind.SIGMOID:
-        reward_fn_instance = SigmoidReward(
+        reward_fn_instance = rfn.SigmoidReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
             serializer=sigmoid_rs_withp if poison_reward else sigmoid_rs,
         )
     elif reward_fn == RewardKind.SIGMOID_01:
-        reward_fn_instance = SigmoidReward_01(
+        reward_fn_instance = rfn.SigmoidReward_01(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
             serializer=sigmoid_rs_withp if poison_reward else sigmoid_rs,
         )
+    elif reward_fn == RewardKind.SIGMOID_EXP:
+        reward_fn_instance = rfn.SigmoidExponentialReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
+            serializer=sigmoid_exp_rs_withp if poison_reward else sigmoid_exp_rs,
+        )
     elif reward_fn == RewardKind.SINH:
-        reward_fn_instance = SinhReward(
+        reward_fn_instance = rfn.SinhReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
             serializer=linear_rs_withp if poison_reward else linear_rs,

@@ -181,6 +181,47 @@ class SigmoidReward_01(SigmoidReward):
         return jax.vmap(jnp.dot)(filtered, self.weight)
 
 
+class SigmoidExponentialReward(RewardFn):
+    weight: jax.Array
+    scale: jax.Array
+    alpha: jax.Array
+    extractor: Callable[..., tuple[jax.Array, jax.Array]]
+    serializer: Callable[[jax.Array, jax.Array, jax.Array], dict[str, jax.Array]]
+
+    def __init__(
+        self,
+        *,
+        key: chex.PRNGKey,
+        n_agents: int,
+        n_weights: int,
+        extractor: Callable[..., tuple[jax.Array, jax.Array]],
+        serializer: Callable[[jax.Array, jax.Array, jax.Array], dict[str, jax.Array]],
+        std: float = 1.0,
+        mean: float = 0.0,
+    ) -> None:
+        k1, k2 = jax.random.split(key)
+        self.weight = jax.random.normal(k1, (n_agents, n_weights)) * std + mean
+        self.scale = jax.random.normal(k2, (n_agents, n_weights)) * std + mean
+        self.alpha = jax.random.normal(k2, (n_agents, n_weights)) * std + mean
+        self.extractor = extractor
+        self.serializer = serializer
+
+    def __call__(self, *args) -> jax.Array:
+        extracted, energy = self.extractor(*args)
+        weight = (10**self.scale) * self.weight
+        e = energy.reshape(-1, 1)  # (N, n_weights)
+        alpha_plus = 2.0 * extracted / (1.0 + jnp.exp(-e * (1.0 - self.alpha))) - 1.0
+        alpha_minus = 2.0 * extracted / (1.0 + jnp.exp(-e * self.alpha))
+        filtered = jnp.where(self.alpha > 0, alpha_plus, alpha_minus)
+        return jax.vmap(jnp.dot)(filtered, weight)
+
+    def serialise(self) -> dict[str, float | NDArray]:
+        return jax.tree_map(
+            _item_or_np,
+            self.serializer(self.weight, self.scale, self.alpha),
+        )
+
+
 def mutate_reward_fn(
     key: chex.PRNGKey,
     reward_fn_dict: dict[int, RF],
