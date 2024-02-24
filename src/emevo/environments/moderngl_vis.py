@@ -90,61 +90,6 @@ void main() {
 """
 
 
-_ARROW_GEOMETRY_SHADER = """
-#version 330
-layout (lines) in;
-layout (triangle_strip, max_vertices = 7) out;
-uniform mat4 proj;
-void main() {
-    vec2 a = gl_in[0].gl_Position.xy;
-    vec2 b = gl_in[1].gl_Position.xy;
-    vec2 a2b = b - a;
-    float a2b_len = length(a2b);
-    float width = min(0.004, a2b_len * 0.12);
-    vec2 a2left = vec2(-a2b.y, a2b.x) / length(a2b) * width;
-    vec2 c = a + a2b * 0.5;
-    vec2 c2head = a2left * 2.5;
-
-    vec4 positions[7] = vec4[7](
-        vec4(a - a2left, 0.0, 1.0),
-        vec4(a + a2left, 0.0, 1.0),
-        vec4(c - a2left, 0.0, 1.0),
-        vec4(c + a2left, 0.0, 1.0),
-        vec4(c - c2head, 0.0, 1.0),
-        vec4(b, 0.0, 1.0),
-        vec4(c + c2head, 0.0, 1.0)
-    );
-    for (int i = 0; i < 7; ++i) {
-        gl_Position = positions[i];
-        EmitVertex();
-    }
-    EndPrimitive();
-}
-"""
-
-_TEXTURE_VERTEX_SHADER = """
-#version 330
-uniform mat4 proj;
-in vec2 in_position;
-in vec2 in_uv;
-out vec2 uv;
-void main() {
-    gl_Position = proj * vec4(in_position, 0.0, 1.0);
-    uv = in_uv;
-}
-"""
-
-_TEXTURE_FRAGMENT_SHADER = """
-#version 330
-uniform sampler2D image;
-in vec2 uv;
-out vec4 f_color;
-void main() {
-    f_color = vec4(texture(image, uv).rgb, 1.0);
-}
-"""
-
-
 class Renderable:
     MODE: ClassVar[int]
     vertex_array: mgl.VertexArray
@@ -387,8 +332,8 @@ class MglRenderer:
                 vertex_shader=_LINE_VERTEX_SHADER,
                 geometry_shader=_LINE_GEOMETRY_SHADER,
                 fragment_shader=_LINE_FRAGMENT_SHADER,
-                color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
-                width=np.array([0.002], dtype=np.float32),
+                color=np.array([0.0, 0.0, 0.0, 0.1], dtype=np.float32),
+                width=np.array([0.001], dtype=np.float32),
             )
 
             def collect_sensors(stated: StateDict) -> NDArray:
