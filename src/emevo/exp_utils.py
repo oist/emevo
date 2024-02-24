@@ -128,6 +128,7 @@ class GopsConfig:
     init_std: float
     init_mean: float
     params: Dict[str, Union[float, Dict[str, float]]]
+    init_kwargs: Dict[str, float] = dataclasses.field(default_factory=dict)
 
     def load_model(self) -> gops.Mutation | gops.Crossover:
         params = {}

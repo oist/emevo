@@ -49,6 +49,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 
 class RewardKind(str, enum.Enum):
+    DELAYED_SE = "delayed-se"
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
     SIGMOID = "sigmoid"
@@ -137,6 +138,23 @@ def sigmoid_exp_rs(
     return (w_dict | alpha_dict) | scale_dict
 
 
+def delayed_se_rs(
+    w: jax.Array,
+    scale: jax.Array,
+    delay: jax.Array,
+) -> dict[str, jax.Array]:
+    w_dict = rfn.serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    delay_dict = rfn.serialize_weight(
+        delay,
+        ["delay_agent", "delay_food", "delay_wall", "delay_action"],
+    )
+    scale_dict = rfn.serialize_weight(
+        scale,
+        ["scale_agent", "scale_food", "scale_wall", "scale_action"],
+    )
+    return (w_dict | delay_dict) | scale_dict
+
+
 def linear_rs_withp(w: jax.Array) -> dict[str, jax.Array]:
     return rfn.serialize_weight(w, ["agent", "food", "poison", "wall", "action"])
 
@@ -179,6 +197,23 @@ def sigmoid_exp_rs_withp(
         ["scale_agent", "scale_food", "scale_poison", "scale_wall", "scale_action"],
     )
     return (w_dict | alpha_dict) | scale_dict
+
+
+def delayed_se_rs_withp(
+    w: jax.Array, scale: jax.Array, delay: jax.Array
+) -> dict[str, jax.Array]:
+    w_dict = rfn.serialize_weight(
+        w, ["w_agent", "w_food", "w_poison", "w_wall", "w_action"]
+    )
+    delay_dict = rfn.serialize_weight(
+        delay,
+        ["delay_agent", "delay_food", "w_poison", "delay_wall", "delay_action"],
+    )
+    scale_dict = rfn.serialize_weight(
+        scale,
+        ["scale_agent", "scale_food", "scale_poison", "scale_wall", "scale_action"],
+    )
+    return (w_dict | delay_dict) | scale_dict
 
 
 def exec_rollout(
@@ -525,6 +560,7 @@ def evolve(
         "std": gopsconfig.init_std,
         "mean": gopsconfig.init_mean,
     }
+    common_rewardfn_args |= gopsconfig.init_kwargs
     if reward_fn == RewardKind.LINEAR:
         reward_fn_instance = rfn.LinearReward(
             **common_rewardfn_args,
@@ -554,6 +590,12 @@ def evolve(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
             serializer=sigmoid_exp_rs_withp if poison_reward else sigmoid_exp_rs,
+        )
+    elif reward_fn == RewardKind.DELAYED_SE:
+        reward_fn_instance = rfn.DelayedSEReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
+            serializer=delayed_se_rs_withp if poison_reward else delayed_se_rs,
         )
     elif reward_fn == RewardKind.SINH:
         reward_fn_instance = rfn.SinhReward(
