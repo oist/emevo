@@ -1,8 +1,8 @@
 n_initial_agents = 50
 n_max_agents = 150
-n_max_foods = 50
-food_num_fn = ["logistic", 20, 0.01, 50]
-food_loc_fn = ["gaussian", [240.0, 180.0], [80.0, 60.0]]
+n_max_foods = 60
+food_num_fn = ["logistic", 20, 0.01, 60]
+food_loc_fn = ["gaussian", [360.0, 270.0], [80.0, 60.0]]
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
 ylim = [0.0, 360.0]
