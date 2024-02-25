@@ -158,6 +158,7 @@ def vis_hazard(
     hazard_fn: bd.HazardFunction,
     age_max: int = 10000,
     energy_max: float = 16,
+    hazard_max: float = 2e-4,
     n_discr: int = 101,
     method: Literal["hazard", "cumulative hazard", "survival"] = "hazard",
     initial: bool = True,
@@ -191,6 +192,7 @@ def vis_hazard(
             ax.set_zlim((0.0, 1.0))
         else:
             ax.set_zscale("log")  # type: ignore
+            ax.set_zlim((1e-6, hazard_max))
             ax.zaxis.set_major_locator(ticker.LogLocator(base=100, numticks=10))
             ax.zaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{x:.0e}".replace("e-0", "e-"))
