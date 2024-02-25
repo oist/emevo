@@ -5,7 +5,7 @@ food_num_fn = ["logistic", 20, 0.01, 60]
 food_loc_fn = [
    "scheduled",
    1024000,
-   ["gaussian", [240.0, 180.0], [80.0, 60.0]],
+   ["gaussian", [360.0, 180.0], [80.0, 60.0]],
    ["switching",
        1000,
        ["gaussian", [360.0, 180.0], [48.0, 36.0]],
