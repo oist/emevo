@@ -52,6 +52,7 @@ class RewardKind(str, enum.Enum):
     DELAYED_SE = "delayed-se"
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
+    OFFSET_DELAYED_SE = "offset-delayed-se"
     SIGMOID = "sigmoid"
     SIGMOID_01 = "sigmoid-01"
     SIGMOID_EXP = "sigmoid-exp"
@@ -593,6 +594,12 @@ def evolve(
         )
     elif reward_fn == RewardKind.DELAYED_SE:
         reward_fn_instance = rfn.DelayedSEReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
+            serializer=delayed_se_rs_withp if poison_reward else delayed_se_rs,
+        )
+    elif reward_fn == RewardKind.OFFSET_DELAYED_SE:
+        reward_fn_instance = rfn.OffsetDelayedSEReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
             serializer=delayed_se_rs_withp if poison_reward else delayed_se_rs,
