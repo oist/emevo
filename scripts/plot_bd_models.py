@@ -1,9 +1,11 @@
 import importlib
 from pathlib import Path
+from typing import cast
 
 import matplotlib as mpl
 import typer
 from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from serde import toml
 
 from emevo.exp_utils import BDConfig
@@ -34,8 +36,12 @@ def plot_bd_models(
     nolifespan: bool = typer.Option(False, help="Don't show lifespan"),
     simpletitle: bool = typer.Option(False, help="Make title simple"),
     birth2d: bool = typer.Option(False, help="Make 2D plot for birth rate"),
+    all2d: bool = typer.Option(
+        False,
+        help="Plot birth, lifetime, and n. children on the same fig",
+    ),
 ) -> None:
-    if importlib.util.find_spec("PySide6") is not None:
+    if importlib.util.find_spec("PySide6") is not None:  # type: ignore
         mpl.use("QtAgg")
     else:
         mpl.use("TkAgg")
@@ -60,7 +66,7 @@ def plot_bd_models(
             ax1.set_title(f"{type(hazard_model).__name__} Hazard function")  # type: ignore
             ax2.set_title(f"{type(hazard_model).__name__} Survival function")  # type: ignore
         vis_hazard(
-            ax1,
+            cast(Axes3D, ax1),
             hazard_fn=hazard_model,
             age_max=age_max,
             energy_max=energy_max,
@@ -70,7 +76,7 @@ def plot_bd_models(
             shown_params=None if noparam else bd_config.hazard_params,
         )
         vis_hazard(
-            ax2,
+            cast(Axes3D, ax2),
             hazard_fn=hazard_model,
             age_max=age_max,
             energy_max=energy_max,
@@ -80,15 +86,15 @@ def plot_bd_models(
         plt.show()
 
     if yes or typer.confirm("Plot birth model?"):
-        fig = plt.figure(figsize=(6, 4))
+        fig = plt.figure(figsize=(5, 5))
         if birth2d:
             ax = fig.add_subplot(111)
         else:
             ax = fig.add_subplot(111, projection="3d")
         if simpletitle:
-            ax.set_title("Birth function")  # type: ignore
+            ax.set_title("Birth function", fontsize=14)
         else:
-            ax.set_title(f"{type(birth_model).__name__} Birth function")  # type: ignore
+            ax.set_title(f"{type(birth_model).__name__} Birth function", fontsize=14)
         if birth2d:
             vis_birth_2d(
                 ax,
@@ -98,7 +104,7 @@ def plot_bd_models(
             )
         else:
             vis_birth(
-                ax,
+                cast(Axes3D, ax),
                 birth_fn=birth_model,
                 age_max=age_max,
                 energy_max=energy_max,
@@ -134,7 +140,7 @@ def plot_bd_models(
         else:
             name = f"{type(hazard_model).__name__} & {type(birth_model).__name__} "
         if ax1 is not None:
-            ax1.set_title(f"{name}Expected Lifetime")  # type: ignore
+            ax1.set_title(f"{name}Expected Lifetime", fontsize=14)
             vis_lifetime(
                 ax1,
                 hazard_fn=hazard_model,
@@ -148,9 +154,39 @@ def plot_bd_models(
                 }
                 show_params_text(ax1, params, columns=2)
 
-        ax2.set_title(f"{name}Expected Num. of children")  # type: ignore
+        ax2.set_title(f"{name}Expected Num. of children", fontsize=14)
         vis_expected_n_children(
             ax2,
+            birth_fn=birth_model,
+            hazard_fn=hazard_model,
+            energy_max=energy_max,
+            n_discr=n_discr,
+        )
+        plt.show()
+
+    if all2d and (yes or typer.confirm("Plot birth and n.children on the same fig?")):
+        fig = plt.figure(figsize=(15, 5))
+        fig.tight_layout()
+        ax1 = fig.add_subplot(131)
+        ax2 = fig.add_subplot(132)
+        ax3 = fig.add_subplot(133)
+        ax1.set_title("Birth function", fontsize=14)
+        vis_birth_2d(
+            ax1,
+            birth_fn=birth_model,
+            energy_max=energy_max,
+            initial=True,
+        )
+        ax2.set_title("Expected Lifetime", fontsize=14)
+        vis_lifetime(
+            ax2,
+            hazard_fn=hazard_model,
+            energy_max=energy_max,
+            n_discr=n_discr,
+        )
+        ax3.set_title("Expected Num. of children", fontsize=14)
+        vis_expected_n_children(
+            ax3,
             birth_fn=birth_model,
             hazard_fn=hazard_model,
             energy_max=energy_max,
