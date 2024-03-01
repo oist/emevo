@@ -52,6 +52,8 @@ class RewardKind(str, enum.Enum):
     DELAYED_SE = "delayed-se"
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
+    OFFSET_DELAYED_SE = "offset-delayed-se"
+    OFFSET_DELAYED_SINH = "offset-delayed-sinh"
     SIGMOID = "sigmoid"
     SIGMOID_01 = "sigmoid-01"
     SIGMOID_EXP = "sigmoid-exp"
@@ -121,6 +123,15 @@ def sigmoid_rs(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
     return w_dict | alpha_dict
 
 
+def delayed_sigmoid_rs(w: jax.Array, delay: jax.Array) -> dict[str, jax.Array]:
+    w_dict = rfn.serialize_weight(w, ["w_agent", "w_food", "w_wall", "w_action"])
+    delay_dict = rfn.serialize_weight(
+        delay,
+        ["delay_agent", "delay_food", "delay_wall", "delay_action"],
+    )
+    return w_dict | delay_dict
+
+
 def sigmoid_exp_rs(
     w: jax.Array,
     scale: jax.Array,
@@ -180,6 +191,17 @@ def sigmoid_rs_withp(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
         ["alpha_agent", "alpha_food", "w_poison", "alpha_wall", "alpha_action"],
     )
     return w_dict | alpha_dict
+
+
+def delayed_sigmoid_rs_withp(w: jax.Array, delay: jax.Array) -> dict[str, jax.Array]:
+    w_dict = rfn.serialize_weight(
+        w, ["w_agent", "w_food", "w_poison", "w_wall", "w_action"]
+    )
+    delay_dict = rfn.serialize_weight(
+        delay,
+        ["delay_agent", "delay_food", "w_poison", "delay_wall", "delay_action"],
+    )
+    return w_dict | delay_dict
 
 
 def sigmoid_exp_rs_withp(
@@ -597,11 +619,25 @@ def evolve(
             extractor=reward_extracor.extract_sigmoid,
             serializer=delayed_se_rs_withp if poison_reward else delayed_se_rs,
         )
+    elif reward_fn == RewardKind.OFFSET_DELAYED_SE:
+        reward_fn_instance = rfn.OffsetDelayedSEReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
+            serializer=delayed_se_rs_withp if poison_reward else delayed_se_rs,
+        )
     elif reward_fn == RewardKind.SINH:
         reward_fn_instance = rfn.SinhReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
             serializer=linear_rs_withp if poison_reward else linear_rs,
+        )
+    elif reward_fn == RewardKind.OFFSET_DELAYED_SINH:
+        reward_fn_instance = rfn.OffsetDelayedSinhReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
+            serializer=delayed_sigmoid_rs_withp
+            if poison_reward
+            else delayed_sigmoid_rs,
         )
     else:
         raise ValueError(f"Invalid reward_fn {reward_fn}")

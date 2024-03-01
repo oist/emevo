@@ -80,6 +80,15 @@ def vis_birth_2d(
     return cast(Line2D, lines[0])
 
 
+def _km_formatter(x: float, _) -> str:
+    if x < 1000:
+        return str(x)
+    elif x < 1000000:
+        return f"{int(x) // 1000}K"
+    else:
+        return f"{int(x) // 1000000}M"
+
+
 def vis_lifetime(
     ax: Axes,
     hazard_fn: bd.HazardFunction,
@@ -99,13 +108,13 @@ def vis_lifetime(
     if initial:
         ax.grid(True, which="major")
         ax.set_xlabel("Energy", fontsize=12)
-        ax.yaxis.set_major_formatter("{x:.0e}")
+        ax.yaxis.set_major_formatter(ticker.FuncFormatter(_km_formatter))
         ax.set_ylabel("Expected Lifetime", fontsize=12)
     return cast(Line2D, lines[0])
 
 
 def vis_expected_n_children(
-    ax: Axes3D,
+    ax: Axes,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     energy_max: float = 16,
