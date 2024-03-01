@@ -49,6 +49,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 
 class RewardKind(str, enum.Enum):
+    BOUNDED_EXP = "bounded-exp"
     DELAYED_SE = "delayed-se"
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
@@ -570,6 +571,12 @@ def evolve(
         )
     elif reward_fn == RewardKind.EXPONENTIAL:
         reward_fn_instance = rfn.ExponentialReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_linear,
+            serializer=exp_rs_withp if poison_reward else exp_rs,
+        )
+    elif reward_fn == RewardKind.BOUNDED_EXP:
+        reward_fn_instance = rfn.BoundedExponentialReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_linear,
             serializer=exp_rs_withp if poison_reward else exp_rs,

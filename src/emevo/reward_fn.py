@@ -136,6 +136,14 @@ class ExponentialReward(RewardFn):
         return jax.tree_map(_item_or_np, self.serializer(self.weight, self.scale))
 
 
+class BoundedExponentialReward(ExponentialReward):
+    def __call__(self, *args) -> jax.Array:
+        extracted = self.extractor(*args)
+        scale = (self.scale + 1.0) * 0.5
+        weight = (10**scale) * self.weight
+        return jax.vmap(jnp.dot)(extracted, weight)
+
+
 class SigmoidReward(RewardFn):
     weight: jax.Array
     alpha: jax.Array
