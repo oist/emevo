@@ -53,6 +53,7 @@ class RewardKind(str, enum.Enum):
     DELAYED_SE = "delayed-se"
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
+    OFFSET_DELAYED_SBE = "offset-delayed-sbe"
     OFFSET_DELAYED_SE = "offset-delayed-se"
     OFFSET_DELAYED_SINH = "offset-delayed-sinh"
     SIGMOID = "sigmoid"
@@ -189,7 +190,7 @@ def sigmoid_rs_withp(w: jax.Array, alpha: jax.Array) -> dict[str, jax.Array]:
     )
     alpha_dict = rfn.serialize_weight(
         alpha,
-        ["alpha_agent", "alpha_food", "w_poison", "alpha_wall", "alpha_action"],
+        ["alpha_agent", "alpha_food", "alpha_poison", "alpha_wall", "alpha_action"],
     )
     return w_dict | alpha_dict
 
@@ -198,11 +199,17 @@ def delayed_sigmoid_rs_withp(w: jax.Array, delay: jax.Array) -> dict[str, jax.Ar
     w_dict = rfn.serialize_weight(
         w, ["w_agent", "w_food", "w_poison", "w_wall", "w_action"]
     )
-    delay_dict = rfn.serialize_weight(
+    threshold_dict = rfn.serialize_weight(
         delay,
-        ["delay_agent", "delay_food", "w_poison", "delay_wall", "delay_action"],
+        [
+            "threshold_agent",
+            "threshold_food",
+            "threshold_poison",
+            "threshold_wall",
+            "threshold_action",
+        ],
     )
-    return w_dict | delay_dict
+    return w_dict | threshold_dict
 
 
 def sigmoid_exp_rs_withp(
@@ -213,7 +220,7 @@ def sigmoid_exp_rs_withp(
     )
     alpha_dict = rfn.serialize_weight(
         alpha,
-        ["alpha_agent", "alpha_food", "w_poison", "alpha_wall", "alpha_action"],
+        ["alpha_agent", "alpha_food", "alpha_poison", "alpha_wall", "alpha_action"],
     )
     scale_dict = rfn.serialize_weight(
         scale,
@@ -228,15 +235,21 @@ def delayed_se_rs_withp(
     w_dict = rfn.serialize_weight(
         w, ["w_agent", "w_food", "w_poison", "w_wall", "w_action"]
     )
-    delay_dict = rfn.serialize_weight(
+    threshold_dict = rfn.serialize_weight(
         delay,
-        ["delay_agent", "delay_food", "w_poison", "delay_wall", "delay_action"],
+        [
+            "threshold_agent",
+            "threshold_food",
+            "threshold_poison",
+            "threshold_wall",
+            "threshold_action",
+        ],
     )
     scale_dict = rfn.serialize_weight(
         scale,
         ["scale_agent", "scale_food", "scale_poison", "scale_wall", "scale_action"],
     )
-    return (w_dict | delay_dict) | scale_dict
+    return (w_dict | threshold_dict) | scale_dict
 
 
 def exec_rollout(
@@ -622,6 +635,12 @@ def evolve(
         )
     elif reward_fn == RewardKind.DELAYED_SE:
         reward_fn_instance = rfn.DelayedSEReward(
+            **common_rewardfn_args,
+            extractor=reward_extracor.extract_sigmoid,
+            serializer=delayed_se_rs_withp if poison_reward else delayed_se_rs,
+        )
+    elif reward_fn == RewardKind.OFFSET_DELAYED_SBE:
+        reward_fn_instance = rfn.OffsetDelayedSBEReward(
             **common_rewardfn_args,
             extractor=reward_extracor.extract_sigmoid,
             serializer=delayed_se_rs_withp if poison_reward else delayed_se_rs,
