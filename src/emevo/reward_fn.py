@@ -136,6 +136,14 @@ class ExponentialReward(RewardFn):
         return jax.tree_map(_item_or_np, self.serializer(self.weight, self.scale))
 
 
+class BoundedExponentialReward(ExponentialReward):
+    def __call__(self, *args) -> jax.Array:
+        extracted = self.extractor(*args)
+        scale = (self.scale + 1.0) * 0.5
+        weight = (10**scale) * self.weight
+        return jax.vmap(jnp.dot)(extracted, weight)
+
+
 class SigmoidReward(RewardFn):
     weight: jax.Array
     alpha: jax.Array
@@ -271,6 +279,19 @@ class OffsetDelayedSEReward(DelayedSEReward):
     def __call__(self, *args) -> jax.Array:
         extracted, energy = self.extractor(*args)
         weight = (10**self.scale) * self.weight
+        e = energy.reshape(-1, 1)  # (N, n_weights)
+        exp_pos = jnp.exp(-e + self.delay_scale * self.delay)
+        exp_neg = jnp.exp(e - self.delay_scale * (1.0 + self.delay) - self.delay_scale)
+        exp = jnp.where(self.delay > 0, exp_pos, exp_neg)
+        filtered = extracted / (1.0 + exp)
+        return jax.vmap(jnp.dot)(filtered, weight)
+
+
+class OffsetDelayedSBEReward(DelayedSEReward):
+    def __call__(self, *args) -> jax.Array:
+        extracted, energy = self.extractor(*args)
+        scale = (self.scale + 1.0) * 0.5
+        weight = (10**scale) * self.weight
         e = energy.reshape(-1, 1)  # (N, n_weights)
         exp_pos = jnp.exp(-e + self.delay_scale * self.delay)
         exp_neg = jnp.exp(e - self.delay_scale * (1.0 + self.delay) - self.delay_scale)
