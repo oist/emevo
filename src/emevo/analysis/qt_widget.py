@@ -97,6 +97,7 @@ class MglWidget(QOpenGLWidget):
             space=env._physics,
             stated=self._get_stated(0),
             sensor_fn=env._get_sensors,
+            sc_color_opt=env._food_color,
         )
         self._env = env
         self._get_colors = get_colors
