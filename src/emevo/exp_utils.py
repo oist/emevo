@@ -251,7 +251,7 @@ def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
         circle_is_active=concatenated.circle_is_active,
         static_circle_axy=concatenated.static_circle_axy,
         static_circle_is_active=concatenated.static_circle_is_active,
-        static_cirlce_label=concatenated.static_cirlce_label,
+        static_cirlce_label=concatenated.static_circle_label,
     )
 
 
