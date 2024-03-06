@@ -237,6 +237,7 @@ class DelayedSEReward(RewardFn):
     extractor: Callable[..., tuple[jax.Array, jax.Array]]
     serializer: Callable[[jax.Array, jax.Array, jax.Array], dict[str, jax.Array]]
     delay_scale: float
+    delay_neg_offset: float
 
     def __init__(
         self,
@@ -249,6 +250,7 @@ class DelayedSEReward(RewardFn):
         std: float = 1.0,
         mean: float = 0.0,
         delay_scale: float = 20.0,
+        delay_neg_offset: float = 20.0,
     ) -> None:
         k1, k2, k3 = jax.random.split(key, 3)
         self.weight = jax.random.normal(k1, (n_agents, n_weights)) * std + mean
@@ -257,6 +259,7 @@ class DelayedSEReward(RewardFn):
         self.extractor = extractor
         self.serializer = serializer
         self.delay_scale = delay_scale
+        self.delay_neg_offset = delay_neg_offset
 
     def __call__(self, *args) -> jax.Array:
         extracted, energy = self.extractor(*args)
@@ -281,7 +284,9 @@ class OffsetDelayedSEReward(DelayedSEReward):
         weight = (10**self.scale) * self.weight
         e = energy.reshape(-1, 1)  # (N, n_weights)
         exp_pos = jnp.exp(-e + self.delay_scale * self.delay)
-        exp_neg = jnp.exp(e - self.delay_scale * (1.0 + self.delay) - self.delay_scale)
+        exp_neg = jnp.exp(
+            e - self.delay_scale * (1.0 + self.delay) - self.delay_neg_offset
+        )
         exp = jnp.where(self.delay > 0, exp_pos, exp_neg)
         filtered = extracted / (1.0 + exp)
         return jax.vmap(jnp.dot)(filtered, weight)
