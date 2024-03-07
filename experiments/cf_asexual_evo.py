@@ -736,7 +736,6 @@ def widget(
     start: int = 0,
     end: Optional[int] = None,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
-    log_offset: int = 0,
     log_path: Optional[Path] = None,
     self_terminate: bool = False,
     profile_and_rewards_path: Optional[Path] = None,
@@ -760,8 +759,7 @@ def widget(
         import pyarrow.dataset as ds
 
         log_ds = ds.dataset(log_path)
-        first_step = log_ds.scanner(columns=["step"]).head(1)["step"][0].as_py()
-        step_offset = first_step + log_offset
+        step_offset = log_ds.scanner(columns=["step"]).head(1)["step"][0].as_py()
 
     if profile_and_rewards_path is None:
         profile_and_rewards = None
