@@ -299,7 +299,9 @@ class OffsetDelayedSBEReward(DelayedSEReward):
         weight = (10**scale) * self.weight
         e = energy.reshape(-1, 1)  # (N, n_weights)
         exp_pos = jnp.exp(-e + self.delay_scale * self.delay)
-        exp_neg = jnp.exp(e - self.delay_scale * (1.0 + self.delay) - self.delay_scale)
+        exp_neg = jnp.exp(
+            e - self.delay_scale * (1.0 + self.delay) - self.delay_neg_offset
+        )
         exp = jnp.where(self.delay > 0, exp_pos, exp_neg)
         filtered = extracted / (1.0 + exp)
         return jax.vmap(jnp.dot)(filtered, weight)
