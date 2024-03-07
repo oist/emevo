@@ -405,6 +405,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._mgl_widget.selectionChanged.connect(self.updateRewards)
         self._mgl_widget.stepChanged.connect(self.updateStep)
         self._slider.sliderMoved.connect(self._mgl_widget.sliderChanged)
+        self._slider.sliderMoved.connect(self.updateSliderLabel)
         if profile_and_rewards is not None:
             self.rewardUpdated.connect(self._reward_widget.updateValues)
         # Initial size
@@ -520,6 +521,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         step = self._step_offset + step_index
         self._slider.setValue(step)
         self._slider_label.setText(f"Step {step}")
+
+    @Slot(int)
+    def updateSliderLabel(self, slider_value: int) -> None:
+        self._slider_label.setText(f"Step {slider_value}")
 
     @Slot(int, int)
     def updateRewards(self, selected_slot: int, step_index: int) -> None:
