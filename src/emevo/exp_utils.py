@@ -212,6 +212,8 @@ class SavedPhysicsState:
         # For backward compatibility
         if "static_circle_label" in npzfile:
             static_circle_label = jnp.array(npzfile["static_circle_label"])
+        elif "static_cirlce_label" in npzfile:  # Support typo version
+            static_circle_label = jnp.array(npzfile["static_cirlce_label"])
         else:
             static_circle_label = jnp.zeros(static_circle_is_active.shape[0], dtype=jnp.uint8)
         return SavedPhysicsState(
@@ -251,7 +253,7 @@ def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
         circle_is_active=concatenated.circle_is_active,
         static_circle_axy=concatenated.static_circle_axy,
         static_circle_is_active=concatenated.static_circle_is_active,
-        static_cirlce_label=concatenated.static_circle_label,
+        static_circle_label=concatenated.static_circle_label,
     )
 
 
