@@ -1,17 +1,17 @@
 n_initial_agents = 50
 n_max_agents = 150
-n_max_foods = 90
+n_max_foods = 100
 n_food_sources = 2
 food_num_fn = [
-    ["logistic", 20, 0.01, 70],
-    ["logistic", 10, 0.01, 20],
+    ["logistic", 20, 0.01, 60],
+    ["logistic", 10, 0.01, 40],
 ]
 food_loc_fn = [
    ["gaussian", [360.0, 270.0], [80.0, 60.0]],
-   ["gaussian", [360.0, 90.0], [80.0, 60.0]],
+   ["gaussian", [120.0, 270.0], [80.0, 60.0]],
 ]
 food_color = [[254, 2, 162, 255], [2, 254, 162, 255]]
-food_energy_coef = [1.0, -0.1]
+food_energy_coef = [1.0, -0.2]
 agent_loc_fn = "uniform"
 observe_food_label = true
 xlim = [0.0, 480.0]
