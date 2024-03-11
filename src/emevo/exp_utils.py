@@ -146,7 +146,6 @@ class Log:
     got_food: jax.Array
     parents: jax.Array
     rewards: jax.Array
-    age: jax.Array
     energy: jax.Array
     unique_id: jax.Array
 
@@ -197,6 +196,9 @@ class SavedProfile:
     unique_id: int
 
 
+_XY_SAVE_DTYPE = np.float16
+
+
 @chex.dataclass
 class SavedPhysicsState:
     circle_axy: jax.Array
@@ -208,18 +210,21 @@ class SavedPhysicsState:
     @staticmethod
     def load(path: Path) -> Self:
         npzfile = np.load(path)
-        static_circle_is_active=jnp.array(npzfile["static_circle_is_active"])
+        static_circle_is_active = jnp.array(npzfile["static_circle_is_active"])
         # For backward compatibility
         if "static_circle_label" in npzfile:
             static_circle_label = jnp.array(npzfile["static_circle_label"])
-        elif "static_cirlce_label" in npzfile:  # Support typo version
-            static_circle_label = jnp.array(npzfile["static_cirlce_label"])
         else:
-            static_circle_label = jnp.zeros(static_circle_is_active.shape[0], dtype=jnp.uint8)
+            static_circle_label = jnp.zeros(
+                static_circle_is_active.shape[0],
+                dtype=jnp.uint8,
+            )
         return SavedPhysicsState(
-            circle_axy=jnp.array(npzfile["circle_axy"]),
+            circle_axy=jnp.array(npzfile["circle_axy"].astype(np.float32)),
             circle_is_active=jnp.array(npzfile["circle_is_active"]),
-            static_circle_axy=jnp.array(npzfile["static_circle_axy"]),
+            static_circle_axy=jnp.array(
+                npzfile["static_circle_axy"].astype(np.float32)
+            ),
             static_circle_is_active=static_circle_is_active,
             static_circle_label=static_circle_label,
         )
@@ -249,9 +254,9 @@ def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
     concatenated = jax.tree_map(lambda *args: np.concatenate(args), *phys_states)
     np.savez_compressed(
         path,
-        circle_axy=concatenated.circle_axy,
+        circle_axy=concatenated.circle_axy.astype(_XY_SAVE_DTYPE),
         circle_is_active=concatenated.circle_is_active,
-        static_circle_axy=concatenated.static_circle_axy,
+        static_circle_axy=concatenated.static_circle_axy.astype(_XY_SAVE_DTYPE),
         static_circle_is_active=concatenated.static_circle_is_active,
         static_circle_label=concatenated.static_circle_label,
     )

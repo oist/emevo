@@ -306,7 +306,6 @@ def exec_rollout(
             got_food=obs_t1.collision[:, 1],
             parents=parents,
             rewards=rewards.ravel(),
-            age=state_t1db.status.age,
             energy=state_t1db.status.energy,
             unique_id=state_t1db.unique_id.unique_id,
         )
