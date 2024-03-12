@@ -740,14 +740,16 @@ class CircleForaging(Env):
         sensor_obs = self._sensor_obs(stated=stated)
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
+        energy_consumption = (
+            self._force_energy_consumption * force_norm + self._basic_energy_consumption
+        )
         energy_delta = (
             jnp.sum(food_collision * self._food_energy_coef, axis=1)
-            - self._force_energy_consumption * force_norm
-            - self._basic_energy_consumption
+            - energy_consumption
         )
-        # Remove and reproduce foods
+        # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
-        stated, food_num, food_loc = self._remove_and_reproduce_foods(
+        stated, food_num, food_loc = self._remove_and_regenerate_foods(
             food_key,
             jnp.max(c2sc, axis=0),
             stated,
@@ -768,7 +770,11 @@ class CircleForaging(Env):
             angular_velocity=stated.circle.v.angle,
             energy=status.energy,
         )
-        timestep = TimeStep(encount=c2c, obs=obs)
+        timestep = TimeStep(
+            encount=c2c,
+            obs=obs,
+            info={"energy_consumption": energy_consumption},
+        )
         state = CFState(
             physics=stated,
             solver=solver,
@@ -976,7 +982,7 @@ class CircleForaging(Env):
 
         return stated, agentloc_state, foodloc_states
 
-    def _remove_and_reproduce_foods(
+    def _remove_and_regenerate_foods(
         self,
         key: chex.PRNGKey,
         eaten: jax.Array,

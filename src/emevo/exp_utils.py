@@ -144,9 +144,10 @@ class GopsConfig:
 class Log:
     dead: jax.Array
     got_food: jax.Array
+    consumed_energy: jax.Array
+    energy: jax.Array
     parents: jax.Array
     rewards: jax.Array
-    energy: jax.Array
     unique_id: jax.Array
 
     def with_step(self, from_: int) -> LogWithStep:
