@@ -308,6 +308,7 @@ def exec_rollout(
             rewards=rewards.ravel(),
             energy=state_t1db.status.energy,
             unique_id=state_t1db.unique_id.unique_id,
+            consumed_energy=timestep.info["energy_consumption"],
         )
         phys = state_t.physics  # type: ignore
         phys_state = SavedPhysicsState(

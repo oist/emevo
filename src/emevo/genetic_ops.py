@@ -143,3 +143,16 @@ class UniformMutation(Mutation):
         )
         res = array + uniform
         return _clip_minmax(res, self.clip_min, self.clip_max)
+
+
+@dataclasses.dataclass(frozen=True)
+class CauchyMutation(Mutation):
+    loc: float = 0.0
+    scale: float = 1.0
+    clip_min: float | None = None
+    clip_max: float | None = None
+
+    def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
+        cauchy = jax.random.cauchy(prng_key, shape=array.shape)
+        res = array + self.loc + cauchy * self.scale
+        return _clip_minmax(res, self.clip_min, self.clip_max)
