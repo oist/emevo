@@ -26,7 +26,7 @@ dependencies = [
     "moderngl-window >= 2.4",
     "jax >= 0.4",
     "pyarrow >= 8.0",
-    "pyserde[toml] >= 0.12",
+    "pyserde[toml] == 0.13.2",  # TODO: update
     "optax >= 0.1",
 ]
 dynamic = ["version"]
