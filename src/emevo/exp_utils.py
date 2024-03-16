@@ -173,6 +173,12 @@ class Log:
 
 
 @chex.dataclass
+class FoodLog:
+    eaten: jax.Array  # i32, [N_FOOD_SOURCES,]
+    regenerated: jax.Array  # bool, [N_FOOD_SOURCES,]
+
+
+@chex.dataclass
 class LogWithStep(Log):
     step: jax.Array
     slots: jax.Array
@@ -284,6 +290,7 @@ class Logger:
     reward_fn_dict: dict[int, RewardFn] = dataclasses.field(default_factory=dict)
     profile_dict: dict[int, SavedProfile] = dataclasses.field(default_factory=dict)
     _log_list: list[Log] = dataclasses.field(default_factory=list, init=False)
+    _foodlog_list: list[FoodLog] = dataclasses.field(default_factory=list, init=False)
     _physstate_list: list[SavedPhysicsState] = dataclasses.field(
         default_factory=list,
         init=False,
@@ -320,6 +327,37 @@ class Logger:
         )
         self._log_index += 1
         self._log_list.clear()
+
+    def push_foodlog(self, log: FoodLog) -> None:
+        if self.mode not in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+            return
+
+        # Move log to CPU
+        self._foodlog_list.append(jax.tree_map(np.array, log))
+
+        if len(self._log_list) % self.log_interval == 0:
+            self._save_foodlog()
+
+    def _save_foodlog(self) -> None:
+        if len(self._log_list) == 0:
+            return
+
+        all_log = jax.tree_map(
+            lambda *args: np.stack(args, axis=0),
+            *self._log_list,
+        )
+        log_dict = {}
+        for i in range(all_log.eaten.shape[1]):
+            log_dict[f"eaten_{i}"] = all_log.eaten[:, i]
+            log_dict[f"regen_{i}"] = all_log.regenerated[:, i]
+
+        # Don't change log_index here
+        pq.write_table(
+            pa.Table.from_pydict(log_dict),
+            self.logdir.joinpath(f"foodlog-{self._log_index}.parquet"),
+            compression="zstd",
+        )
+        self._foodlog_list.clear()
 
     def push_physstate(self, phys_state: SavedPhysicsState) -> None:
         if self.mode != LogMode.FULL:

@@ -25,6 +25,7 @@ from emevo.eqx_utils import where as eqx_where
 from emevo.exp_utils import (
     BDConfig,
     CfConfig,
+    FoodLog,
     GopsConfig,
     Log,
     Logger,
@@ -99,11 +100,11 @@ def exec_rollout(
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
-) -> tuple[State, Rollout, Log, SavedPhysicsState, Obs, jax.Array]:
+) -> tuple[State, Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
-    ) -> tuple[tuple[State, Obs], tuple[Rollout, Log, SavedPhysicsState]]:
+    ) -> tuple[tuple[State, Obs], tuple[Rollout, Log, FoodLog, SavedPhysicsState]]:
         act_key, hazard_key, birth_key = jax.random.split(key, 3)
         state_t, obs_t = carried
         obs_t_array = obs_t.as_array()
@@ -147,6 +148,10 @@ def exec_rollout(
             unique_id=state_t1db.unique_id.unique_id,
             consumed_energy=timestep.info["energy_consumption"],
         )
+        foodlog = FoodLog(
+            eaten=timestep.info["food_eaten"],
+            regenerated=timestep.info["food_regeneration"],
+        )
         phys = state_t.physics  # type: ignore
         phys_state = SavedPhysicsState(
             circle_axy=phys.circle.p.into_axy(),
@@ -155,15 +160,15 @@ def exec_rollout(
             static_circle_is_active=phys.static_circle.is_active,
             static_circle_label=phys.static_circle.label,
         )
-        return (state_t1db, obs_t1), (rollout, log, phys_state)
+        return (state_t1db, obs_t1), (rollout, log, foodlog, phys_state)
 
-    (state, obs), (rollout, log, phys_state) = jax.lax.scan(
+    (state, obs), (rollout, log, foodlog, phys_state) = jax.lax.scan(
         step_rollout,
         (state, initial_obs),
         jax.random.split(prng_key, n_rollout_steps),
     )
     next_value = vmap_value(network, obs.as_array())
-    return state, rollout, log, phys_state, obs, next_value
+    return state, rollout, log, foodlog, phys_state, obs, next_value
 
 
 @eqx.filter_jit
@@ -183,9 +188,9 @@ def epoch(
     opt_state: optax.OptState,
     minibatch_size: int,
     n_optim_epochs: int,
-) -> tuple[State, Obs, Log, SavedPhysicsState, optax.OptState, NormalPPONet]:
+) -> tuple[State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, NormalPPONet]:
     keys = jax.random.split(prng_key, env.n_max_agents + 1)
-    env_state, rollout, log, phys_state, obs, next_value = exec_rollout(
+    env_state, rollout, log, foodlog, phys_state, obs, next_value = exec_rollout(
         state,
         initial_obs,
         env,
@@ -208,7 +213,7 @@ def epoch(
         0.2,
         0.0,
     )
-    return env_state, obs, log, phys_state, opt_state, pponet
+    return env_state, obs, log, foodlog, phys_state, opt_state, pponet
 
 
 def run_evolution(
@@ -287,7 +292,7 @@ def run_evolution(
 
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key)
-        env_state, obs, log, phys_state, opt_state, pponet = epoch(
+        env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
             env_state,
             obs,
             env,
@@ -345,6 +350,7 @@ def run_evolution(
 
         # Push log and physics state
         logger.push_log(log_with_step.filter_active())
+        logger.push_foodlog(foodlog)
         logger.push_physstate(phys_state)
 
     # Save logs before exiting

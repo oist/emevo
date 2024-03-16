@@ -749,7 +749,7 @@ class CircleForaging(Env):
         )
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
-        stated, food_num, food_loc = self._remove_and_regenerate_foods(
+        stated, food_num, food_loc, n_eaten, n_re = self._remove_and_regenerate_foods(
             food_key,
             jnp.max(c2sc, axis=0),
             stated,
@@ -773,7 +773,11 @@ class CircleForaging(Env):
         timestep = TimeStep(
             encount=c2c,
             obs=obs,
-            info={"energy_consumption": energy_consumption},
+            info={
+                "energy_consumption": energy_consumption,
+                "food_regeneration": n_re.astype(bool),
+                "food_eaten": n_eaten,
+            },
         )
         state = CFState(
             physics=stated,
@@ -990,7 +994,9 @@ class CircleForaging(Env):
         n_steps: jax.Array,
         food_num_states: list[FoodNumState],
         food_loc_states: list[LocatingState],
-    ) -> tuple[StateDict, list[FoodNumState], list[LocatingState]]:
+    ) -> tuple[
+        StateDict, list[FoodNumState], list[LocatingState], jax.Array, jax.Array
+    ]:
         # Remove foods
         xy = jnp.where(
             jnp.expand_dims(eaten, axis=1),
@@ -1005,6 +1011,7 @@ class CircleForaging(Env):
         )
         sc = sd.static_circle
         # Regenerate food for each source
+        n_generated_foods = jnp.zeros(self._n_food_sources, dtype=jnp.int32)
         for i in range(self._n_food_sources):
             food_num = self._food_num_fns[i](
                 n_steps,
@@ -1034,7 +1041,14 @@ class CircleForaging(Env):
             incr = jnp.sum(place)
             food_num_states[i] = food_num.recover(incr)
             food_loc_states[i] = food_loc.increment(incr)
-        return replace(sd, static_circle=sc), food_num_states, food_loc_states
+            n_generated_foods = n_generated_foods.at[i].add(incr)
+        return (
+            replace(sd, static_circle=sc),
+            food_num_states,
+            food_loc_states,
+            eaten_per_source,
+            n_generated_foods,
+        )
 
     def visualizer(
         self,
