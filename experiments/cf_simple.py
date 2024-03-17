@@ -71,7 +71,7 @@ class RewardExtractor:
         del energy
         act_input = self.act_coef * self.normalize_action(action)
         food_collision = collision[:, 1]
-        return jnp.stack((food_collision, act_input))
+        return jnp.stack((food_collision, act_input), axis=1)
 
     def extract_sigmoid(
         self,
@@ -82,12 +82,11 @@ class RewardExtractor:
         return self.extract_linear(collision, action, energy), energy
 
 
-def linear_rs(w: jax.Array) -> dict[str, jax.Array]:
-    return rfn.serialize_weight(w, ["food", "action"])
-
-
-def linear_rs_withp(w: jax.Array) -> dict[str, jax.Array]:
-    return rfn.serialize_weight(w, ["food", "poison", "action"])
+def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
+    wd = w.shape[0]
+    rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(wd - 1)}
+    rd["action"] = rfn.slice_last(w, wd - 1)
+    return rd
 
 
 def exec_rollout(
@@ -389,10 +388,9 @@ def evolve(
     birth_override: str = "",
     hazard_override: str = "",
     logdir: Path = Path("./log"),
-    log_mode: LogMode = LogMode.FULL,
+    log_mode: LogMode = LogMode.REWARD_AND_LOG,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
-    poison_reward: bool = False,
     debug_vis: bool = False,
 ) -> None:
     # Load config
@@ -426,11 +424,11 @@ def evolve(
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=5 if poison_reward else 4,
+        n_weights=1 + cfconfig.n_food_sources,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract_linear,
-        serializer=linear_rs_withp if poison_reward else linear_rs,
+        serializer=serialize_weight,
         **gopsconfig.init_kwargs,
     )
 

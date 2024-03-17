@@ -339,17 +339,17 @@ class Logger:
             self._save_foodlog()
 
     def _save_foodlog(self) -> None:
-        if len(self._log_list) == 0:
+        if len(self._foodlog_list) == 0:
             return
 
         all_log = jax.tree_map(
             lambda *args: np.stack(args, axis=0),
-            *self._log_list,
+            *self._foodlog_list,
         )
         log_dict = {}
         for i in range(all_log.eaten.shape[1]):
-            log_dict[f"eaten_{i}"] = all_log.eaten[:, i]
-            log_dict[f"regen_{i}"] = all_log.regenerated[:, i]
+            log_dict[f"eaten_{i}"] = all_log.eaten[:, i].ravel()
+            log_dict[f"regen_{i}"] = all_log.regenerated[:, i].ravel()
 
         # Don't change log_index here
         pq.write_table(
@@ -408,6 +408,7 @@ class Logger:
 
         if self.mode in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
             self._save_log()
+            self._save_foodlog()
 
         if self.mode == LogMode.FULL:
             self._save_physstate()
