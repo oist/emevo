@@ -250,6 +250,13 @@ class State(PyTreeOps):
         return self.p.batch_size()
 
 
+def get_relative_angle(s_a: State, s_b: State) -> jax.Array:
+    a2b_x, a2b_y = _get_xy(s_b.p.xy - s_a.p.xy)
+    a2b_angle = jnp.arctan2(a2b_y, a2b_x)
+    return (a2b_angle - s_a.p.angle + 2.0 * TWO_PI) % TWO_PI
+
+
+
 @chex.dataclass
 class Contact(PyTreeOps):
     pos: jax.Array
