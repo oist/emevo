@@ -187,6 +187,7 @@ def epoch(
     opt_state: optax.OptState,
     minibatch_size: int,
     n_optim_epochs: int,
+    entropy_weight: float,
 ) -> tuple[State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, NormalPPONet]:
     keys = jax.random.split(prng_key, env.n_max_agents + 1)
     env_state, rollout, log, foodlog, phys_state, obs, next_value = exec_rollout(
@@ -210,7 +211,7 @@ def epoch(
         minibatch_size,
         n_optim_epochs,
         0.2,
-        0.0,
+        entropy_weight,
     )
     return env_state, obs, log, foodlog, phys_state, opt_state, pponet
 
@@ -227,6 +228,7 @@ def run_evolution(
     minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
+    entropy_weight: float,
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
@@ -307,6 +309,7 @@ def run_evolution(
             opt_state,
             minibatch_size,
             n_optim_epochs,
+            entropy_weight,
         )
 
         if visualizer is not None:
@@ -368,8 +371,6 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 @app.command()
 def evolve(
     seed: int = 1,
-    n_agents: int = 20,
-    init_energy: float = 20.0,
     action_cost: float = 0.0001,
     mutation_prob: float = 0.2,
     adam_lr: float = 3e-4,
@@ -381,9 +382,10 @@ def evolve(
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.001,
-    cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
-    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20230530-a035-e020.toml",
-    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240111-mutation-0401.toml",
+    entropy_weight: float = 0.001,
+    cfconfig_path: Path = PROJECT_ROOT / "config/env/20240224-ls-square.toml",
+    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
+    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240318-cauchy.toml",
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
@@ -410,8 +412,6 @@ def evolve(
     birth_fn, hazard_fn = bdconfig.load_models()
     mutation = gopsconfig.load_model()
     # Override config
-    cfconfig.n_initial_agents = n_agents
-    cfconfig.init_energy = init_energy
     cfconfig.force_energy_consumption = action_cost
     gopsconfig.params["mutation_prob"] = mutation_prob
     # Make env
@@ -441,7 +441,7 @@ def evolve(
     run_evolution(
         key=key,
         env=env,
-        n_initial_agents=n_agents,
+        n_initial_agents=cfconfig.n_initial_agents,
         adam=optax.adam(adam_lr, eps=adam_eps),
         gamma=gamma,
         gae_lambda=gae_lambda,
@@ -449,6 +449,7 @@ def evolve(
         minibatch_size=minibatch_size,
         n_rollout_steps=n_rollout_steps,
         n_total_steps=n_total_steps,
+        entropy_weight=entropy_weight,
         reward_fn=reward_fn_instance,
         hazard_fn=hazard_fn,
         birth_fn=birth_fn,

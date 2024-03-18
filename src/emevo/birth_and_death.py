@@ -149,6 +149,31 @@ class ELGompertzHazard(EnergyLogisticHazard):
         return ht - h0
 
 
+@dataclasses.dataclass(frozen=True)
+class SlopeELGHazard(EnergyLogisticHazard):
+    alpha: float = 0.1
+    scale: float = 1.0
+    slope: float = 0.1
+    alpha_age: float = 1e-6
+    beta: float = 1e-5
+
+    def _energy_death_rate(self, energy: jax.Array) -> jax.Array:
+        return self.scale * (
+            1.0 - 1.0 / (1.0 + self.alpha * jnp.exp(-energy * self.slope))
+        )
+
+    def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        age = self.alpha_age * jnp.exp(self.beta * age)
+        energy = self._energy_death_rate(energy)
+        return age + energy
+
+    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        energy = self._energy_death_rate(energy) * age
+        ht = energy + self.alpha_age / self.beta * jnp.exp(self.beta * age)
+        h0 = self.alpha_age / self.beta
+        return ht - h0
+
+
 class BirthFunction(Protocol):
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         """Birth function b(t)"""
@@ -173,6 +198,20 @@ class EnergyLogisticBirth(BirthFunction):
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         del age
         return self.scale / (1.0 + self.alpha * jnp.exp(self.e0 - energy))
+
+    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        """Birth function b(t)"""
+        return age * self(age, energy)
+
+
+@dataclasses.dataclass(frozen=True)
+class SlopeELBirth(BirthFunction):
+    slope: float = 1.0
+    scale: float = 0.1
+
+    def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        del age
+        return self.scale / (1.0 + jnp.exp(-energy * self.slope))
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         """Birth function b(t)"""
