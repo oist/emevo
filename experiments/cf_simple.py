@@ -148,8 +148,8 @@ def exec_rollout(
             consumed_energy=timestep.info["energy_consumption"],
         )
         foodlog = FoodLog(
-            eaten=timestep.info["food_eaten"],
-            regenerated=timestep.info["food_regeneration"],
+            eaten=timestep.info["n_food_eaten"],
+            regenerated=timestep.info["n_food_regenerated"],
         )
         phys = state_t.physics  # type: ignore
         phys_state = SavedPhysicsState(
@@ -315,6 +315,9 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
+            popl = jnp.sum(env_state.unique_id.is_active())
+            print(f"Population: {int(popl)}")
+
         # Extinct?
         n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
         if n_active == 0:

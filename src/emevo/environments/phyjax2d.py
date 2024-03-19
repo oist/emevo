@@ -99,7 +99,8 @@ class _PositionLike(Protocol):
     angle: jax.Array  # Angular velocity (N,)
     xy: jax.Array  # (N, 2)
 
-    def __init__(self, angle: jax.Array, xy: jax.Array) -> None: ...
+    def __init__(self, angle: jax.Array, xy: jax.Array) -> None:
+        ...
 
     def batch_size(self) -> int:
         return self.angle.shape[0]
@@ -254,7 +255,6 @@ def get_relative_angle(s_a: State, s_b: State) -> jax.Array:
     a2b_x, a2b_y = _get_xy(s_b.p.xy - s_a.p.xy)
     a2b_angle = jnp.arctan2(a2b_y, a2b_x)
     return (a2b_angle - s_a.p.angle + 2.0 * TWO_PI) % TWO_PI
-
 
 
 @chex.dataclass

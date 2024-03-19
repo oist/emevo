@@ -43,6 +43,7 @@ from emevo.environments.phyjax2d import (
     Velocity,
     VelocitySolver,
     circle_raycast,
+    get_relative_angle,
     segment_raycast,
 )
 from emevo.environments.phyjax2d import step as physics_step
@@ -77,7 +78,7 @@ class CFObs(NamedTuple):
         return jnp.concatenate(
             (
                 self.sensor.reshape(self.sensor.shape[0], -1),
-                self.collision,
+                self.collision.reshape(self.collision.shape[0], -1),
                 self.velocity,
                 jnp.expand_dims(self.angle, axis=1),
                 jnp.expand_dims(self.angular_velocity, axis=1),
@@ -317,6 +318,49 @@ def get_sensor_obs(
         return _vmap_obs_closest_with_food(n_food_labels, shaped, p1, p2, stated)
 
 
+@functools.partial(jax.vmap, in_axes=(0, None))
+def _search_bin(value: jax.Array, bins: jax.Array) -> jax.Array:
+    smaller = value <= bins[1:]
+    larger = bins[:-1] <= value
+    return jnp.logical_and(smaller, larger)
+
+
+def _get_tactile(
+    n_bins: int,
+    s1: State,
+    s2: State,
+    collision_mat: jax.Array,
+) -> tuple[jax.Array, jax.Array]:
+    nm_shape = collision_mat.shape
+    rel_angle = get_relative_angle(s1, s2)  # [0, 2π]
+    weights = (jnp.pi * 2 / n_bins) * jnp.arange(n_bins + 1)  # [0, ..., 2π]
+    in_range = _search_bin(rel_angle.ravel(), weights).reshape(*nm_shape, n_bins)
+    tactile_raw = in_range * jnp.expand_dims(collision_mat, axis=2)
+    tactile = jnp.sum(tactile_raw, axis=1, keepdims=True)  # (N, 1, B)
+    return tactile, tactile_raw
+
+
+def _food_tactile_with_labels(
+    n_bins: int,
+    n_food_sources: int,
+    food_labels: jax.Array,
+    s1: State,
+    s2: State,
+    collision_mat: jax.Array,
+) -> tuple[jax.Array, jax.Array]:
+    nm_shape = collision_mat.shape
+    rel_angle = get_relative_angle(s1, s2)  # [0, 2π]
+    weights = (jnp.pi * 2 / n_bins) * jnp.arange(n_bins + 1)  # [0, ..., 2π]
+    in_range = _search_bin(rel_angle.ravel(), weights).reshape(*nm_shape, n_bins)
+    in_range_masked = in_range * jnp.expand_dims(collision_mat, axis=2)
+    onehot = jax.nn.one_hot(food_labels, n_food_sources, dtype=bool)
+    expanded_onehot = onehot.reshape(1, *onehot.shape, 1)  # (1, M, L, 1)
+    expanded_in_range = jnp.expand_dims(in_range_masked, axis=2)  # (N, M, 1, B)
+    tactile_raw = expanded_in_range * expanded_onehot  # (N, M, L, B)
+    tactile = jnp.sum(tactile_raw, axis=1)  # (N, L, B)
+    return tactile, tactile_raw
+
+
 @functools.partial(jax.jit, static_argnums=(0, 1))
 def nstep(
     n: int,
@@ -367,8 +411,10 @@ class CircleForaging(Env):
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
+        mouth_pos: Literal["all", "front"] = "front",
         neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
+        n_tactile_bins: int = 6,
         sensor_length: float = 100.0,
         sensor_range: tuple[float, float] | SensorRange = SensorRange.WIDE,
         agent_radius: float = 10.0,
@@ -436,6 +482,13 @@ class CircleForaging(Env):
         self._agent_loc_fn, self._initial_agentloc_state = self._make_agent_loc_fn(
             agent_loc_fn
         )
+        # Foraging
+        if mouth_pos == "all":
+            self._foraging_indices = tuple(range(n_tactile_bins))
+        elif mouth_pos == "front":
+            self._foraging_indices = 0, n_tactile_bins - 1
+        else:
+            raise ValueError(f"Unsupported mouth_pos {mouth_pos}")
         # Energy
         self._force_energy_consumption = force_energy_consumption
         self._basic_energy_consumption = basic_energy_consumption
@@ -474,6 +527,7 @@ class CircleForaging(Env):
         self._n_physics_iter = n_physics_iter
         # Obs
         self._n_sensors = n_agent_sensors
+        self._n_tactile_bins = n_tactile_bins
         # Some cached constants
         act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
         act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
@@ -581,16 +635,14 @@ class CircleForaging(Env):
                 )
             )
 
-            def food_collision_with_labels(
-                c2sc: jax.Array,
-                label: jax.Array,
-            ) -> jax.Array:
-                onehot = jax.nn.one_hot(label, self._n_food_sources, dtype=bool)
-                expanded_c2sc = jnp.expand_dims(c2sc, axis=2)  # (AGENT, FOOD, 1)
-                expanded_onehot = jnp.expand_dims(onehot, axis=0)  # (1, FOOD, LABEL)
-                return jnp.max(expanded_c2sc * expanded_onehot, axis=1)
-
-            self._food_collision = food_collision_with_labels
+            self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
+                self._n_tactile_bins,
+                self._n_food_sources,
+                labels,
+                s1,
+                s2,
+                cmat,
+            )
             self._n_obj = N_OBJECTS + self._n_food_sources - 1
 
         else:
@@ -605,7 +657,12 @@ class CircleForaging(Env):
                 )
             )
 
-            self._food_collision = lambda c2sc, _: jnp.max(c2sc, axis=1, keepdims=True)
+            self._food_tactile = lambda _, s1, s2, cmat: _get_tactile(
+                self._n_tactile_bins,
+                s1,
+                s2,
+                cmat,
+            )
             self._n_obj = N_OBJECTS
 
         # Spaces
@@ -727,13 +784,27 @@ class CircleForaging(Env):
         c2c = self._physics.get_contact_mat("circle", "circle", contacts)
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
-        food_collision = self._food_collision(c2sc, stated.static_circle.label)
+        # Get tactile obs
+        food_tactile, ft_raw = self._food_tactile(
+            stated.static_circle.label,
+            stated.circle,
+            stated.static_circle,
+            c2sc,
+        )
+        ag_tactile, _ = _get_tactile(
+            self._n_tactile_bins,
+            stated.circle,
+            stated.circle,
+            c2c,
+        )
+        wall_tactile, _ = _get_tactile(
+            self._n_tactile_bins,
+            stated.circle,
+            stated.segment,
+            seg2c.transpose(),
+        )
         collision = jnp.concatenate(
-            (
-                jnp.max(c2c, axis=1, keepdims=True),  # (N, 1)
-                food_collision,  # (N, N_LABELS)
-                jnp.max(seg2c, axis=0, keepdims=True).T,
-            ),
+            (food_tactile > 0, ag_tactile > 0, wall_tactile > 0),
             axis=1,
         )
         # Gather sensor obs
@@ -743,15 +814,16 @@ class CircleForaging(Env):
         energy_consumption = (
             self._force_energy_consumption * force_norm + self._basic_energy_consumption
         )
+        n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
         energy_delta = (
-            jnp.sum(food_collision * self._food_energy_coef, axis=1)
-            - energy_consumption
+            jnp.sum(n_ate * self._food_energy_coef, axis=1) - energy_consumption
         )
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
-        stated, food_num, food_loc, n_eaten, n_re = self._remove_and_regenerate_foods(
+        eaten = jnp.sum(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
+        stated, food_num, food_loc, n_regen = self._remove_and_regenerate_foods(
             food_key,
-            jnp.max(c2sc, axis=0),
+            eaten,  # (N_FOOD, N_LABEL)
             stated,
             state.step,
             state.food_num,
@@ -775,8 +847,9 @@ class CircleForaging(Env):
             obs=obs,
             info={
                 "energy_consumption": energy_consumption,
-                "food_regeneration": n_re.astype(bool),
-                "food_eaten": n_eaten,
+                "n_food_regenerated": n_regen.astype(bool),
+                "n_food_eaten": jnp.sum(eaten, axis=0),  # (N_LABEL,)
+                "n_ate_food": n_ate,  # (N_AGENT, N_LABEL)
             },
         )
         state = CFState(
@@ -989,14 +1062,13 @@ class CircleForaging(Env):
     def _remove_and_regenerate_foods(
         self,
         key: chex.PRNGKey,
-        eaten: jax.Array,
+        eaten_per_source: jax.Array,
         sd: StateDict,
         n_steps: jax.Array,
         food_num_states: list[FoodNumState],
         food_loc_states: list[LocatingState],
-    ) -> tuple[
-        StateDict, list[FoodNumState], list[LocatingState], jax.Array, jax.Array
-    ]:
+    ) -> tuple[StateDict, list[FoodNumState], list[LocatingState], jax.Array]:
+        eaten = jnp.sum(eaten_per_source, axis=1) > 0
         # Remove foods
         xy = jnp.where(
             jnp.expand_dims(eaten, axis=1),
@@ -1004,18 +1076,14 @@ class CircleForaging(Env):
             sd.static_circle.p.xy,
         )
         is_active = jnp.logical_and(sd.static_circle.is_active, jnp.logical_not(eaten))
-        eaten_per_source = (
-            jnp.zeros(self._n_food_sources, dtype=jnp.int32)
-            .at[sd.static_circle.label]
-            .add(eaten)
-        )
+        n_eaten_per_source = jnp.sum(eaten_per_source, axis=0)
         sc = sd.static_circle
         # Regenerate food for each source
         n_generated_foods = jnp.zeros(self._n_food_sources, dtype=jnp.int32)
         for i in range(self._n_food_sources):
             food_num = self._food_num_fns[i](
                 n_steps,
-                food_num_states[i].eaten(eaten_per_source[i]),
+                food_num_states[i].eaten(n_eaten_per_source[i]),
             )
             food_loc = food_loc_states[i]
             first_inactive = nth_true(jnp.logical_not(is_active), i + 1)
@@ -1046,7 +1114,6 @@ class CircleForaging(Env):
             replace(sd, static_circle=sc),
             food_num_states,
             food_loc_states,
-            eaten_per_source,
             n_generated_foods,
         )
 
