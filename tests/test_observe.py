@@ -238,13 +238,13 @@ def test_encount_and_collision(key: chex.PRNGKey) -> None:
         if not p2p4_ok and jnp.linalg.norm(p2 - p4) <= 2 * AGENT_RADIUS:
             assert bool(ts.encount[2, 4]), (p2, p3, p4)
             assert bool(ts.encount[4, 2]), (p2, p3, p4)
-            assert bool(ts.obs.collision[2, 0]), (p2, p3, p4)
-            assert bool(ts.obs.collision[4, 0]), (p2, p3, p4)
+            assert bool(ts.obs.collision[2, 0, -1]), (p2, p3, p4)
+            assert bool(ts.obs.collision[4, 0, 0]), (p2, p3, p4)
             p2p4_ok = True
 
         p3_to_food = jnp.linalg.norm(p3 - jnp.array([80.0, 90.0]))
         if not p3_ok and p3_to_food <= AGENT_RADIUS + FOOD_RADIUS:
-            assert bool(ts.obs.collision[3, 1]), (p2, p3, p4)
+            assert bool(ts.obs.collision[3, 1, 0]), (p2, p3, p4)
             p3_ok = True
 
         if p2p4_ok and p3_ok:
@@ -281,12 +281,12 @@ def test_collision_with_foodlabels(key: chex.PRNGKey) -> None:
         if jnp.any(ts.obs.collision):
             assert jnp.all(to_food <= AGENT_RADIUS + FOOD_RADIUS + 0.1)
             chex.assert_trees_all_close(
-                ts.obs.collision[:3],
+                ts.obs.collision[:3, :, -1],
                 jnp.array(
                     [
-                        [0.0, 1.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0, 0.0],
+                        [False, True, False, False, False],
+                        [False, False, True, False, False],
+                        [False, False, False, True, False],
                     ]
                 ),
             )

@@ -252,9 +252,12 @@ class State(PyTreeOps):
 
 
 def get_relative_angle(s_a: State, s_b: State) -> jax.Array:
-    a2b_x, a2b_y = _get_xy(s_b.p.xy - s_a.p.xy)
-    a2b_angle = jnp.arctan2(a2b_y, a2b_x)
-    return (a2b_angle - s_a.p.angle + 2.0 * TWO_PI) % TWO_PI
+    a2b = jax.vmap(jnp.subtract, in_axes=(None, 0))(s_b.p.xy, s_a.p.xy)
+    a2b_x, a2b_y = _get_xy(a2b)
+    a2b_angle = jnp.arctan2(a2b_y, a2b_x)  # (N_A, N_B)
+    a_angle = jnp.expand_dims(s_a.p.angle, axis=1)
+    # Subtract 0.5𝛑 because our angle starts from 0.5𝛑 (90 degree)
+    return (a2b_angle - a_angle + TWO_PI * 3 - jnp.pi * 0.5) % TWO_PI
 
 
 @chex.dataclass
