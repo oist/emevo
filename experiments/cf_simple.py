@@ -62,7 +62,7 @@ class RewardExtractor:
         norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
         return norm / self._max_norm
 
-    def extract_linear(
+    def extract(
         self,
         ate_food: jax.Array,
         action: jax.Array,
@@ -71,14 +71,6 @@ class RewardExtractor:
         del energy
         act_input = self.act_coef * self.normalize_action(action)
         return jnp.concatenate((ate_food.astype(jnp.float32), act_input), axis=1)
-
-    def extract_sigmoid(
-        self,
-        ate_food: jax.Array,
-        action: jax.Array,
-        energy: jax.Array,
-    ) -> tuple[jax.Array, jax.Array]:
-        return self.extract_linear(ate_food, action, energy), energy
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
@@ -429,7 +421,7 @@ def evolve(
         n_weights=1 + cfconfig.n_food_sources,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
-        extractor=reward_extracor.extract_linear,
+        extractor=reward_extracor.extract,
         serializer=serialize_weight,
         **gopsconfig.init_kwargs,
     )
