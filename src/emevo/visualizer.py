@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 from os import PathLike
-from typing import Any, Protocol, TypeVar
+from typing import Protocol, TypeVar
 
 from numpy.typing import NDArray
 
-ENV = TypeVar("ENV", contravariant=True)
+STATE = TypeVar("STATE", contravariant=True)
 
 
-class Visualizer(Protocol[ENV]):
+class Visualizer(Protocol[STATE]):
     def close(self) -> None:
         """Close this visualizer"""
         ...
 
-    def get_image(self) -> NDArray:
-        ...
+    def get_image(self) -> NDArray: ...
 
-    def render(self, env: ENV) -> Any:
+    def render(self, state: STATE, **kwargs) -> None:
         """Render image"""
         ...
 
@@ -24,13 +23,9 @@ class Visualizer(Protocol[ENV]):
         """Open a GUI window"""
         ...
 
-    def overlay(self, name: str, _value: Any) -> Any:
-        """Render additional value as an overlay"""
-        raise ValueError(f"Unsupported overlay: {name}")
 
-
-class VisWrapper(Visualizer[ENV], Protocol):
-    unwrapped: Visualizer[ENV]
+class VisWrapper(Visualizer[STATE], Protocol):
+    unwrapped: Visualizer[STATE]
 
     def close(self) -> None:
         self.unwrapped.close()
@@ -38,20 +33,17 @@ class VisWrapper(Visualizer[ENV], Protocol):
     def get_image(self) -> NDArray:
         return self.unwrapped.get_image()
 
-    def render(self, env: ENV) -> Any:
-        return self.unwrapped.render(env)
+    def render(self, state: STATE, **kwargs) -> None:
+        self.unwrapped.render(state)
 
     def show(self) -> None:
         self.unwrapped.show()
 
-    def overlay(self, name: str, value: Any) -> Any:
-        return self.unwrapped.overlay(name, value)
 
-
-class SaveVideoWrapper(VisWrapper[ENV]):
+class SaveVideoWrapper(VisWrapper[STATE]):
     def __init__(
         self,
-        visualizer: Visualizer[ENV],
+        visualizer: Visualizer[STATE],
         filename: PathLike,
         **kwargs,
     ) -> None:

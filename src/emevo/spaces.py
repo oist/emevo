@@ -1,26 +1,29 @@
-"""Similar to gym.spaces.Space, but doesn't have RNG"""
+"""Similar to gym.spaces.Space, but for jax"""
+
 from __future__ import annotations
 
 import abc
-from typing import Any, Generic, Iterable, NamedTuple, Sequence, TypeVar
+from collections.abc import Iterable, Iterator, Sequence
+from typing import Any, Generic, NamedTuple, TypeVar
 
-import numpy as np
-from numpy.random import Generator
-from numpy.typing import DTypeLike, NDArray
+import chex
+import jax
+import jax.numpy as jnp
 
 INSTANCE = TypeVar("INSTANCE")
+DTYPE = TypeVar("DTYPE")
 
 
-class Space(abc.ABC, Generic[INSTANCE]):
-    dtype: np.dtype
+class Space(abc.ABC, Generic[INSTANCE, DTYPE]):
+    dtype: DTYPE
     shape: tuple[int, ...]
 
     @abc.abstractmethod
-    def clip(self, x: NDArray) -> NDArray:
+    def clip(self, x: INSTANCE) -> INSTANCE:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def contains(self, x: INSTANCE) -> bool:
+    def contains(self, x: INSTANCE) -> jax.Array:
         pass
 
     @abc.abstractmethod
@@ -28,34 +31,34 @@ class Space(abc.ABC, Generic[INSTANCE]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def sample(self, generator: Generator) -> INSTANCE:
+    def sample(self, key: chex.PRNGKey) -> INSTANCE:
         pass
 
 
-def _short_repr(arr: NDArray) -> str:
-    if arr.size != 0 and np.min(arr) == np.max(arr):
-        return str(np.min(arr))
+def _short_repr(arr: jax.Array) -> str:
+    if arr.size != 0 and jnp.min(arr) == jnp.max(arr):
+        return str(jnp.min(arr))
     return str(arr)
 
 
-class BoxSpace(Space[NDArray]):
+class BoxSpace(Space[jax.Array, jnp.dtype]):
     """gym.spaces.Box, but without RNG"""
 
     def __init__(
         self,
-        low: int | float | NDArray,
-        high: int | float | NDArray,
+        low: int | float | jax.Array,
+        high: int | float | jax.Array,
         shape: Sequence[int] | None = None,
-        dtype: DTypeLike = np.float32,
+        dtype: jnp.dtype = jnp.float32,
     ) -> None:
-        self.dtype = np.dtype(dtype)
+        self.dtype = jnp.dtype(dtype)
 
         # determine shape if it isn't provided directly
         if shape is not None:
             shape = tuple(shape)
-        elif not np.isscalar(low):
+        elif not jnp.isscalar(low):
             shape = low.shape  # type: ignore
-        elif not np.isscalar(high):
+        elif not jnp.isscalar(high):
             shape = high.shape  # type: ignore
         else:
             raise ValueError(
@@ -64,29 +67,30 @@ class BoxSpace(Space[NDArray]):
         assert isinstance(shape, tuple)
         self.shape = shape
 
-        # Capture the boundedness information before replacing np.inf with get_inf
-        _low = np.full(shape, low, dtype=float) if np.isscalar(low) else low
-        self.bounded_below = -np.inf < _low  # type: ignore
-        _high = np.full(shape, high, dtype=float) if np.isscalar(high) else high
-        self.bounded_above = np.inf > _high  # type: ignore
+        # Capture the boundedness information before replacing jnp.inf with get_inf
+        _low = jnp.full(shape, low, dtype=jnp.float32) if jnp.isscalar(low) else low
+        self.bounded_below = -jnp.inf < _low  # type: ignore
+        _high = jnp.full(shape, high, dtype=jnp.float32) if jnp.isscalar(high) else high
+        self.bounded_above = jnp.inf > _high  # type: ignore
 
         low = _broadcast(low, dtype, shape, inf_sign="-")  # type: ignore
         high = _broadcast(high, dtype, shape, inf_sign="+")  # type: ignore
 
-        assert isinstance(low, np.ndarray)
+        assert isinstance(low, jax.Array)
         assert low.shape == shape, "low.shape doesn't match provided shape"
-        assert isinstance(high, np.ndarray)
+        assert isinstance(high, jax.Array)
         assert high.shape == shape, "high.shape doesn't match provided shape"
 
         self.low = low.astype(self.dtype)
         self.high = high.astype(self.dtype)
+        self._range = self.high - self.low
 
         self.low_repr = _short_repr(self.low)
         self.high_repr = _short_repr(self.high)
 
     def is_bounded(self, manner: str = "both") -> bool:
-        below = bool(np.all(self.bounded_below))
-        above = bool(np.all(self.bounded_above))
+        below = jnp.all(self.bounded_below).item()
+        above = jnp.all(self.bounded_above).item()
         if manner == "both":
             return below and above
         elif manner == "below":
@@ -96,84 +100,75 @@ class BoxSpace(Space[NDArray]):
         else:
             raise ValueError("manner is not in {'below', 'above', 'both'}")
 
-    def clip(self, x: NDArray) -> NDArray:
-        return np.clip(x, a_min=self.low, a_max=self.high)
+    def clip(self, x: jax.Array) -> jax.Array:
+        return jnp.clip(x, a_min=self.low, a_max=self.high)
 
-    def contains(self, x: NDArray) -> bool:
-        return bool(
-            np.can_cast(x.dtype, self.dtype)
-            and x.shape == self.shape
-            and np.all(x >= self.low)
-            and np.all(x <= self.high)
-        )
+    def contains(self, x: jax.Array) -> jax.Array:
+        type_ok = jnp.can_cast(x.dtype, self.dtype) and x.shape == self.shape
+        value_ok = jnp.logical_and(jnp.all(x >= self.low), jnp.all(x <= self.high))
+        return jnp.logical_and(type_ok, value_ok)
 
     def flatten(self) -> BoxSpace:
         return BoxSpace(low=self.low.flatten(), high=self.high.flatten())
 
-    def sample(self, generator: Generator) -> NDArray:
-        high = self.high if self.dtype.kind == "f" else self.high.astype("int64") + 1
-        sample = np.empty(self.shape)
-
-        # Masking arrays which classify the coordinates according to interval
-        # type
-        unbounded = ~self.bounded_below & ~self.bounded_above
-        upp_bounded = ~self.bounded_below & self.bounded_above
-        low_bounded = self.bounded_below & ~self.bounded_above
-        bounded = self.bounded_below & self.bounded_above
-
-        # Vectorized sampling by interval type
-        sample[unbounded] = generator.normal(size=unbounded[unbounded].shape)
-
-        sample[low_bounded] = (
-            generator.exponential(size=low_bounded[low_bounded].shape)
-            + self.low[low_bounded]
+    def sample(self, key: chex.PRNGKey) -> jax.Array:
+        low = self.low.astype(jnp.float32)
+        if self.dtype.kind == "f":
+            high = self.high
+        else:
+            high = self.high.astype(jnp.float32) + 1.0
+        key1, key2, key3, key4 = jax.random.split(key, 4)
+        sample = jnp.where(
+            # Bounded
+            jnp.logical_and(self.bounded_below, self.bounded_above),
+            jax.random.uniform(key1, minval=low, maxval=high, shape=self.shape),
+            jnp.where(
+                self.bounded_below,
+                # Low bounded
+                low + jax.random.exponential(key2, shape=self.shape),
+                jnp.where(
+                    self.bounded_above,
+                    # High bounded
+                    high - jax.random.exponential(key3, shape=self.shape),
+                    # Unbounded
+                    jax.random.normal(key4, shape=self.shape),
+                ),
+            ),
         )
-        sample[upp_bounded] = (
-            -generator.exponential(size=upp_bounded[upp_bounded].shape)
-            + self.high[upp_bounded]
-        )
-        sample[bounded] = generator.uniform(
-            low=self.low[bounded], high=high[bounded], size=bounded[bounded].shape
-        )
+
         if self.dtype.kind == "i":
-            sample = np.floor(sample)
-        return sample.astype(self.dtype)
+            return jnp.floor(sample).astype(self.dtype)
+        else:
+            return sample.astype(self.dtype)
 
-    def normalize(self, normalized: NDArray) -> NDArray:
-        range_ = self.high - self.low  # type: ignore
-        return (normalized - self.low) / range_  # type: ignore
+    def normalize(self, unnormalized: jax.Array) -> jax.Array:
+        return (unnormalized - self.low) / self._range
+
+    def sigmoid_scale(self, array: jax.Array) -> jax.Array:
+        return self._range * jax.nn.sigmoid(array) + self.low
 
     def __repr__(self) -> str:
         return f"Box({self.low_repr}, {self.high_repr}, {self.shape}, {self.dtype})"
-
-    def __eq__(self, other) -> bool:
-        """Check whether `other` is equivalent to this instance."""
-        return (
-            isinstance(other, self.__class__)
-            and (self.shape == other.shape)
-            and np.allclose(self.low, other.low)
-            and np.allclose(self.high, other.high)
-        )
 
 
 def get_inf(dtype, sign: str) -> int | float:
     """Returns an infinite that doesn't break things.
     Args:
-        dtype: An `np.dtype`
+        dtype: An `jnp.dtype`
         sign (str): must be either `"+"` or `"-"`
     """
-    if np.dtype(dtype).kind == "f":
+    if jnp.dtype(dtype).kind == "f":
         if sign == "+":
-            return np.inf
+            return jnp.inf
         elif sign == "-":
-            return -np.inf
+            return -jnp.inf
         else:
             raise TypeError(f"Unknown sign {sign}, use either '+' or '-'")
-    elif np.dtype(dtype).kind == "i":
+    elif jnp.dtype(dtype).kind == "i":
         if sign == "+":
-            return np.iinfo(dtype).max - 2
+            return jnp.iinfo(dtype).max - 2
         elif sign == "-":
-            return np.iinfo(dtype).min + 2
+            return jnp.iinfo(dtype).min + 2
         else:
             raise TypeError(f"Unknown sign {sign}, use either '+' or '-'")
     else:
@@ -181,56 +176,48 @@ def get_inf(dtype, sign: str) -> int | float:
 
 
 def _broadcast(
-    value: int | float | NDArray,
+    value: int | float | jax.Array,
     dtype,
     shape: tuple[int, ...],
     inf_sign: str,
-) -> NDArray:
+) -> jax.Array:
     """Handle infinite bounds and broadcast at the same time if needed."""
-    if np.isscalar(value):
-        value = get_inf(dtype, inf_sign) if np.isinf(value) else value  # type: ignore
-        value = np.full(shape, value, dtype=dtype)
+    if jnp.isscalar(value):
+        value = get_inf(dtype, inf_sign) if jnp.isinf(value) else value  # type: ignore
+        value = jnp.full(shape, value, dtype=dtype)
     else:
-        assert isinstance(value, np.ndarray)
-        if np.any(np.isinf(value)):
-            # create new array with dtype, but maintain old one to preserve np.inf
-            temp = value.astype(dtype)
-            temp[np.isinf(value)] = get_inf(dtype, inf_sign)
-            value = temp
+        assert isinstance(value, jax.Array)
+        isinf = jnp.isinf(value)
+        if jnp.any(isinf):
+            # create new array with dtype, but maintain old one to preserve jnp.inf
+            value = jnp.where(isinf, get_inf(dtype, inf_sign), value.astype(dtype))
     return value
 
 
-class DiscreteSpace(Space[int]):
+class DiscreteSpace(Space[jax.Array, jnp.dtype]):
     """gym.spaces.Discrete, but without RNG"""
 
     def __init__(self, n: int, start: int = 0) -> None:
         assert n > 0, "n (counts) have to be positive"
-        assert isinstance(start, (int, np.integer))
-        self.dtype = np.dtype(int)
+        assert isinstance(start, (int, jnp.integer))
+        self.dtype = jnp.dtype(int)
         self.shape = ()
-        self.n = int(n)
-        self.start = int(start)
+        self.n = n
+        self.start = start
 
-    def clip(self, x: int) -> int:
-        return min(max(0, x), self.n - 1)
+    def clip(self, x: jax.Array) -> jax.Array:
+        return jnp.clip(x, a_min=self.start, a_max=self.start + self.n)
 
-    def contains(self, x: int) -> bool:
+    def contains(self, x: jax.Array) -> jax.Array:
         """Return boolean specifying if x is a valid member of this space."""
-        if isinstance(x, int):
-            as_int = x
-        elif isinstance(x, (np.generic, np.ndarray)) and (
-            x.dtype.char in np.typecodes["AllInteger"] and x.shape == ()
-        ):
-            as_int = int(x)  # type: ignore
-        else:
-            return False
-        return self.start <= as_int < self.start + self.n
+        return jnp.logical_and(self.start <= x, x < self.start + self.n)
 
     def flatten(self) -> BoxSpace:
-        return BoxSpace(low=np.zeros(self.n), high=np.ones(self.n))
+        return BoxSpace(low=jnp.zeros(self.n), high=jnp.ones(self.n))
 
-    def sample(self, generator: Generator) -> int:
-        return int(self.start + generator.integers(self.n))
+    def sample(self, key: chex.PRNGKey) -> jax.Array:
+        rn = jax.random.randint(key, shape=self.shape, minval=0, maxval=self.n)
+        return rn.item() + self.start
 
     def __repr__(self) -> str:
         """Gives a string representation of this space."""
@@ -247,7 +234,7 @@ class DiscreteSpace(Space[int]):
         )
 
 
-class NamedTupleSpace(Space[NamedTuple], Iterable):
+class NamedTupleSpace(Space[NamedTuple, tuple[jnp.dtype, ...]], Iterable):
     """Space that returns namedtuple of other spaces"""
 
     def __init__(self, cls: type[tuple], **spaces_kwargs: Space) -> None:
@@ -269,40 +256,34 @@ class NamedTupleSpace(Space[NamedTuple], Iterable):
             tuple((field, spaces_kwargs[field].__class__) for field in fields),
         )
         self.spaces = self._space_cls(**spaces_kwargs)
-        dtype = self.spaces[0].dtype
-        for space in self.spaces:
-            if space.dtype != dtype:
-                raise ValueError("All dtype of NamedTuple space must be the same")
-        self.dtype = dtype
+        self.dtype = tuple(s.dtype for s in self.spaces)
         self.shape = tuple(space.shape for space in self.spaces)
 
     def clip(self, x: tuple) -> Any:
         clipped = [space.clip(value) for value, space in zip(x, self.spaces)]
         return self._cls(*clipped)
 
-    def contains(self, x: tuple) -> bool:
+    def contains(self, x: NamedTuple) -> jax.Array:
         """Return boolean specifying if x is a valid member of this space."""
-        for instance, space in zip(x, self.spaces):
-            if not space.contains(instance):
-                return False
-
-        return True
+        contains = [space.contains(instance) for instance, space in zip(x, self.spaces)]
+        return jnp.all(jnp.array(contains))
 
     def flatten(self) -> BoxSpace:
         spaces = [space.flatten() for space in self.spaces]
-        low = np.concatenate([space.low for space in spaces])
-        high = np.concatenate([space.high for space in spaces])
+        low = jnp.concatenate([space.low for space in spaces])
+        high = jnp.concatenate([space.high for space in spaces])
         return BoxSpace(low=low, high=high)
 
-    def sample(self, generator: Generator) -> Any:
-        samples = [space.sample(generator) for space in self.spaces]
+    def sample(self, key: chex.PRNGKey) -> Any:
+        keys = jax.random.split(key, len(self.spaces))
+        samples = [space.sample(key) for space, key in zip(self.spaces, keys)]
         return self._cls(*samples)
 
     def __getitem__(self, key: str) -> Space:
         """Get the space that is associated to `key`."""
         return getattr(self.spaces, key)
 
-    def __iter__(self) -> Iterable[Space]:
+    def __iter__(self) -> Iterator[Space]:
         """Iterator through the keys of the subspaces."""
         yield from self.spaces
 

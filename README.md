@@ -33,8 +33,7 @@ nox -s smoke --no-install -- smoke-tests/circle_asexual_repr.py \
 nox -s tests
 ```
 
-## (WIP) Design
-- Gym-like environment API (`emevo.Env`)
-- `emevo.Body` as a key to physical existence of agents
-- Energy/Age status of agents (`emevo.Status`)
-- Birth/Hazard functions (`emevo.birth_and_death`)
+# License
+[Apache LICENSE 2.0][./LICENSE] holds unless otherwise noted.
+
+`vec2d.py` is copied from [PyMunk](pymunk.org) with the license-header as-is.

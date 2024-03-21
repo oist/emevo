@@ -7,7 +7,12 @@
 **/build/
 **/*.egg-info/
 **/.mypy_cache/
+.virtual_documents/
 .ipynb_checkpoints/
+analysis-notebooks/
 requirements/*.txt
 # This should be local
 pyrightconfig.json
+*.eqx
+*.parquet
+*.npz

@@ -1,0 +1,414 @@
+"""Utility for experiments"""
+
+from __future__ import annotations
+
+import dataclasses
+import enum
+import importlib
+import json
+from pathlib import Path
+from typing import Any, Dict, Tuple, Type, Union
+
+import chex
+import equinox as eqx
+import jax
+import jax.numpy as jnp
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+import serde
+
+from emevo import birth_and_death as bd
+from emevo import genetic_ops as gops
+from emevo.environments.circle_foraging import SensorRange
+from emevo.environments.phyjax2d import Position, StateDict
+from emevo.eqx_utils import get_slice
+from emevo.reward_fn import RewardFn
+
+Self = Any
+
+
+@serde.serde
+@dataclasses.dataclass
+class CfConfig:
+    n_initial_agents: int = 6
+    n_max_agents: int = 100
+    n_max_foods: int = 40
+    n_food_sources: int = 1
+    food_num_fn: Union[str, Tuple[str, ...]] = "constant"
+    food_loc_fn: Union[str, Tuple[str, ...]] = "gaussian"
+    agent_loc_fn: Union[str, Tuple[str, ...]] = "uniform"
+    food_energy_coef: Tuple[float, ...] = (1.0,)
+    food_color: Tuple[Tuple[int, int, int, int], ...] = ((254, 2, 162, 255),)
+    xlim: Tuple[float, float] = (0.0, 200.0)
+    ylim: Tuple[float, float] = (0.0, 200.0)
+    env_radius: float = 120.0
+    env_shape: str = "square"
+    obstacles: str = "none"
+    newborn_loc: str = "neighbor"
+    neighbor_stddev: float = 40.0
+    n_agent_sensors: int = 16
+    sensor_length: float = 100.0
+    sensor_range: SensorRange = SensorRange.WIDE
+    agent_radius: float = 10.0
+    food_radius: float = 4.0
+    foodloc_interval: int = 1000
+    dt: float = 0.1
+    linear_damping: float = 0.8
+    angular_damping: float = 0.6
+    max_force: float = 40.0
+    min_force: float = -20.0
+    init_energy: float = 20.0
+    energy_capacity: float = 100.0
+    force_energy_consumption: float = 0.01 / 40.0
+    basic_energy_consumption: float = 0.0
+    energy_share_ratio: float = 0.4
+    n_velocity_iter: int = 6
+    n_position_iter: int = 2
+    n_physics_iter: int = 5
+    max_place_attempts: int = 10
+    smell_decay_factor: float = 0.01
+    smell_diff_max: float = 1.0
+    smell_diff_coef: float = 100.0
+    observe_food_label: bool = False
+
+    def apply_override(self, override: str) -> None:
+        if 0 < len(override):
+            override_dict = json.loads(override)
+            for key, value in override_dict.items():
+                setattr(self, key, value)
+
+
+def _load_cls(cls_path: str) -> Type:
+    try:
+        mod, cls = cls_path.rsplit(".", 1)
+        return getattr(importlib.import_module(mod), cls)
+    except (AttributeError, ModuleNotFoundError, ValueError) as err:
+        raise ImportError(f"{cls_path} is not a valid class path") from err
+
+
+@serde.serde
+@dataclasses.dataclass
+class BDConfig:
+    birth_fn: str
+    birth_params: Dict[str, float]
+    hazard_fn: str
+    hazard_params: Dict[str, float]
+
+    def load_models(self) -> tuple[bd.BirthFunction, bd.HazardFunction]:
+        birth_fn = _load_cls(self.birth_fn)(**self.birth_params)
+        hazard_fn = _load_cls(self.hazard_fn)(**self.hazard_params)
+        return birth_fn, hazard_fn
+
+    def apply_birth_override(self, override: str) -> None:
+        if 0 < len(override):
+            override_dict = json.loads(override)
+            self.birth_params |= override_dict
+
+    def apply_hazard_override(self, override: str) -> None:
+        if 0 < len(override):
+            override_dict = json.loads(override)
+            self.hazard_params |= override_dict
+
+
+def _resolve_cls(d: dict[str, Any]) -> GopsConfig:
+    params = {}
+    for k, v in d["params"].items():
+        if isinstance(v, dict):
+            params[k] = _resolve_cls(v)
+        else:
+            params[k] = v
+    return _load_cls(d["path"])(**d["params"])
+
+
+@serde.serde
+@dataclasses.dataclass(frozen=True)
+class GopsConfig:
+    path: str
+    init_std: float
+    init_mean: float
+    params: Dict[str, Union[float, Dict[str, float]]]
+    init_kwargs: Dict[str, float] = dataclasses.field(default_factory=dict)
+
+    def load_model(self) -> gops.Mutation | gops.Crossover:
+        params = {}
+        for k, v in self.params.items():
+            if isinstance(v, dict):
+                params[k] = _resolve_cls(v)
+            else:
+                params[k] = v
+        return _load_cls(self.path)(**params)
+
+
+@chex.dataclass
+class Log:
+    dead: jax.Array
+    got_food: jax.Array
+    consumed_energy: jax.Array
+    energy: jax.Array
+    parents: jax.Array
+    rewards: jax.Array
+    unique_id: jax.Array
+
+    def with_step(self, from_: int) -> LogWithStep:
+        if self.parents.ndim == 2:
+            step_size, batch_size = self.parents.shape
+            step_arange = jnp.arange(from_, from_ + step_size)
+            step = jnp.tile(jnp.expand_dims(step_arange, axis=1), (1, batch_size))
+            slots_arange = jnp.arange(batch_size)
+            slots = jnp.tile(slots_arange, (step_size, 1))
+            return LogWithStep(**dataclasses.asdict(self), step=step, slots=slots)
+        elif self.parents.ndim == 1:
+            batch_size = self.parents.shape[0]
+            return LogWithStep(
+                **dataclasses.asdict(self),
+                step=jnp.ones(batch_size, dtype=jnp.int32) * from_,
+                slots=jnp.arange(batch_size),
+            )
+        else:
+            raise ValueError(
+                "with_step is only applicable for 1 or 2 dimensional log, but it has"
+                + f"{self.parents.ndim} ndim"
+            )
+
+
+@chex.dataclass
+class FoodLog:
+    eaten: jax.Array  # i32, [N_FOOD_SOURCES,]
+    regenerated: jax.Array  # bool, [N_FOOD_SOURCES,]
+
+
+@chex.dataclass
+class LogWithStep(Log):
+    step: jax.Array
+    slots: jax.Array
+
+    def filter_active(self) -> Any:
+        is_active = self.unique_id > -1
+        return jax.tree_map(lambda arr: arr[is_active], self)
+
+    def filter_birth(self) -> Any:
+        is_birth_event = self.parents > -1
+        return jax.tree_map(lambda arr: arr[is_birth_event], self)
+
+    def filter_death(self) -> Any:
+        is_death_event = self.dead > -1
+        return jax.tree_map(lambda arr: arr[is_death_event], self)
+
+
+@dataclasses.dataclass
+class SavedProfile:
+    birthtime: int
+    parent: int
+    unique_id: int
+
+
+_XY_SAVE_DTYPE = np.float16
+
+
+@chex.dataclass
+class SavedPhysicsState:
+    circle_axy: jax.Array
+    circle_is_active: jax.Array
+    static_circle_axy: jax.Array
+    static_circle_is_active: jax.Array
+    static_circle_label: jax.Array
+
+    @staticmethod
+    def load(path: Path) -> Self:
+        npzfile = np.load(path)
+        static_circle_is_active = jnp.array(npzfile["static_circle_is_active"])
+        # For backward compatibility
+        if "static_circle_label" in npzfile:
+            static_circle_label = jnp.array(npzfile["static_circle_label"])
+        else:
+            static_circle_label = jnp.zeros(
+                static_circle_is_active.shape[0],
+                dtype=jnp.uint8,
+            )
+        return SavedPhysicsState(
+            circle_axy=jnp.array(npzfile["circle_axy"].astype(np.float32)),
+            circle_is_active=jnp.array(npzfile["circle_is_active"]),
+            static_circle_axy=jnp.array(
+                npzfile["static_circle_axy"].astype(np.float32)
+            ),
+            static_circle_is_active=static_circle_is_active,
+            static_circle_label=static_circle_label,
+        )
+
+    def set_by_index(self, i: int, phys: StateDict) -> StateDict:
+        phys = phys.nested_replace(
+            "circle.p",
+            Position.from_axy(self.circle_axy[i]),
+        )
+        phys = phys.nested_replace("circle.is_active", self.circle_is_active[i])
+        phys = phys.nested_replace(
+            "static_circle.p",
+            Position.from_axy(self.static_circle_axy[i]),
+        )
+        phys = phys.nested_replace(
+            "static_circle.is_active",
+            self.static_circle_is_active[i],
+        )
+        phys = phys.nested_replace(
+            "static_circle.label",
+            self.static_circle_label[i],
+        )
+        return phys
+
+
+def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
+    concatenated = jax.tree_map(lambda *args: np.concatenate(args), *phys_states)
+    np.savez_compressed(
+        path,
+        circle_axy=concatenated.circle_axy.astype(_XY_SAVE_DTYPE),
+        circle_is_active=concatenated.circle_is_active,
+        static_circle_axy=concatenated.static_circle_axy.astype(_XY_SAVE_DTYPE),
+        static_circle_is_active=concatenated.static_circle_is_active,
+        static_circle_label=concatenated.static_circle_label,
+    )
+
+
+class LogMode(str, enum.Enum):
+    NONE = "none"
+    REWARD_ONLY = "reward-only"
+    REWARD_AND_LOG = "reward-and-log"
+    FULL = "full"
+
+
+def _default_dropped_keys() -> list[str]:
+    return ["dead", "parents"]
+
+
+@dataclasses.dataclass
+class Logger:
+    logdir: Path
+    mode: LogMode
+    log_interval: int
+    savestate_interval: int
+    dropped_keys: list[str] = dataclasses.field(default_factory=_default_dropped_keys)
+    reward_fn_dict: dict[int, RewardFn] = dataclasses.field(default_factory=dict)
+    profile_dict: dict[int, SavedProfile] = dataclasses.field(default_factory=dict)
+    _log_list: list[Log] = dataclasses.field(default_factory=list, init=False)
+    _foodlog_list: list[FoodLog] = dataclasses.field(default_factory=list, init=False)
+    _physstate_list: list[SavedPhysicsState] = dataclasses.field(
+        default_factory=list,
+        init=False,
+    )
+    _log_index: int = dataclasses.field(default=1, init=False)
+    _physstate_index: int = dataclasses.field(default=1, init=False)
+
+    def push_log(self, log: Log) -> None:
+        if self.mode not in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+            return
+
+        # Move log to CPU
+        self._log_list.append(jax.tree_map(np.array, log))
+
+        if len(self._log_list) % self.log_interval == 0:
+            self._save_log()
+
+    def _save_log(self) -> None:
+        if len(self._log_list) == 0:
+            return
+
+        all_log = jax.tree_map(
+            lambda *args: np.concatenate(args, axis=0),
+            *self._log_list,
+        )
+        log_dict = dataclasses.asdict(all_log)
+        for dropped_key in self.dropped_keys:
+            del log_dict[dropped_key]
+
+        pq.write_table(
+            pa.Table.from_pydict(log_dict),
+            self.logdir.joinpath(f"log-{self._log_index}.parquet"),
+            compression="zstd",
+        )
+        self._log_index += 1
+        self._log_list.clear()
+
+    def push_foodlog(self, log: FoodLog) -> None:
+        if self.mode not in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+            return
+
+        # Move log to CPU
+        self._foodlog_list.append(jax.tree_map(np.array, log))
+
+        if len(self._log_list) % self.log_interval == 0:
+            self._save_foodlog()
+
+    def _save_foodlog(self) -> None:
+        if len(self._foodlog_list) == 0:
+            return
+
+        all_log = jax.tree_map(
+            lambda *args: np.stack(args, axis=0),
+            *self._foodlog_list,
+        )
+        log_dict = {}
+        for i in range(all_log.eaten.shape[1]):
+            log_dict[f"eaten_{i}"] = all_log.eaten[:, i].ravel()
+            log_dict[f"regen_{i}"] = all_log.regenerated[:, i].ravel()
+
+        # Don't change log_index here
+        pq.write_table(
+            pa.Table.from_pydict(log_dict),
+            self.logdir.joinpath(f"foodlog-{self._log_index}.parquet"),
+            compression="zstd",
+        )
+        self._foodlog_list.clear()
+
+    def push_physstate(self, phys_state: SavedPhysicsState) -> None:
+        if self.mode != LogMode.FULL:
+            return
+
+        # Move it to CPU to save memory
+        self._physstate_list.append(jax.tree_map(np.array, phys_state))
+
+        if len(self._physstate_list) % self.savestate_interval == 0:
+            self._save_physstate()
+
+    def _save_physstate(self) -> None:
+        if len(self._physstate_list) == 0:
+            return
+
+        save_physstates(
+            self._physstate_list,
+            self.logdir.joinpath(f"state-{self._physstate_index}.npz"),
+        )
+        self._physstate_index += 1
+        self._physstate_list.clear()
+
+    def save_agents(
+        self,
+        net: eqx.Module,
+        unique_id: jax.Array,
+        slots: jax.Array,
+    ) -> None:
+        if self.mode != LogMode.FULL:
+            return
+
+        for uid, slot in zip(np.array(unique_id), np.array(slots)):
+            sliced_net = get_slice(net, slot)
+            modelpath = self.logdir.joinpath(f"trained-{uid}.eqx")
+            eqx.tree_serialise_leaves(modelpath, sliced_net)
+
+    def save_profile_and_rewards(self) -> None:
+        profile_and_rewards = [
+            v.serialise() | dataclasses.asdict(self.profile_dict[k])
+            for k, v in self.reward_fn_dict.items()
+        ]
+        table = pa.Table.from_pylist(profile_and_rewards)
+        pq.write_table(table, self.logdir.joinpath("profile_and_rewards.parquet"))
+
+    def finalize(self) -> None:
+        if self.mode != LogMode.NONE:
+            self.save_profile_and_rewards()
+
+        if self.mode in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+            self._save_log()
+            self._save_foodlog()
+
+        if self.mode == LogMode.FULL:
+            self._save_physstate()

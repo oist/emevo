@@ -1,5 +1,6 @@
 """ Gym-like make/register system
 """
+
 from __future__ import annotations
 
 import dataclasses

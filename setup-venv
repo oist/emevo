@@ -1,0 +1,11 @@
+#!/bin/bash
+set -eo pipefail
+
+if [[ ! -d .exp-venv ]]; then
+    mkdir .exp-venv
+    python3 -m venv .exp-venv
+fi
+
+source .exp-venv/bin/activate
+pip install -e .[analysis,video]
+pip install typer

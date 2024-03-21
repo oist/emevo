@@ -1,0 +1,16 @@
+#!/bin/bash
+set -eo pipefail
+
+if [[ ! -d .lab-venv ]]; then
+    mkdir .lab-venv
+    python3 -m venv .lab-venv
+fi
+
+if [[ ! -f requirements/jupyter.txt ]]; then
+    nox -s compile -- -k jupyter
+fi
+
+source .lab-venv/bin/activate
+pip install pip-tools
+pip-sync requirements/jupyter.txt
+python -m ipykernel install --user --name emevo-lab
