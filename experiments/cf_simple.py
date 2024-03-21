@@ -59,27 +59,26 @@ class RewardExtractor:
 
     def normalize_action(self, action: jax.Array) -> jax.Array:
         scaled = self.act_space.sigmoid_scale(action)
-        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1))
+        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
         return norm / self._max_norm
 
     def extract_linear(
         self,
-        collision: jax.Array,
+        ate_food: jax.Array,
         action: jax.Array,
         energy: jax.Array,
     ) -> jax.Array:
         del energy
         act_input = self.act_coef * self.normalize_action(action)
-        food_collision = collision[:, 1]
-        return jnp.stack((food_collision, act_input), axis=1)
+        return jnp.concatenate((ate_food.astype(jnp.float32), act_input), axis=1)
 
     def extract_sigmoid(
         self,
-        collision: jax.Array,
+        ate_food: jax.Array,
         action: jax.Array,
         energy: jax.Array,
     ) -> tuple[jax.Array, jax.Array]:
-        return self.extract_linear(collision, action, energy), energy
+        return self.extract_linear(ate_food, action, energy), energy
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
@@ -115,7 +114,7 @@ def exec_rollout(
         )
         obs_t1 = timestep.obs
         energy = state_t.status.energy
-        rewards = reward_fn(obs_t1.collision, actions, energy).reshape(-1, 1)
+        rewards = reward_fn(timestep.info["n_ate_food"], actions, energy).reshape(-1, 1)
         rollout = Rollout(
             observations=obs_t_array,
             actions=actions,

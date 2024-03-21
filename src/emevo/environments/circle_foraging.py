@@ -78,7 +78,7 @@ class CFObs(NamedTuple):
         return jnp.concatenate(
             (
                 self.sensor.reshape(self.sensor.shape[0], -1),
-                self.collision.reshape(self.collision.shape[0], -1),
+                self.collision.reshape(self.collision.shape[0], -1).astype(jnp.float32),
                 self.velocity,
                 jnp.expand_dims(self.angle, axis=1),
                 jnp.expand_dims(self.angular_velocity, axis=1),
@@ -208,8 +208,8 @@ def _make_physics(
     for _ in range(n_max_foods):
         builder.add_circle(
             radius=food_radius,
-            friction=0.1,
-            elasticity=0.1,
+            friction=0.2,
+            elasticity=0.4,
             color=FOOD_COLOR,
             is_static=True,
         )
@@ -670,7 +670,7 @@ class CircleForaging(Env):
         self.obs_space = NamedTupleSpace(
             CFObs,
             sensor=BoxSpace(low=0.0, high=1.0, shape=(n_agent_sensors, self._n_obj)),
-            collision=BoxSpace(low=0.0, high=1.0, shape=(self._n_obj,)),
+            collision=BoxSpace(low=0.0, high=1.0, shape=(self._n_obj, n_tactile_bins)),
             velocity=BoxSpace(low=-MAX_VELOCITY, high=MAX_VELOCITY, shape=(2,)),
             angle=BoxSpace(low=-2 * np.pi, high=2 * np.pi, shape=()),
             angular_velocity=BoxSpace(low=-np.pi / 10, high=np.pi / 10, shape=()),
@@ -962,7 +962,7 @@ class CircleForaging(Env):
         sensor_obs = self._sensor_obs(stated=physics)
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
-            collision=jnp.zeros((N, self._n_obj), dtype=bool),
+            collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),
             angle=physics.circle.p.angle,
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
