@@ -83,6 +83,7 @@ class ReprNumLogistic:
         dn_dt = self.growth_rate * internal * (1 - internal / self.capacity)
         return state._update(internal + dn_dt)
 
+
 class ReprNumCycle:
     def __init__(
         self,
@@ -109,7 +110,6 @@ class ReprNumCycle:
         n = n_steps // self._interval
         index = n % self._n_fn
         return jax.lax.switch(index, self._numfn_list, n_steps, state)
-
 
 
 class ReprNumScheduled:

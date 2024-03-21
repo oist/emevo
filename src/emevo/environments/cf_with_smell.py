@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import NamedTuple, overload
+from typing import NamedTuple
 
 import chex
 import jax

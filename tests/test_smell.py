@@ -11,7 +11,6 @@ from emevo.environments.cf_with_smell import (
     CFSState,
     CircleForagingWithSmell,
     _compute_smell,
-    _vmap_compute_smell,
 )
 
 N_MAX_AGENTS = 10
