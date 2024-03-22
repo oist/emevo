@@ -63,12 +63,13 @@ class ReprNumConstant:
 @dataclasses.dataclass(frozen=True)
 class ReprNumLinear:
     initial: int
+    capacity: float
     dn_dt: float
 
     def __call__(self, _: int, state: FoodNumState) -> FoodNumState:
         # Increase the number of foods by dn_dt
         internal = jnp.fmax(state.current, state.internal)
-        max_value = jnp.array(self.initial, dtype=jnp.float32)
+        max_value = jnp.array(self.capacity, dtype=jnp.float32)
         return state._update(jnp.clip(internal + self.dn_dt, a_max=max_value))
 
 
