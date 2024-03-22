@@ -143,7 +143,7 @@ class GopsConfig:
 @chex.dataclass
 class Log:
     dead: jax.Array
-    got_food: jax.Array
+    n_got_food: jax.Array
     consumed_energy: jax.Array
     energy: jax.Array
     parents: jax.Array

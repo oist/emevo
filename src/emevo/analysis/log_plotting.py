@@ -154,7 +154,8 @@ def plot_lifehistory(
     ax.plot(xy_indiv[:, 0], xy_indiv[:, 1])
     ax.add_patch(plt.Circle(xy_indiv[0], radius=3.0, color=start_color, alpha=0.6))
     ax.add_patch(plt.Circle(xy_indiv[-1], radius=3.0, color=end_color, alpha=0.6))
-    for xy in xy_indiv[indiv["got_food"][1:]]:
+    got_food = indiv["n_got_food"] > 0
+    for xy in xy_indiv[got_food[1:]]:
         ax.add_patch(plt.Circle(xy, radius=1.0, color=food_color, alpha=0.8))
     ax.set_title(f"Life history of {unique_id}")
     return ax

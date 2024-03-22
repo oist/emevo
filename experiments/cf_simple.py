@@ -131,7 +131,7 @@ def exec_rollout(
         state_t1db, parents = env.activate(state_t1d, possible_parents)
         log = Log(
             dead=jnp.where(dead, state_t.unique_id.unique_id, -1),  # type: ignore
-            got_food=obs_t1.collision[:, 1],
+            n_got_food=timestep.info["n_ate_food"].ravel(),
             parents=parents,
             rewards=rewards.ravel(),
             energy=state_t1db.status.energy,
@@ -365,7 +365,7 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 @app.command()
 def evolve(
     seed: int = 1,
-    action_cost: float = 0.0001,
+    action_cost: float = 4e-5,
     mutation_prob: float = 0.2,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
