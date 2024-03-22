@@ -1,0 +1,9 @@
+path = "emevo.genetic_ops.CauchyMutation"
+init_std = 0.1
+init_mean = 0.0
+
+[params]
+loc = 0.0
+scale = 0.5
+clip_min = -5.0
+clip_max = 5.0
