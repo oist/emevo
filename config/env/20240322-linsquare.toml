@@ -1,7 +1,7 @@
 n_initial_agents = 50
 n_max_agents = 150
 n_max_foods = 50
-food_num_fn = ["linear", 20, 50, 0.01]
+food_num_fn = ["linear", 20, 50, 0.02]
 food_loc_fn = "gaussian"
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]

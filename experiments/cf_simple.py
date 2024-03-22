@@ -365,7 +365,7 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 @app.command()
 def evolve(
     seed: int = 1,
-    action_cost: float = 4e-5,
+    action_cost: float = 1e-4,
     mutation_prob: float = 0.2,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
