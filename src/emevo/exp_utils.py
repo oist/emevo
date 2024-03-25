@@ -335,7 +335,7 @@ class Logger:
         # Move log to CPU
         self._foodlog_list.append(jax.tree_map(np.array, log))
 
-        if len(self._log_list) % self.log_interval == 0:
+        if len(self._foodlog_list) % self.log_interval == 0:
             self._save_foodlog()
 
     def _save_foodlog(self) -> None:
@@ -343,13 +343,13 @@ class Logger:
             return
 
         all_log = jax.tree_map(
-            lambda *args: np.stack(args, axis=0),
+            lambda *args: np.concatenate(args, axis=0),
             *self._foodlog_list,
         )
         log_dict = {}
         for i in range(all_log.eaten.shape[1]):
-            log_dict[f"eaten_{i}"] = all_log.eaten[:, i].ravel()
-            log_dict[f"regen_{i}"] = all_log.regenerated[:, i].ravel()
+            log_dict[f"eaten_{i}"] = all_log.eaten[:, i]
+            log_dict[f"regen_{i}"] = all_log.regenerated[:, i]
 
         # Don't change log_index here
         pq.write_table(
