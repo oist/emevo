@@ -407,8 +407,8 @@ class Logger:
             self.save_profile_and_rewards()
 
         if self.mode in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
-            self._save_log()
             self._save_foodlog()
+            self._save_log()
 
         if self.mode == LogMode.FULL:
             self._save_physstate()

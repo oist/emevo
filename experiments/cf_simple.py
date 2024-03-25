@@ -345,8 +345,8 @@ def run_evolution(
             logger.profile_dict[ui] = SavedProfile(step.item(), parent.item(), ui)
 
         # Push log and physics state
-        logger.push_log(log_with_step.filter_active())
         logger.push_foodlog(foodlog)
+        logger.push_log(log_with_step.filter_active())
         logger.push_physstate(phys_state)
 
     # Save logs before exiting
