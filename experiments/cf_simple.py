@@ -384,7 +384,7 @@ def evolve(
     birth_override: str = "",
     hazard_override: str = "",
     logdir: Path = Path("./log"),
-    log_mode: LogMode = LogMode.REWARD_AND_LOG,
+    log_mode: LogMode = LogMode.REWARD_LOG,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,

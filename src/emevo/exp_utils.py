@@ -271,9 +271,10 @@ def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
 
 class LogMode(str, enum.Enum):
     NONE = "none"
-    REWARD_ONLY = "reward-only"
-    REWARD_AND_LOG = "reward-and-log"
-    FULL = "full"
+    REWARD = "reward"
+    REWARD_LOG = "reward-log"
+    REWARD_LOG_STATE = "reward-log-state"
+    FULL = "reward-log-state-policy"
 
 
 def _default_dropped_keys() -> list[str]:
@@ -299,7 +300,7 @@ class Logger:
     _physstate_index: int = dataclasses.field(default=1, init=False)
 
     def push_log(self, log: Log) -> None:
-        if self.mode not in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+        if "log" not in self.mode.value:
             return
 
         # Move log to CPU
@@ -329,7 +330,7 @@ class Logger:
         self._log_list.clear()
 
     def push_foodlog(self, log: FoodLog) -> None:
-        if self.mode not in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+        if "log" not in self.mode.value:
             return
 
         # Move log to CPU
@@ -403,12 +404,12 @@ class Logger:
         pq.write_table(table, self.logdir.joinpath("profile_and_rewards.parquet"))
 
     def finalize(self) -> None:
-        if self.mode != LogMode.NONE:
+        if "reward" in self.mode.value:
             self.save_profile_and_rewards()
 
-        if self.mode in [LogMode.FULL, LogMode.REWARD_AND_LOG]:
+        if "log" in self.mode.value:
             self._save_foodlog()
             self._save_log()
 
-        if self.mode == LogMode.FULL:
+        if "state" in self.mode.value:
             self._save_physstate()
