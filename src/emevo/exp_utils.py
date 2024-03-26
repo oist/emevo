@@ -317,9 +317,20 @@ class Logger:
             lambda *args: np.concatenate(args, axis=0),
             *self._log_list,
         )
-        log_dict = dataclasses.asdict(all_log)
-        for dropped_key in self.dropped_keys:
-            del log_dict[dropped_key]
+        log_dict = {}
+
+        for field in dataclasses.fields(all_log):
+            if field.name in self.dropped_keys:
+                continue
+            value = getattr(all_log, field.name)
+            if value.ndim == 2:
+                if value.shape[1] == 1:
+                    value = value.ravel()
+                else:
+                    for i in range(value.shape[1]):
+                        log_dict[f"{field.name}_{i + 1}"] = value[:, i]
+                    continue
+            log_dict[field.name] = value
 
         pq.write_table(
             pa.Table.from_pydict(log_dict),

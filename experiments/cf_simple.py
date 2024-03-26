@@ -131,7 +131,7 @@ def exec_rollout(
         state_t1db, parents = env.activate(state_t1d, possible_parents)
         log = Log(
             dead=jnp.where(dead, state_t.unique_id.unique_id, -1),  # type: ignore
-            n_got_food=timestep.info["n_ate_food"].ravel(),
+            n_got_food=timestep.info["n_ate_food"],
             parents=parents,
             rewards=rewards.ravel(),
             energy=state_t1db.status.energy,
