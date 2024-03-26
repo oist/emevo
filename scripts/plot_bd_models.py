@@ -60,8 +60,8 @@ def plot_bd_models(
             ax1 = fig.add_subplot(211, projection="3d")
             ax2 = fig.add_subplot(212, projection="3d")
         if simpletitle:
-            ax1.set_title("Hazard function")  # type: ignore
-            ax2.set_title("Survival function")  # type: ignore
+            ax1.set_title("Hazard function $h(t, e)$", fontsize=18)  # type: ignore
+            ax2.set_title("Survival function $s_e(t)$", fontsize=18)  # type: ignore
         else:
             ax1.set_title(f"{type(hazard_model).__name__} Hazard function")  # type: ignore
             ax2.set_title(f"{type(hazard_model).__name__} Survival function")  # type: ignore
@@ -92,7 +92,7 @@ def plot_bd_models(
         else:
             ax = fig.add_subplot(111, projection="3d")
         if simpletitle:
-            ax.set_title("Birth function", fontsize=14)
+            ax.set_title("Birth function", fontsize=16)
         else:
             ax.set_title(f"{type(birth_model).__name__} Birth function", fontsize=14)
         if birth2d:

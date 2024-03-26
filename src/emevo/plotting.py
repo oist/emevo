@@ -74,9 +74,9 @@ def vis_birth_2d(
     lines = ax.plot(np.arange(energy_max_int), birthrate, color="xkcd:bluish purple")
     if initial:
         ax.grid(True, which="major")
-        ax.set_xlabel("Energy", fontsize=12)
+        ax.set_xlabel("Energy $e$", fontsize=14)
         ax.yaxis.set_major_formatter("{x:.4f}")
-        ax.set_ylabel("Birth Rate", fontsize=12)
+        ax.set_ylabel("Birth prob.", fontsize=14)
     return cast(Line2D, lines[0])
 
 
@@ -207,7 +207,7 @@ def vis_hazard(
                 ticker.FuncFormatter(lambda x, _: f"{x:.0e}".replace("e-0", "e-"))
             )
 
-        ax.set_xlabel("Age", fontsize=12)
+        ax.set_xlabel("Age $t$", fontsize=14)
 
         def format_age(x: float, _pos) -> str:
             del _pos
@@ -219,8 +219,17 @@ def vis_hazard(
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_age))
         ax.xaxis.set_ticks(np.linspace(age_max, 0.0, 5))
         ax.yaxis.set_ticks(np.linspace(0.0, energy_max, 5))
-        ax.set_ylabel("Energy", fontsize=12)
-        ax.set_zlabel(method.capitalize(), fontsize=14, horizontalalignment="right")
+        ax.set_ylabel("Energy $e$", fontsize=14)
+        if method == "hazard":
+            ax.set_zlabel(
+                "Hazard (Death prob.)",
+                fontsize=14,
+                horizontalalignment="right",
+            )
+        elif method == "survival":
+            ax.set_zlabel("Survival prob.", fontsize=14, horizontalalignment="right")
+        else:
+            ax.set_zlabel(method.capitalize(), fontsize=14, horizontalalignment="right")
     if shown_params is not None:
         text = ax.text2D(
             -0.1,
