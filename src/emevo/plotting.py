@@ -75,7 +75,7 @@ def vis_birth_2d(
     if initial:
         ax.grid(True, which="major")
         ax.set_xlabel("Energy", fontsize=12)
-        ax.yaxis.set_major_formatter("{x:.0e}")
+        ax.yaxis.set_major_formatter("{x:.4f}")
         ax.set_ylabel("Birth Rate", fontsize=12)
     return cast(Line2D, lines[0])
 
