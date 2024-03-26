@@ -274,7 +274,7 @@ class LogMode(str, enum.Enum):
     REWARD = "reward"
     REWARD_LOG = "reward-log"
     REWARD_LOG_STATE = "reward-log-state"
-    FULL = "reward-log-state-policy"
+    FULL = "reward-log-state-agent"
 
 
 def _default_dropped_keys() -> list[str]:
@@ -361,7 +361,7 @@ class Logger:
         self._foodlog_list.clear()
 
     def push_physstate(self, phys_state: SavedPhysicsState) -> None:
-        if self.mode != LogMode.FULL:
+        if "state" in self.mode.value:
             return
 
         # Move it to CPU to save memory
@@ -387,7 +387,7 @@ class Logger:
         unique_id: jax.Array,
         slots: jax.Array,
     ) -> None:
-        if self.mode != LogMode.FULL:
+        if "agent" not in self.mode.value:
             return
 
         for uid, slot in zip(np.array(unique_id), np.array(slots)):
