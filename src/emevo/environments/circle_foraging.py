@@ -411,7 +411,7 @@ class CircleForaging(Env):
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
-        mouth_range: Literal["all", "front", "right"] = "front",
+        mouth_range: Literal["full", "front", "right"] = "front",
         neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
         n_tactile_bins: int = 6,
@@ -483,7 +483,7 @@ class CircleForaging(Env):
             agent_loc_fn
         )
         # Foraging
-        if mouth_range == "all":
+        if mouth_range == "full":
             self._foraging_indices = tuple(range(n_tactile_bins))
         elif mouth_range == "front":
             self._foraging_indices = 0, n_tactile_bins - 1
