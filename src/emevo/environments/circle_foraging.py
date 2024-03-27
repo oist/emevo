@@ -411,7 +411,7 @@ class CircleForaging(Env):
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
-        mouth_pos: Literal["all", "front"] = "front",
+        mouth_range: Literal["all", "front", "right"] = "front",
         neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
         n_tactile_bins: int = 6,
@@ -483,12 +483,14 @@ class CircleForaging(Env):
             agent_loc_fn
         )
         # Foraging
-        if mouth_pos == "all":
+        if mouth_range == "all":
             self._foraging_indices = tuple(range(n_tactile_bins))
-        elif mouth_pos == "front":
+        elif mouth_range == "front":
             self._foraging_indices = 0, n_tactile_bins - 1
+        elif mouth_range == "right":
+            self._foraging_indices = (n_tactile_bins - 1,)
         else:
-            raise ValueError(f"Unsupported mouth_pos {mouth_pos}")
+            raise ValueError(f"Unsupported mouth_range {mouth_range}")
         # Energy
         self._force_energy_consumption = force_energy_consumption
         self._basic_energy_consumption = basic_energy_consumption
