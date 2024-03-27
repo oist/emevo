@@ -12,7 +12,7 @@ food_loc_fn = [
    ["gaussian", [180.0, 270.0], [80.0, 60.0]],
 ]
 food_color = [[254, 2, 162, 255], [200, 40, 200, 255]]
-food_energy_coef = [1.0, 0.2]
+food_energy_coef = [1.0, 0.4]
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
 ylim = [0.0, 360.0]
