@@ -1,10 +1,10 @@
 n_initial_agents = 50
 n_max_agents = 150
-n_max_foods = 100
+n_max_foods = 120
 n_food_sources = 2
 observe_food_label = true
 food_num_fn = [
-    ["logistic", 10, 0.01, 40],
+    ["logistic", 20, 0.01, 60],
     ["logistic", 20, 0.02, 60],
 ]
 food_loc_fn = [
