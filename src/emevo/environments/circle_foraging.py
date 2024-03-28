@@ -331,10 +331,10 @@ def _get_tactile(
     s2: State,
     collision_mat: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
-    nm_shape = collision_mat.shape
+    n, m = collision_mat.shape
     rel_angle = get_relative_angle(s1, s2)  # [0, 2π]  (N, M)
     weights = (jnp.pi * 2 / n_bins) * jnp.arange(n_bins + 1)  # [0, ..., 2π]
-    in_range = _search_bin(rel_angle.ravel(), weights).reshape(*nm_shape, n_bins)
+    in_range = _search_bin(rel_angle.ravel(), weights).reshape(n, m, n_bins)
     tactile_raw = in_range * jnp.expand_dims(collision_mat, axis=2)  # (N, M, B)
     tactile = jnp.sum(tactile_raw, axis=1, keepdims=True)  # (N, 1, B)
     return tactile, jnp.expand_dims(tactile_raw, axis=2)  # (N, M, 1, B)
@@ -348,7 +348,7 @@ def _food_tactile_with_labels(
     s2: State,
     collision_mat: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
-    nm_shape = collision_mat.shape
+    n, m = collision_mat.shape
     rel_angle = get_relative_angle(s1, s2)  # [0, 2π]
     weights = (jnp.pi * 2 / n_bins) * jnp.arange(n_bins + 1)  # [0, ..., 2π]
     in_range = _search_bin(rel_angle.ravel(), weights).reshape(*nm_shape, n_bins)
