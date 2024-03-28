@@ -147,6 +147,7 @@ class GopsConfig:
 class Log:
     dead: jax.Array
     n_got_food: jax.Array
+    action_magnitude: jax.Array
     consumed_energy: jax.Array
     energy: jax.Array
     parents: jax.Array
@@ -375,7 +376,7 @@ class Logger:
         self._foodlog_list.clear()
 
     def push_physstate(self, phys_state: SavedPhysicsState) -> None:
-        if "state" in self.mode.value:
+        if "state" not in self.mode.value:
             return
 
         # Move it to CPU to save memory
