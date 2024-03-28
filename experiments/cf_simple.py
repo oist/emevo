@@ -132,11 +132,12 @@ def exec_rollout(
         log = Log(
             dead=jnp.where(dead, state_t.unique_id.unique_id, -1),  # type: ignore
             n_got_food=timestep.info["n_ate_food"],
+            action_magnitude=actions,
+            consumed_energy=timestep.info["energy_consumption"],
+            energy=state_t1db.status.energy,
             parents=parents,
             rewards=rewards.ravel(),
-            energy=state_t1db.status.energy,
             unique_id=state_t1db.unique_id.unique_id,
-            consumed_energy=timestep.info["energy_consumption"],
         )
         foodlog = FoodLog(
             eaten=timestep.info["n_food_eaten"],
