@@ -366,8 +366,7 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 @app.command()
 def evolve(
     seed: int = 1,
-    action_cost: float = 1e-4,
-    mutation_prob: float = 0.2,
+    action_cost: float = 4e-5,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
     gamma: float = 0.999,
@@ -408,7 +407,6 @@ def evolve(
     mutation = gopsconfig.load_model()
     # Override config
     cfconfig.force_energy_consumption = action_cost
-    gopsconfig.params["mutation_prob"] = mutation_prob
     # Make env
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
