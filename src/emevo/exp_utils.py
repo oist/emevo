@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime as dt
 import enum
+import functools
 import importlib
 import json
 from pathlib import Path
@@ -425,3 +427,18 @@ class Logger:
 
         if "state" in self.mode.value:
             self._save_physstate()
+
+
+def simple_profiler(fn: Callable[..., Any]) -> Any:
+    """Quite simple profiling decorator. It's somewhat useful for debugging."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kargs) -> Any:
+        before = dt.datetime.now()
+        ret = fn(*args, **kargs)
+        after = dt.datetime.now()
+        elapsed = after - before
+        print(elapsed)
+        return ret
+
+    return wrapper
