@@ -32,6 +32,7 @@ from emevo.exp_utils import (
     LogMode,
     SavedPhysicsState,
     SavedProfile,
+    is_cuda_ready,
 )
 from emevo.rl.ppo_normal import (
     NormalPPONet,
@@ -55,11 +56,11 @@ class RewardExtractor:
     _max_norm: jax.Array = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
-        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high**2, axis=-1))
+        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high ** 2, axis=-1))
 
     def normalize_action(self, action: jax.Array) -> jax.Array:
         scaled = self.act_space.sigmoid_scale(action)
-        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
+        norm = jnp.sqrt(jnp.sum(scaled ** 2, axis=-1, keepdims=True))
         return norm / self._max_norm
 
     def extract(
@@ -388,7 +389,11 @@ def evolve(
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
+    force_gpu: bool = False,
 ) -> None:
+    if force_gpu and not is_cuda_ready():
+        raise RuntimeError("Detected some problem in CUDA!")
+
     # Load config
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())

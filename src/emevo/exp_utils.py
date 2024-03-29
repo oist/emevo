@@ -443,3 +443,11 @@ def simple_profiler(fn: Callable[..., Any]) -> Any:
         return ret
 
     return wrapper
+
+
+def is_cuda_ready() -> bool:
+    try:
+        _ = jax.device_put(jax.numpy.ones(1), device=jax.devices("gpu")[0])
+        return True
+    except:
+        return False
