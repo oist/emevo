@@ -351,7 +351,7 @@ def _food_tactile_with_labels(
     n, m = collision_mat.shape
     rel_angle = get_relative_angle(s1, s2)  # [0, 2π]
     weights = (jnp.pi * 2 / n_bins) * jnp.arange(n_bins + 1)  # [0, ..., 2π]
-    in_range = _search_bin(rel_angle.ravel(), weights).reshape(*nm_shape, n_bins)
+    in_range = _search_bin(rel_angle.ravel(), weights).reshape(n, m, n_bins)
     in_range_masked = in_range * jnp.expand_dims(collision_mat, axis=2)
     onehot = jax.nn.one_hot(food_labels, n_food_sources, dtype=bool)
     expanded_onehot = onehot.reshape(1, *onehot.shape, 1)  # (1, M, L, 1)
