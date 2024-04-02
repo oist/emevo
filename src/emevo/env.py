@@ -93,8 +93,7 @@ def init_uniqueid(n: int, max_n: int) -> UniqueID:
 class ObsProtocol(Protocol):
     """Abstraction for agent's observation"""
 
-    def as_array(self) -> jax.Array:
-        ...
+    def as_array(self) -> jax.Array: ...
 
 
 OBS = TypeVar("OBS", bound="ObsProtocol")
@@ -109,8 +108,7 @@ class StateProtocol(Protocol):
     status: Status
     n_born_agents: jax.Array
 
-    def is_extinct(self) -> bool:
-        ...
+    def is_extinct(self) -> bool: ...
 
 
 STATE = TypeVar("STATE", bound="StateProtocol")
