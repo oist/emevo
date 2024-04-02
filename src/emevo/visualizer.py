@@ -13,7 +13,8 @@ class Visualizer(Protocol[STATE]):
         """Close this visualizer"""
         ...
 
-    def get_image(self) -> NDArray: ...
+    def get_image(self) -> NDArray:
+        ...
 
     def render(self, state: STATE, **kwargs) -> None:
         """Render image"""

@@ -99,7 +99,8 @@ class _PositionLike(Protocol):
     angle: jax.Array  # Angular velocity (N,)
     xy: jax.Array  # (N, 2)
 
-    def __init__(self, angle: jax.Array, xy: jax.Array) -> None: ...
+    def __init__(self, angle: jax.Array, xy: jax.Array) -> None:
+        ...
 
     def batch_size(self) -> int:
         return self.angle.shape[0]

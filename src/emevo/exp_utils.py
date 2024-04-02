@@ -8,8 +8,9 @@ import enum
 import functools
 import importlib
 import json
+import sys
 from pathlib import Path
-from typing import Any, Dict, Tuple, Type, Union
+from typing import Any, Callable, Dict, Tuple, Type, Union
 
 import chex
 import equinox as eqx
@@ -447,7 +448,8 @@ def simple_profiler(fn: Callable[..., Any]) -> Any:
 
 def is_cuda_ready() -> bool:
     try:
-        _ = jax.device_put(jax.numpy.ones(1), device=jax.devices("gpu")[0])
+        _ = jax.device_put(jnp.zeros(1), device=jax.devices("gpu")[0])
         return True
-    except:
+    except Exception as e:
+        print(e, file=sys.stderr)
         return False
