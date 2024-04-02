@@ -1,10 +1,10 @@
 # EmEvo
-[![Tests](https://github.com/oist/emevo/workflows/Tests/badge.svg)](https://github.com/oist/emevo/actions/workflows/tests.yml)
+[![Tests](https://github.com/oist/emevo/actions/workflows/tests.yml/badge.svg)](https://github.com/oist/emevo/actions/workflows/tests.yml)
 
 An experimental project for simulating **Em**bodied **Evo**lution of robots.
 
 ## Development
-First, install [nox](https://github.com/wntrblm/nox). Then compile all requirements by running
+First, install [nox](https://github.com/wntrblm/nox). Then, compile all requirements by running
 ```
 nox -s compile
 ```
