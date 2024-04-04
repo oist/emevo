@@ -290,6 +290,7 @@ class CBarState(str, enum.Enum):
     ENERGY = "energy"
     N_CHILDREN = "n-children"
     FOOD_REWARD = "food-reward"
+    FOOD_REWARD2 = "food-reward2"  # Poison or poor foods
 
 
 class CFEnvReplayWidget(QtWidgets.QWidget):
@@ -351,10 +352,12 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         radiobutton_1 = QtWidgets.QRadioButton("Energy")
         radiobutton_2 = QtWidgets.QRadioButton("Num. Children")
         radiobutton_3 = QtWidgets.QRadioButton("Food Reward")
+        radiobutton_4 = QtWidgets.QRadioButton("Another Food Reward")
         radiobutton_1.setChecked(True)
         radiobutton_1.toggled.connect(self.cbarEnergy)
         radiobutton_2.toggled.connect(self.cbarNChildren)
         radiobutton_3.toggled.connect(self.cbarFood)
+        radiobutton_4.toggled.connect(self.cbarFood2)
         self._cbar_state = CBarState.ENERGY
         self._cbar_renderer = CBarRenderer(int(xlim * 2), int(ylim * 0.4))
         self._showing_energy = True
@@ -487,6 +490,20 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                     rew_food = rew["w_food"] * (10 ** rew["scale_food"])
                 elif "food" in rew:
                     rew_food = rew["food"]
+                elif "food_1" in rew:
+                    rew_food = rew["food_1"]
+                else:
+                    warnings.warn("Unsupported reward", stacklevel=1)
+                    rew_food = 0.0
+                value[slot] = rew_food
+        elif self._cbar_state is CBarState.FOOD_REWARD2:
+            title = "Food Reward"
+            cm = self._food_cm
+            value = np.zeros(self._n_max_agents)
+            for slot, uid in zip(log["slots"], log["unique_id"]):
+                rew = self._get_rewards(uid)
+                if "food_2" in rew:
+                    rew_food = rew["food_2"]
                 else:
                     warnings.warn("Unsupported reward", stacklevel=1)
                     rew_food = 0.0
@@ -547,6 +564,12 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
     def cbarFood(self, checked: bool) -> None:
         if checked:
             self._cbar_state = CBarState.FOOD_REWARD
+            self._cbar_changed = True
+
+    @Slot(bool)
+    def cbarFood2(self, checked: bool) -> None:
+        if checked:
+            self._cbar_state = CBarState.FOOD_REWARD2
             self._cbar_changed = True
 
 
