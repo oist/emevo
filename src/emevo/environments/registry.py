@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import dataclasses
+import importlib
 from typing import Any, NoReturn
 
 import numpy as np
@@ -13,7 +14,7 @@ from emevo import Env
 
 @dataclasses.dataclass(frozen=True)
 class _EnvSpec:
-    cls: type[Env]
+    cls_str: str
     description: str | None
     default_kwargs: dict[str, Any]
 
@@ -75,12 +76,14 @@ def make(
     env_spec = _REGISTERED_ENVS.get(env_name, None)
     if env_spec is None:
         _raise_noenv_error(env_name)
-    return env_spec.cls(*args, **dict(env_spec.default_kwargs, **kwargs))
+    mod_str, cls_str = env_spec.cls_str.rsplit(".", 1)
+    env_cls = getattr(importlib.import_module(mod_str), cls_str)
+    return env_cls(*args, **dict(env_spec.default_kwargs, **kwargs))
 
 
 def register(
     name: str,
-    env_class: type[Env],
+    env_class: str,
     description: str | None = None,
     default_kwargs: dict[str, Any] | None = None,
 ) -> None:

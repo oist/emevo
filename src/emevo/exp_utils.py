@@ -83,7 +83,7 @@ class CfConfig:
                 setattr(self, key, value)
 
 
-def _load_cls(cls_path: str) -> Type:
+def _load_cls(cls_path: str) -> type:
     try:
         mod, cls = cls_path.rsplit(".", 1)
         return getattr(importlib.import_module(mod), cls)

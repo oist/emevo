@@ -1,18 +1,15 @@
 """ Implementation of registry and built-in emevo environments.
 """
-
-from emevo.environments.cf_with_smell import CircleForagingWithSmell
-from emevo.environments.circle_foraging import CircleForaging
 from emevo.environments.registry import register
 
 register(
     "CircleForaging-v0",
-    CircleForaging,
+    "emevo.environments.circle_foraging.CircleForaging",
     "Phyjax2d circle foraging environment",
 )
 
 register(
     "CircleForaging-v1",
-    CircleForagingWithSmell,
+    "emevo.environments.circle_foraging_with.CircleForaging",
     "Phyjax2d circle foraging environment",
 )
