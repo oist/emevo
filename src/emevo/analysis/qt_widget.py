@@ -287,7 +287,6 @@ class BarChart(QtWidgets.QWidget):
 
 
 class CBarState(str, enum.Enum):
-    AGE = "age"
     ENERGY = "energy"
     N_CHILDREN = "n-children"
     FOOD_REWARD = "food-reward"
@@ -349,16 +348,14 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         play_button = QtWidgets.QPushButton("▶️")
         play_button.clicked.connect(self._mgl_widget.play)
         # Colorbar
-        radiobutton_1 = QtWidgets.QRadioButton("Age")
-        radiobutton_2 = QtWidgets.QRadioButton("Energy")
-        radiobutton_3 = QtWidgets.QRadioButton("Num. Children")
-        radiobutton_4 = QtWidgets.QRadioButton("Food Reward")
+        radiobutton_1 = QtWidgets.QRadioButton("Energy")
+        radiobutton_2 = QtWidgets.QRadioButton("Num. Children")
+        radiobutton_3 = QtWidgets.QRadioButton("Food Reward")
         radiobutton_1.setChecked(True)
-        radiobutton_1.toggled.connect(self.cbarAge)
-        radiobutton_2.toggled.connect(self.cbarEnergy)
-        radiobutton_3.toggled.connect(self.cbarNChildren)
-        radiobutton_4.toggled.connect(self.cbarFood)
-        self._cbar_state = CBarState.AGE
+        radiobutton_1.toggled.connect(self.cbarEnergy)
+        radiobutton_2.toggled.connect(self.cbarNChildren)
+        radiobutton_3.toggled.connect(self.cbarFood)
+        self._cbar_state = CBarState.ENERGY
         self._cbar_renderer = CBarRenderer(int(xlim * 2), int(ylim * 0.4))
         self._showing_energy = True
         self._cbar_changed = True
@@ -450,7 +447,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         if log_key not in self._log_cached:
             log_key = step // N_MAX_SCAN
             scanner = self._log_ds.scanner(
-                columns=["age", "energy", "step", "slots", "unique_id"],
+                columns=["energy", "step", "slots", "unique_id"],
                 filter=(
                     (step <= pc.field("step")) & (pc.field("step") <= step + N_MAX_SCAN)
                 ),
@@ -468,13 +465,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         assert self._log_ds is not None
         log = self._get_log(self._step_offset + step_index)
         slots = np.array(log["slots"])
-        if self._cbar_state is CBarState.AGE:
-            title = "Age"
-            cm = self._value_cm
-            age = np.array(log["age"])
-            value = np.ones(self._n_max_agents) * np.min(age)
-            value[slots] = age
-        elif self._cbar_state is CBarState.ENERGY:
+        if self._cbar_state is CBarState.ENERGY:
             title = "Energy"
             cm = self._energy_cm
             energy = np.array(log["energy"])
@@ -539,12 +530,6 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                     self._get_rewards(uid),
                 )
                 return
-
-    @Slot(bool)
-    def cbarAge(self, checked: bool) -> None:
-        if checked:
-            self._cbar_state = CBarState.AGE
-            self._cbar_changed = True
 
     @Slot(bool)
     def cbarEnergy(self, checked: bool) -> None:
