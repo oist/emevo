@@ -200,8 +200,8 @@ def vis_hazard(
         if method == "survival":
             ax.set_zlim((0.0, 1.0))
         else:
-            ax.set_zscale("log")  # type: ignore
-            ax.set_zlim((1e-6, hazard_max))
+            # ax.set_zscale("log")  # type: ignore
+            ax.set_zlim((1e-5, hazard_max))
             ax.zaxis.set_major_locator(ticker.LogLocator(base=100, numticks=10))
             ax.zaxis.set_major_formatter(
                 ticker.FuncFormatter(lambda x, _: f"{x:.0e}".replace("e-0", "e-"))
