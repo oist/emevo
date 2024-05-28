@@ -28,8 +28,8 @@ from emevo.environments.env_utils import (
     Locating,
     LocatingFn,
     LocatingState,
-    ReprNum,
-    ReprNumFn,
+    FoodNum,
+    FoodNumFn,
     SquareCoordinate,
     loc_gaussian,
     nth_true,
@@ -390,7 +390,7 @@ def _nonzero(arr: jax.Array, n: int) -> jax.Array:
 
 
 _MaybeLocatingFn = Union[LocatingFn, str, tuple[str, ...]]
-_MaybeNumFn = Union[ReprNumFn, str, tuple[str, ...]]
+_MaybeNumFn = Union[FoodNumFn, str, tuple[str, ...]]
 
 
 class CircleForaging(Env):
@@ -538,7 +538,7 @@ class CircleForaging(Env):
         self._init_agent = jax.jit(
             functools.partial(
                 place,
-                n_trial=self._max_place_attempts,
+                n_trial=max_place_attempts,
                 radius=self._agent_radius,
                 coordinate=self._coordinate,
                 loc_fn=self._agent_loc_fn,
@@ -698,11 +698,11 @@ class CircleForaging(Env):
 
     @staticmethod
     def _make_food_num_fn(
-        food_num_fn: str | tuple | ReprNumFn,
-    ) -> tuple[ReprNumFn, FoodNumState]:
+        food_num_fn: str | tuple | FoodNumFn,
+    ) -> tuple[FoodNumFn, FoodNumState]:
         return _get_num_or_loc_fn(
             food_num_fn,
-            ReprNum,  # type: ignore
+            FoodNum,  # type: ignore
             {"constant": (10,), "linear": (10, 0.01), "logistic": (8, 0.01, 12)},
         )
 

@@ -6,7 +6,7 @@ import pytest
 from emevo.environments.env_utils import (
     CircleCoordinate,
     Locating,
-    ReprNum,
+    FoodNum,
     SquareCoordinate,
 )
 
@@ -100,7 +100,7 @@ def test_loc_switching(key: chex.PRNGKey) -> None:
 
 
 def test_foodnum_const() -> None:
-    const, state = ReprNum.CONSTANT(10)
+    const, state = FoodNum.CONSTANT(10)
     assert const(0, state.eaten(3)).appears()
     assert const(0, state.eaten(3).recover(2)).appears()
     assert not const(0, state.eaten(3).recover(3)).appears()

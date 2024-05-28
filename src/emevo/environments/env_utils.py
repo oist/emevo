@@ -45,14 +45,14 @@ class FoodNumState:
         return jax.tree_map(lambda x: x[index], self)
 
 
-class ReprNumFn(Protocol):
+class FoodNumFn(Protocol):
     initial: int
 
     def __call__(self, n_steps: int, state: FoodNumState) -> FoodNumState: ...
 
 
 @dataclasses.dataclass(frozen=True)
-class ReprNumConstant:
+class FoodNumConstant:
     initial: int
 
     def __call__(self, _: int, state: FoodNumState) -> FoodNumState:
@@ -61,7 +61,7 @@ class ReprNumConstant:
 
 
 @dataclasses.dataclass(frozen=True)
-class ReprNumLinear:
+class FoodNumLinear:
     initial: int
     growth_rate: float
     capacity: float
@@ -74,7 +74,7 @@ class ReprNumLinear:
 
 
 @dataclasses.dataclass(frozen=True)
-class ReprNumLogistic:
+class FoodNumLogistic:
     initial: int
     growth_rate: float
     capacity: float
@@ -85,11 +85,11 @@ class ReprNumLogistic:
         return state._update(internal + dn_dt)
 
 
-class ReprNumCycle:
+class FoodNumCycle:
     def __init__(
         self,
         interval: int,
-        *num_fns: tuple[str, ...] | ReprNumFn,
+        *num_fns: tuple[str, ...] | FoodNumFn,
     ) -> None:
         numfn_list = []
         for fn_or_base in num_fns:
@@ -97,7 +97,7 @@ class ReprNumCycle:
                 numfn_list.append(fn_or_base)
             else:
                 name, *args = fn_or_base
-                fn, _ = ReprNum(name)(*args)
+                fn, _ = FoodNum(name)(*args)
                 numfn_list.append(fn)
         self._numfn_list = numfn_list
         self._n_fn = len(numfn_list)
@@ -113,13 +113,13 @@ class ReprNumCycle:
         return jax.lax.switch(index, self._numfn_list, n_steps, state)
 
 
-class ReprNumScheduled:
+class FoodNumScheduled:
     """Branching based on steps."""
 
     def __init__(
         self,
         intervals: int | list[int],
-        *num_fns: tuple[str, ...] | ReprNumFn,
+        *num_fns: tuple[str, ...] | FoodNumFn,
     ) -> None:
         numfn_list = []
         for fn_or_base in num_fns:
@@ -127,7 +127,7 @@ class ReprNumScheduled:
                 numfn_list.append(fn_or_base)
             else:
                 name, *args = fn_or_base
-                fn, _ = ReprNum(name)(*args)
+                fn, _ = FoodNum(name)(*args)
                 numfn_list.append(fn)
         self._numfn_list = numfn_list
         if isinstance(intervals, int):
@@ -143,7 +143,7 @@ class ReprNumScheduled:
         return jax.lax.switch(index, self._numfn_list, n_steps, state)
 
 
-class ReprNum(str, enum.Enum):
+class FoodNum(str, enum.Enum):
     """Methods to determine the number of foods reproduced."""
 
     CONSTANT = "constant"
@@ -152,17 +152,17 @@ class ReprNum(str, enum.Enum):
     LOGISTIC = "logistic"
     SCHEDULED = "scheduled"
 
-    def __call__(self, *args: Any, **kwargs: Any) -> tuple[ReprNumFn, FoodNumState]:
-        if self is ReprNum.CONSTANT:
-            fn = ReprNumConstant(*args, **kwargs)
-        elif self is ReprNum.CYCLE:
-            fn = ReprNumCycle(*args, **kwargs)
-        elif self is ReprNum.LINEAR:
-            fn = ReprNumLinear(*args, **kwargs)
-        elif self is ReprNum.LOGISTIC:
-            fn = ReprNumLogistic(*args, **kwargs)
-        elif self is ReprNum.SCHEDULED:
-            fn = ReprNumScheduled(*args, **kwargs)
+    def __call__(self, *args: Any, **kwargs: Any) -> tuple[FoodNumFn, FoodNumState]:
+        if self is FoodNum.CONSTANT:
+            fn = FoodNumConstant(*args, **kwargs)
+        elif self is FoodNum.CYCLE:
+            fn = FoodNumCycle(*args, **kwargs)
+        elif self is FoodNum.LINEAR:
+            fn = FoodNumLinear(*args, **kwargs)
+        elif self is FoodNum.LOGISTIC:
+            fn = FoodNumLogistic(*args, **kwargs)
+        elif self is FoodNum.SCHEDULED:
+            fn = FoodNumScheduled(*args, **kwargs)
         else:
             raise AssertionError("Unreachable")
 
@@ -171,7 +171,7 @@ class ReprNum(str, enum.Enum):
             current=jnp.array(int(initial), dtype=jnp.int32),
             internal=jnp.array(float(initial), dtype=jnp.float32),
         )
-        return cast(ReprNumFn, fn), state
+        return cast(FoodNumFn, fn), state
 
 
 class Coordinate(Protocol):
@@ -425,4 +425,34 @@ def place(
     contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
     ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
     mask = jnp.expand_dims(nth_true(ok, 1), axis=1)
+    return jnp.sum(mask * locations, axis=0), jnp.any(ok)
+
+
+def place_multi(
+    n_trial: int,
+    n_max_placement: int,
+    radius: float,
+    coordinate: Coordinate,
+    loc_fn: LocatingFn,
+    loc_state: LocatingState,
+    key: chex.PRNGKey,
+    n_steps: int,
+    shaped: ShapeDict,
+    stated: StateDict,
+) -> tuple[jax.Array, jax.Array]:
+    keys = jax.random.split(key, n_trial)
+    locations = jax.vmap(loc_fn, in_axes=(0, None, None))(keys, n_steps, loc_state)
+    overlap = jax.vmap(circle_overlap, in_axes=(None, None, 0, None))(
+        shaped,
+        stated,
+        locations,
+        radius,
+    )
+    contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
+    ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
+    mask = jnp.expand_dims(
+        jnp.logical_and(ok, jnp.cumsum(ok) <= n_max_placement),
+        axis=1,
+    )
+    masked_loc = mask * locations
     return jnp.sum(mask * locations, axis=0), jnp.any(ok)
