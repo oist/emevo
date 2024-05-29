@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import functools
 from collections.abc import Iterable
 from typing import Any, Callable, Protocol, cast
 
@@ -178,7 +179,9 @@ class Coordinate(Protocol):
     def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]: ...
 
     def contains_circle(
-        self, center: jax.Array, radius: jax.Array | float
+        self,
+        center: jax.Array,
+        radius: jax.Array | float,
     ) -> jax.Array: ...
 
     def uniform(self, key: chex.PRNGKey) -> jax.Array: ...
@@ -428,6 +431,12 @@ def place(
     return jnp.sum(mask * locations, axis=0), jnp.any(ok)
 
 
+@functools.partial(jax.vmap)
+def _dist_mat(a: jax.Array, b: jax.Array) -> jax.Array:
+    """Distance matrix between a and b"""
+    return jnp.linalg.norm(a - jnp.expand_dims(b, axis=0), axis=-1)
+
+
 def place_multi(
     n_trial: int,
     n_max_placement: int,
@@ -441,18 +450,17 @@ def place_multi(
     stated: StateDict,
 ) -> tuple[jax.Array, jax.Array]:
     keys = jax.random.split(key, n_trial)
-    locations = jax.vmap(loc_fn, in_axes=(0, None, None))(keys, n_steps, loc_state)
+    xy = jax.vmap(loc_fn, in_axes=(0, None, None))(keys, n_steps, loc_state)
     overlap = jax.vmap(circle_overlap, in_axes=(None, None, 0, None))(
         shaped,
         stated,
-        locations,
+        xy,
         radius,
     )
     contains_fn = jax.vmap(coordinate.contains_circle, in_axes=(0, None))
-    ok = jnp.logical_and(contains_fn(locations, radius), jnp.logical_not(overlap))
-    mask = jnp.expand_dims(
-        jnp.logical_and(ok, jnp.cumsum(ok) <= n_max_placement),
-        axis=1,
-    )
-    masked_loc = mask * locations
-    return jnp.sum(mask * locations, axis=0), jnp.any(ok)
+    dm = _dist_mat(xy, xy)  # distance matrix of all generated points
+    masked_dm = dm.at[jnp.tril_indices(n_trial)].set(jnp.inf)
+    conflicts = ((masked_dm < 2.0 * radius).sum(axis=1)).astype(bool)
+    ok = jnp.logical_and(contains_fn(xy, radius), jnp.logical_not(overlap | conflicts))
+    ok = jnp.logical_and(ok, jnp.cumsum(ok) <= n_max_placement)
+    return xy, ok
