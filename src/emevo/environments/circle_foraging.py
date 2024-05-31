@@ -34,6 +34,7 @@ from emevo.environments.env_utils import (
     loc_gaussian,
     nth_true,
     place,
+    place_multi,
 )
 from emevo.environments.phyjax2d import Circle, Position, Raycast, ShapeDict
 from emevo.environments.phyjax2d import Space as Physics
@@ -435,6 +436,7 @@ class CircleForaging(Env):
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
         max_place_attempts: int = 10,
+        n_max_place_foods: int = 10,
         # Only for CircleForagingWithSmell, but placed here to keep config class simple
         smell_decay_factor: float = 0.01,
         smell_diff_max: float = 1.0,
@@ -550,8 +552,9 @@ class CircleForaging(Env):
         for loc_fn in self._food_loc_fns:
             place_fn = jax.jit(
                 functools.partial(
-                    place,
-                    n_trial=self._max_place_attempts,
+                    place_multi,
+                    n_trial=n_max_place_foods * 2,
+                    n_max_placement=n_max_place_foods,
                     radius=self._food_radius,
                     coordinate=self._coordinate,
                     loc_fn=loc_fn,
@@ -1033,7 +1036,7 @@ class CircleForaging(Env):
         foodloc_states = [s for s in self._initial_foodloc_states]
         n_initial = [fn.initial for fn in self._food_num_fns]
         n_initial_cumsum = jnp.cumsum(jnp.array(n_initial))
-        for i, key in enumerate(keys[self._n_initial_agents :]):
+        for n_init, key in enumerate(keys[self._n_initial_agents :]):
             idx = jnp.digitize(i, n_initial_cumsum).astype(np.uint8)
             xy, ok = self._place_food_fns[idx](
                 loc_state=foodloc_states[idx],
@@ -1041,20 +1044,18 @@ class CircleForaging(Env):
                 n_steps=i,
                 stated=stated,
             )
-            if ok:
-                stated = stated.nested_replace(
-                    "static_circle.p.xy",
-                    stated.static_circle.p.xy.at[i].set(xy),
-                )
-                # Set food label
-                stated = stated.nested_replace(
-                    "static_circle.label",
-                    stated.static_circle.label.at[i].set(idx),
-                )
-                foodloc_states[idx] = foodloc_states[idx].increment()
-            else:
-                del xy
-                food_failed += 1
+            n = jnp.sum(ok)
+            stated = stated.nested_replace(
+                "static_circle.p.xy",
+                stated.static_circle.p.xy.at[:n].set(xy[ok]),
+            )
+            # Set food label
+            stated = stated.nested_replace(
+                "static_circle.label",
+                stated.static_circle.label.at[:n].set(idx),
+            )
+            foodloc_states[idx] = foodloc_states[idx].increment(n)
+            food_failed += 1
 
         if food_failed > 0:
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
