@@ -119,6 +119,7 @@ def test_place_foods_at_once(key) -> None:
     space, coordinate = get_space_and_coordinate()
     reprloc_fn, reprloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     stated = space.shaped.zeros_state()
+    print(stated.circle.is_active)
     xy, ok = place_multi(
         n_trial=10,
         n_max_placement=n,
@@ -148,5 +149,9 @@ def test_place_foods_at_once(key) -> None:
     stated = stated.nested_replace("static_circle.is_active", is_active)
 
     # test no overlap each other
+    stated = stated.nested_replace(
+        "circle.is_active",
+        jnp.zeros(N_MAX_AGENTS, dtype=bool),
+    )
     contact = space.check_contacts(stated)
     assert jnp.all(contact.penetration <= 0.0), stated.static_circle.p.xy

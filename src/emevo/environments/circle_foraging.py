@@ -1035,11 +1035,9 @@ class CircleForaging(Env):
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         n_initial = [fn.initial for fn in self._food_num_fns]
-        n_initial_cumsum = jnp.cumsum(jnp.array(n_initial))
-        for n_init, key in enumerate(keys[self._n_initial_agents :]):
-            idx = jnp.digitize(i, n_initial_cumsum).astype(np.uint8)
-            xy, ok = self._place_food_fns[idx](
-                loc_state=foodloc_states[idx],
+        for i, key in enumerate(keys[self._n_initial_agents]):
+            xy, ok = self._place_food_fns[i](
+                loc_state=foodloc_states[i],
                 key=key,
                 n_steps=i,
                 stated=stated,
@@ -1052,10 +1050,10 @@ class CircleForaging(Env):
             # Set food label
             stated = stated.nested_replace(
                 "static_circle.label",
-                stated.static_circle.label.at[:n].set(idx),
+                stated.static_circle.label.at[:n].set(i),
             )
-            foodloc_states[idx] = foodloc_states[idx].increment(n)
-            food_failed += 1
+            foodloc_states[i] = foodloc_states[i].increment(n)
+            food_failed += n - n_initial[i]
 
         if food_failed > 0:
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
