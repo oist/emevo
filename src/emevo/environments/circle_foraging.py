@@ -32,7 +32,7 @@ from emevo.environments.env_utils import (
     FoodNumFn,
     SquareCoordinate,
     loc_gaussian,
-    nth_true,
+    first_to_nth_true,
     place,
     place_multi,
 )
@@ -436,7 +436,7 @@ class CircleForaging(Env):
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
         max_place_attempts: int = 10,
-        n_max_place_foods: int = 10,
+        n_max_food_regen: int = 20,
         # Only for CircleForagingWithSmell, but placed here to keep config class simple
         smell_decay_factor: float = 0.01,
         smell_diff_max: float = 1.0,
@@ -553,8 +553,7 @@ class CircleForaging(Env):
             place_fn = jax.jit(
                 functools.partial(
                     place_multi,
-                    n_trial=n_max_place_foods * 2,
-                    n_max_placement=n_max_place_foods,
+                    n_trial=n_max_food_regen,
                     radius=self._food_radius,
                     coordinate=self._coordinate,
                     loc_fn=loc_fn,
@@ -1034,10 +1033,11 @@ class CircleForaging(Env):
 
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
-        n_initial = [fn.initial for fn in self._food_num_fns]
         for i, key in enumerate(keys[self._n_initial_agents]):
+            n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],
+                n_max_placement=n_initial,
                 key=key,
                 n_steps=i,
                 stated=stated,
@@ -1053,7 +1053,7 @@ class CircleForaging(Env):
                 stated.static_circle.label.at[:n].set(i),
             )
             foodloc_states[i] = foodloc_states[i].increment(n)
-            food_failed += n - n_initial[i]
+            food_failed += n - n_initial
 
         if food_failed > 0:
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
@@ -1062,7 +1062,7 @@ class CircleForaging(Env):
 
     def _remove_and_regenerate_foods(
         self,
-        key: chex.PRNGKey,
+        old_key: chex.PRNGKey,
         eaten_per_source: jax.Array,
         sd: StateDict,
         n_steps: jax.Array,
@@ -1081,26 +1081,24 @@ class CircleForaging(Env):
         sc = sd.static_circle
         # Regenerate food for each source
         n_generated_foods = jnp.zeros(self._n_food_sources, dtype=jnp.int32)
-        for i in range(self._n_food_sources):
+        keys = jax.random.split(old_key, self._n_food_sources)
+        for i, key in enumerate(keys):
             food_num = self._food_num_fns[i](
                 n_steps,
                 food_num_states[i].eaten(n_eaten_per_source[i]),
             )
             food_loc = food_loc_states[i]
-            first_inactive = nth_true(jnp.logical_not(is_active), i + 1)
-            new_food, ok = self._place_food_fns[i](
+            # (N_MAX_REGEN, 2), (N_MAX_REGEN,)
+            new_food_xy, ok = self._place_food_fns[i](
                 loc_state=food_loc,
+                n_max_placement=food_num.n_max_recover(),
                 key=key,
                 n_steps=n_steps,
                 stated=sd,
             )
-            place = jnp.logical_and(
-                jnp.logical_and(ok, food_num.appears()),
-                first_inactive,
-            )
+            place = first_to_nth_true(jnp.logical_not(is_active), jnp.sum(ok))
             xy = jnp.where(
                 jnp.expand_dims(place, axis=1),
-                jnp.expand_dims(new_food, axis=0),
                 xy,
             )
             is_active = jnp.logical_or(is_active, place)

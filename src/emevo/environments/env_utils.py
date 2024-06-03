@@ -24,8 +24,11 @@ class FoodNumState:
     current: jax.Array
     internal: jax.Array
 
-    def appears(self) -> jax.Array:
-        return (self.internal - self.current) >= 1.0
+    def n_max_recover(self) -> jax.Array:
+        return jnp.clip(
+            jnp.ceil(self.internal - self.current).astype(jnp.int32),
+            a_min=0,
+        )
 
     def eaten(self, n: int | jax.Array) -> Self:
         return FoodNumState(
@@ -406,6 +409,10 @@ def nth_true(boolean_array: jax.Array, n: int) -> jax.Array:
     return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) == n)
 
 
+def first_to_nth_true(boolean_array: jax.Array, n: int | jax.Array) -> jax.Array:
+    return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) <= n)
+
+
 def place(
     n_trial: int,
     radius: float,
@@ -462,5 +469,4 @@ def place_multi(
     masked_dm = dm.at[jnp.tril_indices(n_trial)].set(jnp.inf)
     conflicts = ((masked_dm < 2.0 * radius).sum(axis=1)).astype(bool)
     ok = jnp.logical_and(contains_fn(xy, radius), jnp.logical_not(overlap | conflicts))
-    ok = jnp.logical_and(ok, jnp.cumsum(ok) <= n_max_placement)
-    return xy, ok
+    return xy, first_to_nth_true(ok, n_max_placement)
