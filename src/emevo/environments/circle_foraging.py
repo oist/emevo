@@ -385,9 +385,26 @@ def _first_n_true(boolean_array: jax.Array, n: jax.Array) -> jax.Array:
 
 
 def _nonzero(arr: jax.Array, n: int) -> jax.Array:
+    """Similar to jax.numpy.nonzero, but simpler"""
     cums = jnp.cumsum(arr)
     bincount = jnp.zeros(n, dtype=jnp.int32).at[cums].add(1)
     return jnp.cumsum(bincount)
+
+
+def _set_b2a(
+    xy_a: jax.Array,
+    flag_a: jax.Array,
+    xy_b: jax.Array,
+    flag_b: jax.Array,
+) -> jax.Array:
+    """Do `xy_a[flag_a] = xy_b[flag_b]`, but compatible with jax.jit"""
+    a_len = xy_a.shape[0]
+    a_idx = _nonzero(flag_a, a_len + 1)
+    b_idx = _nonzero(flag_b, a_len + 1)
+    xy_b_with_sentinel = jnp.concatenate((xy_b, jnp.zeros((1, xy_b.shape[1]))))
+    # Fill xy_a[flag_a] with 0
+    xy_a_reset = jnp.where(jnp.expand_dims(flag_a, axis=1), 0.0, xy_a)
+    return xy_a_reset.at[a_idx].add(xy_b_with_sentinel[b_idx])
 
 
 _MaybeLocatingFn = Union[LocatingFn, str, tuple[str, ...]]
@@ -507,6 +524,7 @@ class CircleForaging(Env):
         self.n_max_agents = n_max_agents
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
+        self._n_max_food_regen = n_max_food_regen
         # Physics
         if isinstance(obstacles, str):
             obs_list = Obstacle(obstacles).as_list(self._x_range, self._y_range)
@@ -1097,10 +1115,7 @@ class CircleForaging(Env):
                 stated=sd,
             )
             place = first_to_nth_true(jnp.logical_not(is_active), jnp.sum(ok))
-            xy = jnp.where(
-                jnp.expand_dims(place, axis=1),
-                xy,
-            )
+            xy = _set_b2a(xy, place, new_food_xy, ok)
             is_active = jnp.logical_or(is_active, place)
             p = replace(sc.p, xy=xy)
             label = jnp.where(place, i, sc.label)
