@@ -43,11 +43,12 @@ def reset_env(key: chex.PRNGKey) -> tuple[CircleForaging, CFState, TimeStep[CFOb
             [120.0, 60.0],
         ),
         food_loc_fn=(
-            "periodic",
+            "choice",
             [60.0, 60.0],
             [80.0, 90.0],
             [80.0, 120.0],
         ),
+        n_max_food_regen=10,
         food_num_fn=("constant", 3),
         foodloc_interval=20,
         agent_radius=AGENT_RADIUS,
@@ -75,10 +76,11 @@ def reset_multifood_env(
         ),
         n_food_sources=3,
         food_loc_fn=[
-            ("periodic", [60.0, 60.0]),  # 0
-            ("periodic", [80.0, 90.0]),  # 1
-            ("periodic", [100.0, 60.0]),  # 2
+            ("choice", [60.0, 60.0]),  # 0
+            ("choice", [80.0, 90.0]),  # 1
+            ("choice", [100.0, 60.0]),  # 2
         ],
+        n_max_food_regen=2,
         food_num_fn=[
             ("constant", 1),
             ("constant", 1),
@@ -190,6 +192,7 @@ def test_sensor_obs_with_foodlabels(key: chex.PRNGKey) -> None:
         3,
         state.physics,
     )
+    print(state.physics.static_circle.p.xy)
     chex.assert_shape(sensor_obs, (30, 5))
     # Food 0 is to the right/left
     chex.assert_trees_all_close(

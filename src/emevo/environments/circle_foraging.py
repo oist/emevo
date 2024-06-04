@@ -1009,12 +1009,8 @@ class CircleForaging(Env):
                 jnp.zeros(self.n_max_agents - self._n_initial_agents, dtype=bool),
             )
         )
-        is_active_s = jnp.concatenate(
-            (
-                jnp.ones(self._n_initial_foods, dtype=bool),
-                jnp.zeros(self._n_max_foods - self._n_initial_foods, dtype=bool),
-            )
-        )
+        # Fill 0 for food
+        is_active_s = jnp.zeros(self._n_max_foods, dtype=bool)
         stated = stated.nested_replace("circle.is_active", is_active_c)
         stated = stated.nested_replace("static_circle.is_active", is_active_s)
         # Move all circle to the invisiable area
@@ -1026,7 +1022,7 @@ class CircleForaging(Env):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
-        keys = jax.random.split(key, self._n_initial_agents + self._n_initial_foods)
+        keys = jax.random.split(key, self._n_initial_agents + self._n_food_sources)
         agent_failed = 0
         agentloc_state = self._initial_agentloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
@@ -1051,7 +1047,7 @@ class CircleForaging(Env):
 
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
-        for i, key in enumerate(keys[self._n_initial_agents]):
+        for i, key in enumerate(keys[self._n_initial_agents :]):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],
@@ -1061,15 +1057,22 @@ class CircleForaging(Env):
                 stated=stated,
             )
             n = jnp.sum(ok)
+            is_active = stated.static_circle.is_active
+            place = jax.jit(_first_n_true)(jnp.logical_not(is_active), n)
             stated = stated.nested_replace(
                 "static_circle.p.xy",
-                stated.static_circle.p.xy.at[:n].set(xy[ok]),
+                stated.static_circle.p.xy.at[place].set(xy[ok]),
+            )
+            stated = stated.nested_replace(
+                "static_circle.is_active",
+                jnp.logical_or(place, is_active),
             )
             # Set food label
             stated = stated.nested_replace(
                 "static_circle.label",
-                stated.static_circle.label.at[:n].set(i),
+                stated.static_circle.label.at[place].set(i),
             )
+            # Set is_active
             foodloc_states[i] = foodloc_states[i].increment(n)
             food_failed += n - n_initial
 

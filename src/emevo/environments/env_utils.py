@@ -268,6 +268,7 @@ class Locating(str, enum.Enum):
     GAUSSIAN = "gaussian"
     GAUSSIAN_MIXTURE = "gaussian-mixture"
     PERIODIC = "periodic"
+    CHOICE = "choice"
     SCHEDULED = "scheduled"
     SWITCHING = "switching"
     UNIFORM = "uniform"
@@ -283,6 +284,8 @@ class Locating(str, enum.Enum):
             return loc_gaussian_mixture(*args, **kwargs), state
         elif self is Locating.PERIODIC:
             return LocPeriodic(*args, **kwargs), state
+        elif self is Locating.CHOICE:
+            return LocChoice(*args, **kwargs), state
         elif self is Locating.UNIFORM:
             return loc_uniform(*args, **kwargs), state
         elif self is Locating.SCHEDULED:
@@ -346,6 +349,20 @@ class LocPeriodic:
     ) -> jax.Array:
         del _key, _n_steps
         return self._locations[state.n_produced % self._n]
+
+
+class LocChoice:
+    def __init__(self, *locations: ArrayLike) -> None:
+        self._locations = jnp.array(locations)
+
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        _n_steps: int,
+        _state: LocatingState,
+    ) -> jax.Array:
+        del _n_steps, _state
+        return jax.random.choice(key, self._locations)
 
 
 def _collect_loc_fns(fns: Iterable[tuple[str, ...] | LocatingFn]) -> list[LocatingFn]:
