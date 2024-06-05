@@ -101,6 +101,7 @@ def test_loc_switching(key: chex.PRNGKey) -> None:
 
 def test_foodnum_const() -> None:
     const, state = FoodNum.CONSTANT(10)
+    state = state.recover(10)
     assert const(0, state.eaten(3)).n_max_recover() == 3
     assert const(0, state.eaten(3).recover(2)).n_max_recover() == 1
     assert const(0, state.eaten(3).recover(3)).n_max_recover() == 0

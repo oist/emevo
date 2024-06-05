@@ -895,11 +895,11 @@ class CircleForaging(Env):
     ) -> tuple[CFState, jax.Array]:
         N = self.n_max_agents
         circle = state.physics.circle
-        keys = jax.random.split(state.key, N + 1)
+        keys = jax.random.split(state.key, N + 2)
         new_xy, ok = self._place_newborn(
             state.agent_loc,
             state.physics,
-            keys[1:],
+            keys[2:],
             circle.p.xy,
         )
         is_possible_parent = jnp.logical_and(
@@ -918,7 +918,8 @@ class CircleForaging(Env):
         # To use .at[].add, append (0, 0) to sampled xy
         new_xy_with_sentinel = jnp.concatenate((new_xy, jnp.zeros((1, 2))))
         xy = circle.p.xy.at[replaced_indices].add(new_xy_with_sentinel[parent_indices])
-        angle = jnp.where(is_replaced, 0.0, circle.p.angle)
+        new_angle = jax.random.uniform(keys[1]) * jnp.pi * 2.0
+        angle = jnp.where(is_replaced, new_angle, circle.p.angle)
         p = Position(angle=angle, xy=xy)
         is_active = jnp.logical_or(is_replaced, circle.is_active)
         physics = replace(
