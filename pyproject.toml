@@ -46,8 +46,8 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.urls]
-homepage = "https://github.com/kngwyu/emevo"
-bug-tracker = "https://github.com/kngwyu/emevo/issues"
+homepage = "https://github.com/oist/emevo"
+bug-tracker = "https://github.com/oist/emevo/issues"
 
 [tool.setuptools]
 include-package-data = true
