@@ -79,7 +79,7 @@ S = TypeVar("S", bound=Shape)
 
 def _concat_or(sl: list[S], default_fn: Callable[[], S]) -> S:
     if len(sl) > 0:
-        return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *sl)
+        return jax.tree_util.tree_map(lambda *args: jnp.concatenate(args, axis=0), *sl)
     else:
         return default_fn()
 

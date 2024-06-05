@@ -24,16 +24,17 @@ from emevo.env import (
 )
 from emevo.environments.env_utils import (
     CircleCoordinate,
+    FoodNum,
+    FoodNumFn,
     FoodNumState,
     Locating,
     LocatingFn,
     LocatingState,
-    ReprNum,
-    ReprNumFn,
     SquareCoordinate,
+    first_to_nth_true,
     loc_gaussian,
-    nth_true,
     place,
+    place_multi,
 )
 from emevo.environments.phyjax2d import Circle, Position, Raycast, ShapeDict
 from emevo.environments.phyjax2d import Space as Physics
@@ -232,7 +233,7 @@ def _observe_closest(
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     obs = jnp.concatenate(
-        jax.tree_map(
+        jax.tree_util.tree_map(
             lambda arr: jnp.max(arr, keepdims=True),
             (to_c, to_sc, to_seg),
         ),
@@ -384,13 +385,30 @@ def _first_n_true(boolean_array: jax.Array, n: jax.Array) -> jax.Array:
 
 
 def _nonzero(arr: jax.Array, n: int) -> jax.Array:
+    """Similar to jax.numpy.nonzero, but simpler"""
     cums = jnp.cumsum(arr)
     bincount = jnp.zeros(n, dtype=jnp.int32).at[cums].add(1)
     return jnp.cumsum(bincount)
 
 
+def _set_b2a(
+    xy_a: jax.Array,
+    flag_a: jax.Array,
+    xy_b: jax.Array,
+    flag_b: jax.Array,
+) -> jax.Array:
+    """Do `xy_a[flag_a] = xy_b[flag_b]`, but compatible with jax.jit"""
+    a_len = xy_a.shape[0]
+    a_idx = _nonzero(flag_a, a_len + 1)
+    b_idx = _nonzero(flag_b, a_len + 1)
+    xy_b_with_sentinel = jnp.concatenate((xy_b, jnp.zeros((1, xy_b.shape[1]))))
+    # Fill xy_a[flag_a] with 0
+    xy_a_reset = jnp.where(jnp.expand_dims(flag_a, axis=1), 0.0, xy_a)
+    return xy_a_reset.at[a_idx].add(xy_b_with_sentinel[b_idx])
+
+
 _MaybeLocatingFn = Union[LocatingFn, str, tuple[str, ...]]
-_MaybeNumFn = Union[ReprNumFn, str, tuple[str, ...]]
+_MaybeNumFn = Union[FoodNumFn, str, tuple[str, ...]]
 
 
 class CircleForaging(Env):
@@ -435,6 +453,7 @@ class CircleForaging(Env):
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
         max_place_attempts: int = 10,
+        n_max_food_regen: int = 20,
         # Only for CircleForagingWithSmell, but placed here to keep config class simple
         smell_decay_factor: float = 0.01,
         smell_diff_max: float = 1.0,
@@ -505,6 +524,7 @@ class CircleForaging(Env):
         self.n_max_agents = n_max_agents
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
+        self._n_max_food_regen = n_max_food_regen
         # Physics
         if isinstance(obstacles, str):
             obs_list = Obstacle(obstacles).as_list(self._x_range, self._y_range)
@@ -538,7 +558,7 @@ class CircleForaging(Env):
         self._init_agent = jax.jit(
             functools.partial(
                 place,
-                n_trial=self._max_place_attempts,
+                n_trial=max_place_attempts,
                 radius=self._agent_radius,
                 coordinate=self._coordinate,
                 loc_fn=self._agent_loc_fn,
@@ -550,8 +570,8 @@ class CircleForaging(Env):
         for loc_fn in self._food_loc_fns:
             place_fn = jax.jit(
                 functools.partial(
-                    place,
-                    n_trial=self._max_place_attempts,
+                    place_multi,
+                    n_trial=n_max_food_regen,
                     radius=self._food_radius,
                     coordinate=self._coordinate,
                     loc_fn=loc_fn,
@@ -698,11 +718,11 @@ class CircleForaging(Env):
 
     @staticmethod
     def _make_food_num_fn(
-        food_num_fn: str | tuple | ReprNumFn,
-    ) -> tuple[ReprNumFn, FoodNumState]:
+        food_num_fn: str | tuple | FoodNumFn,
+    ) -> tuple[FoodNumFn, FoodNumState]:
         return _get_num_or_loc_fn(
             food_num_fn,
-            ReprNum,  # type: ignore
+            FoodNum,  # type: ignore
             {"constant": (10,), "linear": (10, 0.01), "logistic": (8, 0.01, 12)},
         )
 
@@ -989,12 +1009,8 @@ class CircleForaging(Env):
                 jnp.zeros(self.n_max_agents - self._n_initial_agents, dtype=bool),
             )
         )
-        is_active_s = jnp.concatenate(
-            (
-                jnp.ones(self._n_initial_foods, dtype=bool),
-                jnp.zeros(self._n_max_foods - self._n_initial_foods, dtype=bool),
-            )
-        )
+        # Fill 0 for food
+        is_active_s = jnp.zeros(self._n_max_foods, dtype=bool)
         stated = stated.nested_replace("circle.is_active", is_active_c)
         stated = stated.nested_replace("static_circle.is_active", is_active_s)
         # Move all circle to the invisiable area
@@ -1006,7 +1022,7 @@ class CircleForaging(Env):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
-        keys = jax.random.split(key, self._n_initial_agents + self._n_initial_foods)
+        keys = jax.random.split(key, self._n_initial_agents + self._n_food_sources)
         agent_failed = 0
         agentloc_state = self._initial_agentloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
@@ -1031,30 +1047,34 @@ class CircleForaging(Env):
 
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
-        n_initial = [fn.initial for fn in self._food_num_fns]
-        n_initial_cumsum = jnp.cumsum(jnp.array(n_initial))
         for i, key in enumerate(keys[self._n_initial_agents :]):
-            idx = jnp.digitize(i, n_initial_cumsum).astype(np.uint8)
-            xy, ok = self._place_food_fns[idx](
-                loc_state=foodloc_states[idx],
+            n_initial = self._food_num_fns[i].initial
+            xy, ok = self._place_food_fns[i](
+                loc_state=foodloc_states[i],
+                n_max_placement=n_initial,
                 key=key,
                 n_steps=i,
                 stated=stated,
             )
-            if ok:
-                stated = stated.nested_replace(
-                    "static_circle.p.xy",
-                    stated.static_circle.p.xy.at[i].set(xy),
-                )
-                # Set food label
-                stated = stated.nested_replace(
-                    "static_circle.label",
-                    stated.static_circle.label.at[i].set(idx),
-                )
-                foodloc_states[idx] = foodloc_states[idx].increment()
-            else:
-                del xy
-                food_failed += 1
+            n = jnp.sum(ok)
+            is_active = stated.static_circle.is_active
+            place = jax.jit(_first_n_true)(jnp.logical_not(is_active), n)
+            stated = stated.nested_replace(
+                "static_circle.p.xy",
+                stated.static_circle.p.xy.at[place].set(xy[ok]),
+            )
+            stated = stated.nested_replace(
+                "static_circle.is_active",
+                jnp.logical_or(place, is_active),
+            )
+            # Set food label
+            stated = stated.nested_replace(
+                "static_circle.label",
+                stated.static_circle.label.at[place].set(i),
+            )
+            # Set is_active
+            foodloc_states[i] = foodloc_states[i].increment(n)
+            food_failed += n - n_initial
 
         if food_failed > 0:
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
@@ -1063,7 +1083,7 @@ class CircleForaging(Env):
 
     def _remove_and_regenerate_foods(
         self,
-        key: chex.PRNGKey,
+        old_key: chex.PRNGKey,
         eaten_per_source: jax.Array,
         sd: StateDict,
         n_steps: jax.Array,
@@ -1082,28 +1102,23 @@ class CircleForaging(Env):
         sc = sd.static_circle
         # Regenerate food for each source
         n_generated_foods = jnp.zeros(self._n_food_sources, dtype=jnp.int32)
-        for i in range(self._n_food_sources):
+        keys = jax.random.split(old_key, self._n_food_sources)
+        for i, key in enumerate(keys):
             food_num = self._food_num_fns[i](
                 n_steps,
                 food_num_states[i].eaten(n_eaten_per_source[i]),
             )
             food_loc = food_loc_states[i]
-            first_inactive = nth_true(jnp.logical_not(is_active), i + 1)
-            new_food, ok = self._place_food_fns[i](
+            # (N_MAX_REGEN, 2), (N_MAX_REGEN,)
+            new_food_xy, ok = self._place_food_fns[i](
                 loc_state=food_loc,
+                n_max_placement=food_num.n_max_recover(),
                 key=key,
                 n_steps=n_steps,
                 stated=sd,
             )
-            place = jnp.logical_and(
-                jnp.logical_and(ok, food_num.appears()),
-                first_inactive,
-            )
-            xy = jnp.where(
-                jnp.expand_dims(place, axis=1),
-                jnp.expand_dims(new_food, axis=0),
-                xy,
-            )
+            place = first_to_nth_true(jnp.logical_not(is_active), jnp.sum(ok))
+            xy = _set_b2a(xy, place, new_food_xy, ok)
             is_active = jnp.logical_or(is_active, place)
             p = replace(sc.p, xy=xy)
             label = jnp.where(place, i, sc.label)

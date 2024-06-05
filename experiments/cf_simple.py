@@ -260,7 +260,7 @@ def run_evolution(
     ) -> tuple[NormalPPONet, optax.OptState]:
         initialized = initialize_net(key)
         pponet = eqx_where(flag, initialized, pponet)
-        opt_state = jax.tree_map(
+        opt_state = jax.tree_util.tree_map(
             lambda a, b: jnp.where(
                 jnp.expand_dims(flag, tuple(range(1, a.ndim))),
                 b,

@@ -70,7 +70,7 @@ class LinearReward(RewardFn):
         return jax.vmap(jnp.dot)(extracted, self.weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serializer(self.weight))
+        return jax.tree_util.tree_map(_item_or_np, self.serializer(self.weight))
 
 
 class SinhReward(RewardFn):
@@ -101,7 +101,7 @@ class SinhReward(RewardFn):
         return jax.vmap(jnp.dot)(extracted, jnp.sinh(self.weight * self.scale))
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serializer(self.weight))
+        return jax.tree_util.tree_map(_item_or_np, self.serializer(self.weight))
 
 
 class ExponentialReward(RewardFn):
@@ -133,7 +133,10 @@ class ExponentialReward(RewardFn):
         return jax.vmap(jnp.dot)(extracted, weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serializer(self.weight, self.scale))
+        return jax.tree_util.tree_map(
+            _item_or_np,
+            self.serializer(self.weight, self.scale),
+        )
 
 
 class BoundedExponentialReward(ExponentialReward):
@@ -174,7 +177,10 @@ class SigmoidReward(RewardFn):
         return jax.vmap(jnp.dot)(filtered, self.weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serializer(self.weight, self.alpha))
+        return jax.tree_util.tree_map(
+            _item_or_np,
+            self.serializer(self.weight, self.alpha),
+        )
 
 
 class SigmoidReward_01(SigmoidReward):
@@ -224,7 +230,7 @@ class SigmoidExponentialReward(RewardFn):
         return jax.vmap(jnp.dot)(filtered, weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(
+        return jax.tree_util.tree_map(
             _item_or_np,
             self.serializer(self.weight, self.scale, self.alpha),
         )
@@ -272,7 +278,7 @@ class DelayedSEReward(RewardFn):
         return jax.vmap(jnp.dot)(filtered, weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(
+        return jax.tree_util.tree_map(
             _item_or_np,
             self.serializer(self.weight, self.scale, self.delay),
         )
@@ -348,7 +354,10 @@ class OffsetDelayedSinhReward(RewardFn):
         return jax.vmap(jnp.dot)(filtered, weight)
 
     def serialise(self) -> dict[str, float | NDArray]:
-        return jax.tree_map(_item_or_np, self.serializer(self.weight, self.delay))
+        return jax.tree_util.tree_map(
+            _item_or_np,
+            self.serializer(self.weight, self.delay),
+        )
 
 
 def mutate_reward_fn(
@@ -367,7 +376,7 @@ def mutate_reward_fn(
         parent_reward_fn = reward_fn_dict[parent.item()]
         mutated_dnet = mutation(key, eqx.partition(parent_reward_fn, eqx.is_array)[0])
         reward_fn_dict[uid.item()] = eqx.combine(mutated_dnet, static_net)
-        dynamic_net = jax.tree_map(
+        dynamic_net = jax.tree_util.tree_map(
             lambda orig, mutated: orig.at[slot.item()].set(mutated),
             dynamic_net,
             mutated_dnet,

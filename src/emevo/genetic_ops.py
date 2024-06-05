@@ -31,7 +31,7 @@ class Crossover(abc.ABC):
     ) -> PyTree:
         leaves, treedef = jax.tree_util.tree_flatten(params_a)
         prng_keys = jax.random.split(prng_key, len(leaves))
-        result = jax.tree_map(
+        result = jax.tree_util.tree_map(
             self._select,
             treedef.unflatten(prng_keys),
             params_a,
@@ -48,7 +48,11 @@ class Mutation(abc.ABC):
     def __call__(self, prng_key: chex.PRNGKey, params: PyTree) -> PyTree:
         leaves, treedef = jax.tree_util.tree_flatten(params)
         prng_keys = jax.random.split(prng_key, len(leaves))
-        result = jax.tree_map(self._add_noise, treedef.unflatten(prng_keys), params)
+        result = jax.tree_util.tree_map(
+            self._add_noise,
+            treedef.unflatten(prng_keys),
+            params,
+        )
         return result
 
 
