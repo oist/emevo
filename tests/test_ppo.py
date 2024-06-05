@@ -100,7 +100,7 @@ def test_update_network(key: chex.PRNGKey) -> None:
 
 def test_ensemble(key: chex.PRNGKey) -> None:
     n = 3
-    rollouts = jax.tree_map(
+    rollouts = jax.tree_util.tree_map(
         lambda *args: jnp.stack(args, axis=1),
         *[_rollout() for _ in range(n)],
     )

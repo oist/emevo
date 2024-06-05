@@ -198,7 +198,7 @@ def get_minibatches(
         else:
             return x.reshape(-1, minibatch_size, *orig_shape[1:])
 
-    return jax.tree_map(get_minibatch_impl, batch)
+    return jax.tree_util.tree_map(get_minibatch_impl, batch)
 
 
 def update_network(

@@ -46,7 +46,7 @@ class FoodNumState:
         )
 
     def get_slice(self, index: int) -> Self:
-        return jax.tree_map(lambda x: x[index], self)
+        return jax.tree_util.tree_map(lambda x: x[index], self)
 
 
 class FoodNumFn(Protocol):
@@ -256,7 +256,7 @@ class LocatingState:
         return LocatingState(n_produced=self.n_produced + n)
 
     def get_slice(self, index: int) -> Self:
-        return jax.tree_map(lambda x: x[index], self)
+        return jax.tree_util.tree_map(lambda x: x[index], self)
 
 
 LocatingFn = Callable[[chex.PRNGKey, int, LocatingState], jax.Array]

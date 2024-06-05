@@ -10,7 +10,7 @@ import importlib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Tuple, Type, Union
+from typing import Any, Callable
 
 import chex
 import equinox as eqx
@@ -38,13 +38,13 @@ class CfConfig:
     n_max_agents: int = 100
     n_max_foods: int = 40
     n_food_sources: int = 1
-    food_num_fn: Union[str, Tuple[str, ...]] = "constant"
-    food_loc_fn: Union[str, Tuple[str, ...]] = "gaussian"
-    agent_loc_fn: Union[str, Tuple[str, ...]] = "uniform"
-    food_energy_coef: Tuple[float, ...] = (1.0,)
-    food_color: Tuple[Tuple[int, int, int, int], ...] = ((254, 2, 162, 255),)
-    xlim: Tuple[float, float] = (0.0, 200.0)
-    ylim: Tuple[float, float] = (0.0, 200.0)
+    food_num_fn: str | tuple[Any, ...] = "constant"
+    food_loc_fn: str | tuple[Any, ...] = "gaussian"
+    agent_loc_fn: str | tuple[Any, ...] = "uniform"
+    food_energy_coef: tuple[float, ...] = (1.0,)
+    food_color: tuple[tuple[int, int, int, int], ...] = ((254, 2, 162, 255),)
+    xlim: tuple[float, float] = (0.0, 200.0)
+    ylim: tuple[float, float] = (0.0, 200.0)
     env_radius: float = 120.0
     env_shape: str = "square"
     obstacles: str = "none"
@@ -91,13 +91,13 @@ def _load_cls(cls_path: str) -> type:
         raise ImportError(f"{cls_path} is not a valid class path") from err
 
 
-@serde.serde
+@serde.serde(type_check=serde.disabled)
 @dataclasses.dataclass
 class BDConfig:
     birth_fn: str
-    birth_params: Dict[str, float]
+    birth_params: dict[str, float]
     hazard_fn: str
-    hazard_params: Dict[str, float]
+    hazard_params: dict[str, float]
 
     def load_models(self) -> tuple[bd.BirthFunction, bd.HazardFunction]:
         birth_fn = _load_cls(self.birth_fn)(**self.birth_params)
@@ -113,6 +113,9 @@ class BDConfig:
         if 0 < len(override):
             override_dict = json.loads(override)
             self.hazard_params |= override_dict
+
+    # def __isinstance__(self, value):
+    #     return self.__args__[0](value)
 
 
 def _resolve_cls(d: dict[str, Any]) -> GopsConfig:
@@ -131,8 +134,8 @@ class GopsConfig:
     path: str
     init_std: float
     init_mean: float
-    params: Dict[str, Union[float, Dict[str, float]]]
-    init_kwargs: Dict[str, float] = dataclasses.field(default_factory=dict)
+    params: dict[str, float | dict[str, float]]
+    init_kwargs: dict[str, float] = dataclasses.field(default_factory=dict)
 
     def load_model(self) -> gops.Mutation | gops.Crossover:
         params = {}
@@ -190,15 +193,15 @@ class LogWithStep(Log):
 
     def filter_active(self) -> Any:
         is_active = self.unique_id > -1
-        return jax.tree_map(lambda arr: arr[is_active], self)
+        return jax.tree_util.tree_map(lambda arr: arr[is_active], self)
 
     def filter_birth(self) -> Any:
         is_birth_event = self.parents > -1
-        return jax.tree_map(lambda arr: arr[is_birth_event], self)
+        return jax.tree_util.tree_map(lambda arr: arr[is_birth_event], self)
 
     def filter_death(self) -> Any:
         is_death_event = self.dead > -1
-        return jax.tree_map(lambda arr: arr[is_death_event], self)
+        return jax.tree_util.tree_map(lambda arr: arr[is_death_event], self)
 
 
 @dataclasses.dataclass
@@ -263,7 +266,10 @@ class SavedPhysicsState:
 
 
 def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
-    concatenated = jax.tree_map(lambda *args: np.concatenate(args), *phys_states)
+    concatenated = jax.tree_util.tree_map(
+        lambda *args: np.concatenate(args),
+        *phys_states,
+    )
     np.savez_compressed(
         path,
         circle_axy=concatenated.circle_axy.astype(_XY_SAVE_DTYPE),
@@ -309,7 +315,7 @@ class Logger:
             return
 
         # Move log to CPU
-        self._log_list.append(jax.tree_map(np.array, log))
+        self._log_list.append(jax.tree_util.tree_map(np.array, log))
 
         if len(self._log_list) % self.log_interval == 0:
             self._save_log()
@@ -318,7 +324,7 @@ class Logger:
         if len(self._log_list) == 0:
             return
 
-        all_log = jax.tree_map(
+        all_log = jax.tree_util.tree_map(
             lambda *args: np.concatenate(args, axis=0),
             *self._log_list,
         )
@@ -350,7 +356,7 @@ class Logger:
             return
 
         # Move log to CPU
-        self._foodlog_list.append(jax.tree_map(np.array, log))
+        self._foodlog_list.append(jax.tree_util.tree_map(np.array, log))
 
         if len(self._foodlog_list) % self.log_interval == 0:
             self._save_foodlog()
@@ -359,7 +365,7 @@ class Logger:
         if len(self._foodlog_list) == 0:
             return
 
-        all_log = jax.tree_map(
+        all_log = jax.tree_util.tree_map(
             lambda *args: np.concatenate(args, axis=0),
             *self._foodlog_list,
         )
@@ -381,7 +387,7 @@ class Logger:
             return
 
         # Move it to CPU to save memory
-        self._physstate_list.append(jax.tree_map(np.array, phys_state))
+        self._physstate_list.append(jax.tree_util.tree_map(np.array, phys_state))
 
         if len(self._physstate_list) % self.savestate_interval == 0:
             self._save_physstate()

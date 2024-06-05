@@ -5,8 +5,8 @@ import pytest
 
 from emevo.environments.env_utils import (
     CircleCoordinate,
-    Locating,
     FoodNum,
+    Locating,
     SquareCoordinate,
 )
 
@@ -82,7 +82,7 @@ def test_loc_switching(key: chex.PRNGKey) -> None:
     loc = jax.vmap(loc_s, in_axes=(0, None, 0))(
         jax.random.split(key, 10),
         0,
-        jax.tree_map(lambda a: jnp.tile(a, (10,)), state),
+        jax.tree_util.tree_map(lambda a: jnp.tile(a, (10,)), state),
     )
     chex.assert_shape(loc, (10, 2))
     x_mean = jnp.mean(loc[:, 0])
@@ -92,7 +92,7 @@ def test_loc_switching(key: chex.PRNGKey) -> None:
     loc = jax.vmap(loc_s, in_axes=(0, None, 0))(
         jax.random.split(key, 10),
         0,
-        jax.tree_map(lambda a: jnp.tile(a * 10, (10,)), state),
+        jax.tree_util.tree_map(lambda a: jnp.tile(a * 10, (10,)), state),
     )
     chex.assert_shape(loc, (10, 2))
     bigger_circle = CircleCoordinate((3.0, 3.0), 4.0)

@@ -25,8 +25,8 @@ dependencies = [
     "moderngl >= 5.6",
     "moderngl-window >= 2.4",
     "jax >= 0.4",
-    "pyarrow >= 8.0",
-    "pyserde[toml]",  # TODO: update
+    "pyarrow >= 9.0",
+    "pyserde[toml] >= 0.14",
     "optax >= 0.1",
 ]
 dynamic = ["version"]
@@ -71,8 +71,6 @@ select = ["E", "F", "B", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "src/emevo/reward_fn.py" = ["B023"]
-# For pyserde
-"src/emevo/exp_utils.py" = ["UP006", "UP007", "UP035"]
 # For typer
 "experiments/**/*.py" = ["B008", "UP006", "UP007"]
 "smoke-tests/*.py" = ["B008", "UP006", "UP007"]

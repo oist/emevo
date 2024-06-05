@@ -24,15 +24,15 @@ from emevo.env import (
 )
 from emevo.environments.env_utils import (
     CircleCoordinate,
+    FoodNum,
+    FoodNumFn,
     FoodNumState,
     Locating,
     LocatingFn,
     LocatingState,
-    FoodNum,
-    FoodNumFn,
     SquareCoordinate,
-    loc_gaussian,
     first_to_nth_true,
+    loc_gaussian,
     place,
     place_multi,
 )
@@ -233,7 +233,7 @@ def _observe_closest(
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     obs = jnp.concatenate(
-        jax.tree_map(
+        jax.tree_util.tree_map(
             lambda arr: jnp.max(arr, keepdims=True),
             (to_c, to_sc, to_seg),
         ),

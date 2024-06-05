@@ -43,49 +43,49 @@ def empty(cls: type[T]) -> Callable[[], T]:
 class PyTreeOps:
     def __add__(self, o: Any) -> Self:
         if o.__class__ is self.__class__:
-            return jax.tree_map(lambda x, y: x + y, self, o)
+            return jax.tree_util.tree_map(lambda x, y: x + y, self, o)
         else:
-            return jax.tree_map(lambda x: x + o, self)
+            return jax.tree_util.tree_map(lambda x: x + o, self)
 
     def __sub__(self, o: Any) -> Self:
         if o.__class__ is self.__class__:
-            return jax.tree_map(lambda x, y: x - y, self, o)
+            return jax.tree_util.tree_map(lambda x, y: x - y, self, o)
         else:
-            return jax.tree_map(lambda x: x - o, self)
+            return jax.tree_util.tree_map(lambda x: x - o, self)
 
     def __mul__(self, o: float | jax.Array) -> Self:
-        return jax.tree_map(lambda x: x * o, self)
+        return jax.tree_util.tree_map(lambda x: x * o, self)
 
     def __neg__(self) -> Self:
-        return jax.tree_map(lambda x: -x, self)
+        return jax.tree_util.tree_map(lambda x: -x, self)
 
     def __truediv__(self, o: float | jax.Array) -> Self:
-        return jax.tree_map(lambda x: x / o, self)
+        return jax.tree_util.tree_map(lambda x: x / o, self)
 
     @jax.jit
     def get_slice(
         self,
         index: int | Sequence[int] | Sequence[bool] | jax.Array,
     ) -> Self:
-        return jax.tree_map(lambda x: x[index], self)
+        return jax.tree_util.tree_map(lambda x: x[index], self)
 
     def reshape(self, shape: Sequence[int]) -> Self:
-        return jax.tree_map(lambda x: x.reshape(shape), self)
+        return jax.tree_util.tree_map(lambda x: x.reshape(shape), self)
 
     def sum(self, axis: int | None = None) -> Self:
-        return jax.tree_map(lambda x: jnp.sum(x, axis=axis), self)
+        return jax.tree_util.tree_map(lambda x: jnp.sum(x, axis=axis), self)
 
     def tolist(self) -> list[Self]:
         leaves, treedef = jax.tree_util.tree_flatten(self)
         return [treedef.unflatten(leaf) for leaf in zip(*leaves)]
 
     def zeros_like(self) -> Any:
-        return jax.tree_map(lambda x: jnp.zeros_like(x), self)
+        return jax.tree_util.tree_map(lambda x: jnp.zeros_like(x), self)
 
     @property
     def shape(self) -> Any:
         """For debugging"""
-        return jax.tree_map(lambda x: x.shape, self)
+        return jax.tree_util.tree_map(lambda x: x.shape, self)
 
 
 TWO_PI = jnp.pi * 2
@@ -478,7 +478,9 @@ class StateDict:
 
     def concat(self) -> Self:
         states = [s for s in self.values() if s.batch_size() > 0]  # type: ignore
-        return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *states)
+        return jax.tree_util.tree_map(
+            lambda *args: jnp.concatenate(args, axis=0), *states
+        )
 
     def _get(self, name: str, statec: State) -> State:
         state = self[name]  # type: ignore
@@ -527,7 +529,9 @@ class ShapeDict:
         shapes = [
             s.to_shape() for s in self.values() if s.batch_size() > 0  # type: ignore
         ]
-        return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *shapes)
+        return jax.tree_util.tree_map(
+            lambda *args: jnp.concatenate(args, axis=0), *shapes
+        )
 
     def n_shapes(self) -> int:
         return sum([s.batch_size() for s in self.values()])  # type: ignore
@@ -602,8 +606,8 @@ def _pair_ci(shape1: Shape, shape2: Shape) -> ContactIndices:
 
 
 def _circle_to_circle(ci: ContactIndices[Circle, Circle], stated: StateDict) -> Contact:
-    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
-    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
+    pos1 = jax.tree_util.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
+    pos2 = jax.tree_util.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.circle.is_active[ci.index1]
     is_active2 = stated.circle.is_active[ci.index2]
     return _circle_to_circle_impl(
@@ -619,8 +623,8 @@ def _circle_to_static_circle(
     ci: ContactIndices[Circle, Circle],
     stated: StateDict,
 ) -> Contact:
-    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
-    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.static_circle.p)
+    pos1 = jax.tree_util.tree_map(lambda arr: arr[ci.index1], stated.circle.p)
+    pos2 = jax.tree_util.tree_map(lambda arr: arr[ci.index2], stated.static_circle.p)
     is_active1 = stated.circle.is_active[ci.index1]
     is_active2 = stated.static_circle.is_active[ci.index2]
     return _circle_to_circle_impl(
@@ -636,8 +640,8 @@ def _capsule_to_circle(
     ci: ContactIndices[Capsule, Circle],
     stated: StateDict,
 ) -> Contact:
-    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.capsule.p)
-    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
+    pos1 = jax.tree_util.tree_map(lambda arr: arr[ci.index1], stated.capsule.p)
+    pos2 = jax.tree_util.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.capsule.is_active[ci.index1]
     is_active2 = stated.circle.is_active[ci.index2]
     return _capsule_to_circle_impl(
@@ -653,8 +657,8 @@ def _segment_to_circle(
     ci: ContactIndices[Segment, Circle],
     stated: StateDict,
 ) -> Contact:
-    pos1 = jax.tree_map(lambda arr: arr[ci.index1], stated.segment.p)
-    pos2 = jax.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
+    pos1 = jax.tree_util.tree_map(lambda arr: arr[ci.index1], stated.segment.p)
+    pos2 = jax.tree_util.tree_map(lambda arr: arr[ci.index2], stated.circle.p)
     is_active1 = stated.segment.is_active[ci.index1]
     is_active2 = stated.circle.is_active[ci.index2]
     return _segment_to_circle_impl(
@@ -732,7 +736,7 @@ class Space:
                     index2=ci.index2 + offset2,
                 )
                 ci_slided_list.append(ci_slided)
-        self._ci_total = jax.tree_map(
+        self._ci_total = jax.tree_util.tree_map(
             lambda *args: jnp.concatenate(args, axis=0),
             *ci_slided_list,
         )
@@ -744,7 +748,10 @@ class Space:
             if ci is not None:
                 contact = fn(ci, stated)
                 contacts.append(contact)
-        return jax.tree_map(lambda *args: jnp.concatenate(args, axis=0), *contacts)
+        return jax.tree_util.tree_map(
+            lambda *args: jnp.concatenate(args, axis=0),
+            *contacts,
+        )
 
     def n_possible_contacts(self) -> int:
         n = 0

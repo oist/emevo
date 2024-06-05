@@ -34,7 +34,7 @@ N_MAX_AGENTS: int = 20
 
 def weight_summary(network):
     params, _ = eqx.partition(network, eqx.is_inexact_array)
-    params_mean = jax.tree_map(jnp.mean, params)
+    params_mean = jax.tree_util.tree_map(jnp.mean, params)
     for k, v in jax.tree_util.tree_leaves_with_path(params_mean):
         print(k, v)
 
