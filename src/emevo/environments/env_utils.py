@@ -172,7 +172,7 @@ class FoodNum(str, enum.Enum):
 
         initial = fn.initial
         state = FoodNumState(
-            current=jnp.array(int(initial), dtype=jnp.int32),
+            current=jnp.array(0, dtype=jnp.int32),
             internal=jnp.array(float(initial), dtype=jnp.float32),
         )
         return cast(FoodNumFn, fn), state

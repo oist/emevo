@@ -183,7 +183,7 @@ class Log:
 @chex.dataclass
 class FoodLog:
     eaten: jax.Array  # i32, [N_FOOD_SOURCES,]
-    regenerated: jax.Array  # bool, [N_FOOD_SOURCES,]
+    regenerated: jax.Array  # i32, [N_FOOD_SOURCES,]
 
 
 @chex.dataclass

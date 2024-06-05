@@ -28,3 +28,4 @@ n_velocity_iter = 6
 n_position_iter = 2
 n_physics_iter = 5
 max_place_attempts = 10
+n_max_food_regen = 40
