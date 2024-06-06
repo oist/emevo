@@ -33,7 +33,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-# pygraphviz >= 1.0 is also required to draw phylogenetic treee, but excluded here for Github CI
+# pygraphviz >= 1.0 is also required to draw phylogenetic tree, but excluded here for Github CI
 analysis = [
     "matplotlib >= 3.0",
     "networkx >= 3.0",
