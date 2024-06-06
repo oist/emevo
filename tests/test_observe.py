@@ -90,6 +90,7 @@ def reset_multifood_env(
         agent_radius=AGENT_RADIUS,
         food_radius=FOOD_RADIUS,
         observe_food_label=True,
+        random_angle=False,
     )
     state, timestep = env.reset(key)
     return typing.cast(CircleForaging, env), state, timestep
