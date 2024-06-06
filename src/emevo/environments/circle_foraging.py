@@ -454,6 +454,7 @@ class CircleForaging(Env):
         n_physics_iter: int = 5,
         max_place_attempts: int = 10,
         n_max_food_regen: int = 20,
+        random_angle: bool = True,  # False when debugging/testing
         # Only for CircleForagingWithSmell, but placed here to keep config class simple
         smell_decay_factor: float = 0.01,
         smell_diff_max: float = 1.0,
@@ -525,6 +526,7 @@ class CircleForaging(Env):
         self._n_max_foods = n_max_foods
         self._max_place_attempts = max_place_attempts
         self._n_max_food_regen = n_max_food_regen
+        self._random_angle = random_angle
         # Physics
         if isinstance(obstacles, str):
             obs_list = Obstacle(obstacles).as_list(self._x_range, self._y_range)
@@ -918,8 +920,11 @@ class CircleForaging(Env):
         # To use .at[].add, append (0, 0) to sampled xy
         new_xy_with_sentinel = jnp.concatenate((new_xy, jnp.zeros((1, 2))))
         xy = circle.p.xy.at[replaced_indices].add(new_xy_with_sentinel[parent_indices])
-        new_angle = jax.random.uniform(keys[1]) * jnp.pi * 2.0
-        angle = jnp.where(is_replaced, new_angle, circle.p.angle)
+        if self._random_angle:
+            new_angle = jax.random.uniform(keys[1]) * jnp.pi * 2.0
+            angle = jnp.where(is_replaced, new_angle, circle.p.angle)
+        else:
+            angle = jnp.where(is_replaced, 0.0, circle.p.angle)
         p = Position(angle=angle, xy=xy)
         is_active = jnp.logical_or(is_replaced, circle.is_active)
         physics = replace(
@@ -1023,7 +1028,7 @@ class CircleForaging(Env):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
-        keys = jax.random.split(key, self._n_initial_agents + self._n_food_sources)
+        keys = jax.random.split(key, self._n_initial_agents + self._n_food_sources + 1)
         agent_failed = 0
         agentloc_state = self._initial_agentloc_state
         for i, key in enumerate(keys[: self._n_initial_agents]):
@@ -1046,10 +1051,14 @@ class CircleForaging(Env):
         if agent_failed > 0:
             warnings.warn(f"Failed to place {agent_failed} agents!", stacklevel=1)
 
+        if self._random_angle:
+            angle = jax.random.uniform(key, shape=stated.circle.p.angle.shape)
+            stated = stated.nested_replace("circle.p.angle", angle)
+
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, key in enumerate(keys[self._n_initial_agents :]):
+        for i, key in enumerate(keys[self._n_initial_agents + 1 :]):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],

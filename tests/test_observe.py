@@ -53,6 +53,7 @@ def reset_env(key: chex.PRNGKey) -> tuple[CircleForaging, CFState, TimeStep[CFOb
         foodloc_interval=20,
         agent_radius=AGENT_RADIUS,
         food_radius=FOOD_RADIUS,
+        random_angle=False,
     )
     state, timestep = env.reset(key)
     return typing.cast(CircleForaging, env), state, timestep
