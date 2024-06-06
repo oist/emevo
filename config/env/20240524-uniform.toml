@@ -1,7 +1,7 @@
 n_initial_agents = 50
 n_max_agents = 200
-n_max_foods = 50
-food_num_fn = ["linear", 20, 0.1, 60]
+n_max_foods = 100
+food_num_fn = ["linear", 20, 10, 100]
 food_loc_fn = "uniform"
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
@@ -28,3 +28,4 @@ n_velocity_iter = 6
 n_position_iter = 2
 n_physics_iter = 5
 max_place_attempts = 10
+n_max_food_regen = 20

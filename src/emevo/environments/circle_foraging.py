@@ -520,7 +520,7 @@ class CircleForaging(Env):
         # Initial numbers
         assert n_max_agents > n_initial_agents
         self._n_initial_foods = sum([num_fn.initial for num_fn in self._food_num_fns])
-        assert n_max_foods > self._n_initial_foods
+        assert n_max_foods >= self._n_initial_foods
         self._n_initial_agents = n_initial_agents
         self.n_max_agents = n_max_agents
         self._n_max_foods = n_max_foods
