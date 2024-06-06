@@ -48,7 +48,7 @@ def reset_env(key: chex.PRNGKey) -> tuple[CircleForaging, CFState, TimeStep[CFOb
             [80.0, 90.0],
             [80.0, 120.0],
         ),
-        n_max_food_regen=10,
+        n_max_food_regen=20,
         food_num_fn=("constant", 3),
         foodloc_interval=20,
         agent_radius=AGENT_RADIUS,

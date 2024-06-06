@@ -24,6 +24,7 @@ dependencies = [
     "equinox >= 0.11",
     "moderngl >= 5.6",
     "moderngl-window >= 2.4",
+    # TODO: Update jax to >= 0.4.27 because clip has a breaking change
     "jax >= 0.4",
     "pyarrow >= 9.0",
     "pyserde[toml] >= 0.14",
