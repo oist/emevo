@@ -1,5 +1,4 @@
 """Asexual reward evolution with Circle Foraging"""
-
 import dataclasses
 import json
 from pathlib import Path
@@ -39,7 +38,9 @@ from emevo.rl.ppo_normal import (
     NormalPPONet,
     Rollout,
     vmap_apply,
+    vmap_batch,
     vmap_net,
+    vmap_update,
     vmap_value,
 )
 from emevo.spaces import BoxSpace
@@ -55,11 +56,11 @@ class RewardExtractor:
     _max_norm: jax.Array = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
-        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high**2, axis=-1))
+        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high ** 2, axis=-1))
 
     def normalize_action(self, action: jax.Array) -> jax.Array:
         scaled = self.act_space.sigmoid_scale(action)
-        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
+        norm = jnp.sqrt(jnp.sum(scaled ** 2, axis=-1, keepdims=True))
         return norm / self._max_norm
 
     def extract(
@@ -175,6 +176,8 @@ def epoch(
     n_rollout_steps: int,
     gamma: float,
     gae_lambda: float,
+    adam_update: optax.TransformUpdateFn,
+    opt_state: optax.OptState,
     minibatch_size: int,
     n_optim_epochs: int,
     entropy_weight: float,
@@ -191,10 +194,22 @@ def epoch(
         keys[0],
         n_rollout_steps,
     )
-    return env_state, obs, log, foodlog, phys_state, network
+    batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
+    opt_state, pponet = vmap_update(
+        batch,
+        network,
+        adam_update,
+        opt_state,
+        keys[1:],
+        minibatch_size,
+        n_optim_epochs,
+        0.2,
+        entropy_weight,
+    )
+    return env_state, obs, log, foodlog, phys_state, opt_state, pponet
 
 
-def run_no_evolution(
+def run_evolution(
     *,
     key: jax.Array,
     env: Env,
@@ -230,16 +245,33 @@ def run_no_evolution(
         )
 
     pponet = initialize_net(net_key)
+    adam_init, adam_update = adam
+
+    @eqx.filter_jit
+    def initialize_opt_state(net: eqx.Module) -> optax.OptState:
+        return jax.vmap(adam_init)(eqx.filter(net, eqx.is_array))
 
     @eqx.filter_jit
     def replace_net(
         key: chex.PRNGKey,
         flag: jax.Array,
         pponet: NormalPPONet,
-    ) -> NormalPPONet:
+        opt_state: optax.OptState,
+    ) -> tuple[NormalPPONet, optax.OptState]:
         initialized = initialize_net(key)
-        return eqx_where(flag, initialized, pponet)
+        pponet = eqx_where(flag, initialized, pponet)
+        opt_state = jax.tree_util.tree_map(
+            lambda a, b: jnp.where(
+                jnp.expand_dims(flag, tuple(range(1, a.ndim))),
+                b,
+                a,
+            ),
+            opt_state,
+            initialize_opt_state(pponet),
+        )
+        return pponet, opt_state
 
+    opt_state = initialize_opt_state(pponet)
     env_state, timestep = env.reset(reset_key)
     obs = timestep.obs
 
@@ -252,8 +284,8 @@ def run_no_evolution(
         logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
         logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
-    for i, key_i in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
-        epoch_key, init_key = jax.random.split(key_i)
+    for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
+        epoch_key, init_key = jax.random.split(key)
         env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
             env_state,
             obs,
@@ -266,6 +298,8 @@ def run_no_evolution(
             n_rollout_steps,
             gamma,
             gae_lambda,
+            adam_update,
+            opt_state,
             minibatch_size,
             n_optim_epochs,
             entropy_weight,
@@ -402,7 +436,7 @@ def evolve(
         log_interval=log_interval,
         savestate_interval=savestate_interval,
     )
-    run_no_evolution(
+    run_evolution(
         key=key,
         env=env,
         n_initial_agents=cfconfig.n_initial_agents,
