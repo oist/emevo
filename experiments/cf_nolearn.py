@@ -1,15 +1,14 @@
-"""Asexual reward evolution with Circle Foraging"""
+"""cf_simple without learning"""
+
 import dataclasses
-import json
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 import chex
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-import optax
 import typer
 from serde import toml
 
@@ -36,15 +35,10 @@ from emevo.exp_utils import (
 )
 from emevo.rl.ppo_normal import (
     NormalPPONet,
-    Rollout,
     vmap_apply,
-    vmap_batch,
     vmap_net,
-    vmap_update,
-    vmap_value,
 )
 from emevo.spaces import BoxSpace
-from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -56,11 +50,11 @@ class RewardExtractor:
     _max_norm: jax.Array = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
-        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high ** 2, axis=-1))
+        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high**2, axis=-1))
 
     def normalize_action(self, action: jax.Array) -> jax.Array:
         scaled = self.act_space.sigmoid_scale(action)
-        norm = jnp.sqrt(jnp.sum(scaled ** 2, axis=-1, keepdims=True))
+        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
         return norm / self._max_norm
 
     def extract(
@@ -91,11 +85,11 @@ def exec_rollout(
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
-) -> tuple[State, Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
+) -> tuple[State, Log, FoodLog, SavedPhysicsState, Obs]:
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
-    ) -> tuple[tuple[State, Obs], tuple[Rollout, Log, FoodLog, SavedPhysicsState]]:
+    ) -> tuple[tuple[State, Obs], tuple[Log, FoodLog, SavedPhysicsState]]:
         act_key, hazard_key, birth_key = jax.random.split(key, 3)
         state_t, obs_t = carried
         obs_t_array = obs_t.as_array()
@@ -108,15 +102,6 @@ def exec_rollout(
         obs_t1 = timestep.obs
         energy = state_t.status.energy
         rewards = reward_fn(timestep.info["n_ate_food"], actions, energy).reshape(-1, 1)
-        rollout = Rollout(
-            observations=obs_t_array,
-            actions=actions,
-            rewards=rewards,
-            terminations=jnp.zeros_like(rewards),
-            values=net_out.value,
-            means=net_out.mean,
-            logstds=net_out.logstd,
-        )
         # Birth and death
         death_prob = hazard_fn(state_t1.status.age, state_t1.status.energy)
         dead = jax.random.bernoulli(hazard_key, p=death_prob)
@@ -152,15 +137,14 @@ def exec_rollout(
             static_circle_is_active=phys.static_circle.is_active,
             static_circle_label=phys.static_circle.label,
         )
-        return (state_t1db, obs_t1), (rollout, log, foodlog, phys_state)
+        return (state_t1db, obs_t1), (log, foodlog, phys_state)
 
-    (state, obs), (rollout, log, foodlog, phys_state) = jax.lax.scan(
+    (state, obs), (log, foodlog, phys_state) = jax.lax.scan(
         step_rollout,
         (state, initial_obs),
         jax.random.split(prng_key, n_rollout_steps),
     )
-    next_value = vmap_value(network, obs.as_array())
-    return state, rollout, log, foodlog, phys_state, obs, next_value
+    return state, log, foodlog, phys_state, obs
 
 
 @eqx.filter_jit
@@ -174,16 +158,9 @@ def epoch(
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
-    gamma: float,
-    gae_lambda: float,
-    adam_update: optax.TransformUpdateFn,
-    opt_state: optax.OptState,
-    minibatch_size: int,
-    n_optim_epochs: int,
-    entropy_weight: float,
-) -> tuple[State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, NormalPPONet]:
+) -> tuple[State, Obs, Log, FoodLog, SavedPhysicsState, NormalPPONet]:
     keys = jax.random.split(prng_key, env.n_max_agents + 1)
-    env_state, rollout, log, foodlog, phys_state, obs, next_value = exec_rollout(
+    env_state, log, foodlog, phys_state, obs = exec_rollout(
         state,
         initial_obs,
         env,
@@ -194,34 +171,16 @@ def epoch(
         keys[0],
         n_rollout_steps,
     )
-    batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
-    opt_state, pponet = vmap_update(
-        batch,
-        network,
-        adam_update,
-        opt_state,
-        keys[1:],
-        minibatch_size,
-        n_optim_epochs,
-        0.2,
-        entropy_weight,
-    )
-    return env_state, obs, log, foodlog, phys_state, opt_state, pponet
+    return env_state, obs, log, foodlog, phys_state, network
 
 
-def run_evolution(
+def run_noevo(
     *,
     key: jax.Array,
     env: Env,
     n_initial_agents: int,
-    adam: optax.GradientTransformation,
-    gamma: float,
-    gae_lambda: float,
-    n_optim_epochs: int,
-    minibatch_size: int,
     n_rollout_steps: int,
     n_total_steps: int,
-    entropy_weight: float,
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
@@ -245,33 +204,16 @@ def run_evolution(
         )
 
     pponet = initialize_net(net_key)
-    adam_init, adam_update = adam
-
-    @eqx.filter_jit
-    def initialize_opt_state(net: eqx.Module) -> optax.OptState:
-        return jax.vmap(adam_init)(eqx.filter(net, eqx.is_array))
 
     @eqx.filter_jit
     def replace_net(
         key: chex.PRNGKey,
         flag: jax.Array,
         pponet: NormalPPONet,
-        opt_state: optax.OptState,
-    ) -> tuple[NormalPPONet, optax.OptState]:
+    ) -> NormalPPONet:
         initialized = initialize_net(key)
-        pponet = eqx_where(flag, initialized, pponet)
-        opt_state = jax.tree_util.tree_map(
-            lambda a, b: jnp.where(
-                jnp.expand_dims(flag, tuple(range(1, a.ndim))),
-                b,
-                a,
-            ),
-            opt_state,
-            initialize_opt_state(pponet),
-        )
-        return pponet, opt_state
+        return eqx_where(flag, initialized, pponet)
 
-    opt_state = initialize_opt_state(pponet)
     env_state, timestep = env.reset(reset_key)
     obs = timestep.obs
 
@@ -286,7 +228,7 @@ def run_evolution(
 
     for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key)
-        env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
+        env_state, obs, log, foodlog, phys_state, pponet = epoch(
             env_state,
             obs,
             env,
@@ -296,13 +238,6 @@ def run_evolution(
             birth_fn,
             epoch_key,
             n_rollout_steps,
-            gamma,
-            gae_lambda,
-            adam_update,
-            opt_state,
-            minibatch_size,
-            n_optim_epochs,
-            entropy_weight,
         )
 
         if visualizer is not None:
@@ -325,7 +260,7 @@ def run_evolution(
         # Initialize network and adam state for new agents
         is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
         if jnp.any(is_new):
-            pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
+            pponet = replace_net(init_key, is_new, pponet)
 
         # Mutation
         reward_fn = rfn.mutate_reward_fn(
@@ -364,16 +299,9 @@ def run_evolution(
 def main(
     seed: int = 1,
     action_cost: float = 4e-5,
-    adam_lr: float = 3e-4,
-    adam_eps: float = 1e-7,
-    gamma: float = 0.999,
-    gae_lambda: float = 0.95,
-    n_optim_epochs: int = 10,
-    minibatch_size: int = 256,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.001,
-    entropy_weight: float = 0.001,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20240224-ls-square.toml",
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240318-cauchy.toml",
@@ -432,18 +360,12 @@ def main(
         log_interval=log_interval,
         savestate_interval=savestate_interval,
     )
-    run_evolution(
+    run_noevo(
         key=key,
         env=env,
         n_initial_agents=cfconfig.n_initial_agents,
-        adam=optax.adam(adam_lr, eps=adam_eps),
-        gamma=gamma,
-        gae_lambda=gae_lambda,
-        n_optim_epochs=n_optim_epochs,
-        minibatch_size=minibatch_size,
         n_rollout_steps=n_rollout_steps,
         n_total_steps=n_total_steps,
-        entropy_weight=entropy_weight,
         reward_fn=reward_fn_instance,
         hazard_fn=hazard_fn,
         birth_fn=birth_fn,
