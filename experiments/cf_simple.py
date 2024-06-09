@@ -284,8 +284,8 @@ def run_evolution(
         logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
         logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
-    for i, key in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
-        epoch_key, init_key = jax.random.split(key)
+    for i, key_i in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
+        epoch_key, init_key = jax.random.split(key_i)
         env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
             env_state,
             obs,

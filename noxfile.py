@@ -6,7 +6,7 @@ import subprocess
 
 import nox
 
-SOURCES = ["src/emevo", "tests", "smoke-tests"]
+SOURCES = ["src/emevo", "tests", "smoke-tests", "experiments"]
 
 
 def _sync(session: nox.Session, requirements: str) -> None:
@@ -26,6 +26,9 @@ def compile(session: nox.Session) -> None:
     if has_cuda:
         nvcc_out = subprocess.run(["nvcc", "--version"], capture_output=True)
         is_cuda_12 = "cuda_12" in nvcc_out.stdout.decode("utf-8")
+    else:
+        nvcc_out = ""
+        is_cuda_12 = False
 
     def _run_pip_compile(in_file: str, out_name: str) -> None:
         # If -k {out_name} is given, skip compiling
