@@ -9,7 +9,7 @@ food_num_fn = [
 ]
 food_loc_fn = ["uniform", "uniform"]
 food_color = [[254, 2, 162, 255], [2, 254, 162, 255]]
-food_energy_coef = [1.0, -0.8]
+food_energy_coef = [1.0, -0.6]
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
 ylim = [0.0, 360.0]
