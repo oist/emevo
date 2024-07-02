@@ -107,10 +107,13 @@ def main(
     write_dir: Optional[Path] = None,
     length: int = 100,
 ) -> None:
-    stats_df, ldf = _make_stats_df(profile_and_rewards_path)
-    log_path = profile_and_rewards_path.parent.expanduser()
     if write_dir is None:
         write_dir = Path("saved-web-data")
+
+    stats_df, ldf = _make_stats_df(profile_and_rewards_path)
+    stats_df.write_parquet(write_dir / "stats.parqut", compression="snappy")
+
+    log_path = profile_and_rewards_path.parent.expanduser()
 
     for point in starting_points:
         index = point // 1024000
@@ -125,10 +128,12 @@ def main(
             index * 1024000,
         )
         cxy_df.write_parquet(
-            write_dir / f"saved_cpos-{point}.parqut", compression="snappy"
+            write_dir / f"saved_cpos-{point}.parqut",
+            compression="snappy",
         )
         sxy_df.write_parquet(
-            write_dir / f"saved_spos-{point}.parqut", compression="snappy"
+            write_dir / f"saved_spos-{point}.parqut",
+            compression="snappy",
         )
 
 
