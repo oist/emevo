@@ -44,8 +44,9 @@ def _agg_df(
     cact = npzfile["circle_is_active"][start : start + length]  # (length, 200)
     saxy = npzfile["static_circle_axy"][start : start + length]
     sact = npzfile["static_circle_is_active"][start : start + length]
+    slabel = npzfile["static_circle_label"][start : start + length]
     cx_list, cy_list, ca_list = [], [], []
-    sx_list, sy_list = [], []
+    sx_list, sy_list, slab_list = [], [], []
     uniqueid_list, c_nsteps_list, s_nsteps_list = [], [], []
     for i in range(length):
         active_slots = np.nonzero(cact[i])
@@ -54,6 +55,7 @@ def _agg_df(
 
         sx_list.append(saxy_i[:, 1])
         sy_list.append(saxy_i[:, 2])
+        slab_list.append(slabel[i][sact[i]])
 
         ca_list.append(caxy_i[:, 0])
         cx_list.append(caxy_i[:, 1])
@@ -73,29 +75,21 @@ def _agg_df(
         c_nsteps_list.append(df["step"])
         s_nsteps_list.append([ldf_offset + start + i] * len(saxy_i))
 
-    cx = np.concatenate(cx_list)
-    cy = np.concatenate(cy_list)
-    ca = np.concatenate(ca_list)
-    unique_id = pl.concat(uniqueid_list)
-    c_nsteps = pl.concat(c_nsteps_list)
-
-    sx = np.concatenate(sx_list)
-    sy = np.concatenate(sy_list)
-    s_nsteps = np.concatenate(s_nsteps_list)
     cxy_df = pl.DataFrame(
         {
-            "angle": ca,
-            "x": cx,
-            "y": cy,
-            "unique_id": unique_id,
-            "nsteps": c_nsteps,
+            "angle": np.concatenate(ca_list),
+            "x": np.concatenate(cx_list),
+            "y": np.concatenate(cy_list),
+            "unique_id": pl.concat(uniqueid_list),
+            "nsteps": pl.concat(c_nsteps_list),
         }
     )
     sxy_df = pl.DataFrame(
         {
-            "x": sx,
-            "y": sy,
-            "nsteps": s_nsteps,
+            "x": np.concatenate(sx_list),
+            "y": np.concatenate(sy_list),
+            "label": np.concatenate(slab_list),
+            "nsteps": np.concatenate(s_nsteps_list),
         }
     )
     return cxy_df, sxy_df
