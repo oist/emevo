@@ -6,7 +6,7 @@ import subprocess
 
 import nox
 
-SOURCES = ["src/emevo", "tests", "smoke-tests", "experiments"]
+SOURCES = ["src/emevo", "tests", "smoke-tests", "experiments", "scripts"]
 
 
 def _sync(session: nox.Session, requirements: str) -> None:

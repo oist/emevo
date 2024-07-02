@@ -134,7 +134,7 @@ class GopsConfig:
     path: str
     init_std: float
     init_mean: float
-    params: dict[str, float | dict[str, float]]
+    params: dict[str, float | dict[str, Any]]
     init_kwargs: dict[str, float] = dataclasses.field(default_factory=dict)
 
     def load_model(self) -> gops.Mutation | gops.Crossover:
