@@ -33,11 +33,7 @@ from emevo.exp_utils import (
     SavedProfile,
     is_cuda_ready,
 )
-from emevo.rl.ppo_normal import (
-    NormalPPONet,
-    vmap_apply,
-    vmap_net,
-)
+from emevo.rl.ppo_normal import NormalPPONet, vmap_apply, vmap_net
 from emevo.spaces import BoxSpace
 
 PROJECT_ROOT = Path(__file__).parent.parent

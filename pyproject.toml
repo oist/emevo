@@ -73,5 +73,6 @@ select = ["E", "F", "B", "UP"]
 "__init__.py" = ["F401"]
 "src/emevo/reward_fn.py" = ["B023"]
 # For typer
-"experiments/**/*.py" = ["B008", "UP006", "UP007"]
+"experiments/*.py" = ["B008", "UP006", "UP007"]
 "smoke-tests/*.py" = ["B008", "UP006", "UP007"]
+"scripts/*.py" = ["UP006", "UP035"]

@@ -1,4 +1,5 @@
 """Asexual reward evolution with Circle Foraging"""
+
 import dataclasses
 import json
 from pathlib import Path
@@ -56,11 +57,11 @@ class RewardExtractor:
     _max_norm: jax.Array = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
-        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high ** 2, axis=-1))
+        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high**2, axis=-1))
 
     def normalize_action(self, action: jax.Array) -> jax.Array:
         scaled = self.act_space.sigmoid_scale(action)
-        norm = jnp.sqrt(jnp.sum(scaled ** 2, axis=-1, keepdims=True))
+        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
         return norm / self._max_norm
 
     def extract(

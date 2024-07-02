@@ -7,11 +7,8 @@ from typing import List, Optional
 import numpy as np
 import polars as pl
 import typer
-from numpy.typing import NDArray
-from serde import toml
 
 from emevo.analysis.log_plotting import load_log
-from emevo.exp_utils import CfConfig, SavedPhysicsState
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -106,7 +103,7 @@ def _agg_df(
 
 def main(
     profile_and_rewards_path: Path,
-    starting_points: List[int] = [],
+    starting_points: List[int],
     write_dir: Optional[Path] = None,
     length: int = 100,
 ) -> None:
@@ -127,9 +124,12 @@ def main(
             ldfi,
             index * 1024000,
         )
-        cxy_df.write_parquet(write_dir / f"saved_cpos-{point}.parqut", compression="snappy")
-        sxy_df.write_parquet(write_dir / f"saved_spos-{point}.parqut", compression="snappy")
-
+        cxy_df.write_parquet(
+            write_dir / f"saved_cpos-{point}.parqut", compression="snappy"
+        )
+        sxy_df.write_parquet(
+            write_dir / f"saved_spos-{point}.parqut", compression="snappy"
+        )
 
 
 if __name__ == "__main__":
