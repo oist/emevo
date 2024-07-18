@@ -22,6 +22,7 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from numpy.typing import NDArray
+from phyjax2d import Circle, State, StateDict
 from PySide6 import QtWidgets
 from PySide6.QtCharts import (
     QBarCategoryAxis,
@@ -37,7 +38,6 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from emevo.environments.circle_foraging import CircleForaging
 from emevo.environments.moderngl_vis import MglRenderer
-from emevo.environments.phyjax2d import Circle, State, StateDict
 from emevo.exp_utils import SavedPhysicsState
 from emevo.plotting import CBarRenderer
 

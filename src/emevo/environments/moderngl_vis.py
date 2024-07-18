@@ -13,8 +13,7 @@ import moderngl_window as mglw
 import numpy as np
 from moderngl_window.context import headless
 from numpy.typing import NDArray
-
-from emevo.environments.phyjax2d import Circle, Segment, Space, State, StateDict
+from phyjax2d import Circle, Segment, Space, State, StateDict
 
 NOWHERE: float = -1000.0
 
@@ -243,7 +242,7 @@ def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
 
 def _get_sc_color(colors: NDArray, state: State) -> NDArray:
     # Clip labels to make it work when less number of colors are provided
-    label = np.clip(np.array(state.label), a_min=0, a_max=len(colors) - 1)
+    label = np.clip(np.array(state.label), min=0, max=len(colors) - 1)
     default_color = colors[label].astype(np.float32) / 255.0
     inactive_color = np.ones_like(default_color)
     is_active_expanded = np.expand_dims(state.is_active, axis=1)

@@ -2,10 +2,10 @@ import chex
 import jax
 import jax.numpy as jnp
 import pytest
+from phyjax2d import Space
 
 from emevo.environments.circle_foraging import _make_physics
 from emevo.environments.env_utils import CircleCoordinate, Locating, place, place_multi
-from emevo.environments.phyjax2d import Space
 
 N_MAX_AGENTS = 20
 N_MAX_FOODS = 10

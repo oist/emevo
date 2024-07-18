@@ -12,9 +12,7 @@ import chex
 import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
-
-from emevo.environments.phyjax2d import ShapeDict, StateDict
-from emevo.environments.phyjax2d_utils import circle_overlap
+from phyjax2d import ShapeDict, StateDict, circle_overlap
 
 Self = Any
 
@@ -27,7 +25,7 @@ class FoodNumState:
     def n_max_recover(self) -> jax.Array:
         return jnp.clip(
             jnp.ceil(self.internal - self.current).astype(jnp.int32),
-            a_min=0,
+            min=0,
         )
 
     def eaten(self, n: int | jax.Array) -> Self:
@@ -74,7 +72,7 @@ class FoodNumLinear:
         # Increase the number of foods by dn_dt
         internal = jnp.fmax(state.current, state.internal)
         max_value = jnp.array(self.capacity, dtype=jnp.float32)
-        return state._update(jnp.clip(internal + self.growth_rate, a_max=max_value))
+        return state._update(jnp.clip(internal + self.growth_rate, max=max_value))
 
 
 @dataclasses.dataclass(frozen=True)

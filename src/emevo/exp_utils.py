@@ -20,11 +20,11 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import serde
+from phyjax2d import Position, StateDict
 
 from emevo import birth_and_death as bd
 from emevo import genetic_ops as gops
 from emevo.environments.circle_foraging import SensorRange
-from emevo.environments.phyjax2d import Position, StateDict
 from emevo.eqx_utils import get_slice
 from emevo.reward_fn import RewardFn
 

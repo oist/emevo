@@ -17,18 +17,18 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Life",
     "Typing :: Typed",
 ]
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 dependencies = [
     "chex >= 0.1.82",
     "distrax >= 0.1",
     "equinox >= 0.11",
     "moderngl >= 5.6",
     "moderngl-window >= 2.4",
-    # TODO: Update jax to >= 0.4.27 because clip has a breaking change
-    "jax >= 0.4",
+    "jax >= 0.4.27",
     "pyarrow >= 9.0",
     "pyserde[toml] >= 0.14",
     "optax >= 0.1",
+    "phyjax2d >= 0.1",
 ]
 dynamic = ["version"]
 
