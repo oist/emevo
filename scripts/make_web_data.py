@@ -112,13 +112,15 @@ def main(
         write_dir = Path("saved-web-data")
 
     stats_df, ldf = _make_stats_df(profile_and_rewards_path)
-    stats_df.write_parquet(write_dir / "stats.parqut", compression="snappy")
+    stats_df.write_parquet(write_dir / "stats.parquet", compression="snappy")
 
     log_path = profile_and_rewards_path.parent.expanduser()
 
     for i, point in enumerate(starting_points):
+        ld_start = point
+        if deincr_log_idx:
+            point = point +1
         index = point // 1024000
-        ld_start = point - 1 * int(deincr_log_idx)
         ldfi = ldf.filter(
             (pl.col("step") >= ld_start) & (pl.col("step") <= ld_start + length)
         ).collect()  # Offloading here for speedup
