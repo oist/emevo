@@ -1,7 +1,8 @@
 # EmEvo
 [![Tests](https://github.com/oist/emevo/actions/workflows/tests.yml/badge.svg)](https://github.com/oist/emevo/actions/workflows/tests.yml)
 
-- Library + Set of Experiments for simulating **Em**bodied **Evo**lution of robots.
+- Library + Set of Experiments for simulating **Em**bodied **Evo**lution of virtual agents.
+- Bultiin birth and death rules.
 - Enable to simulate evolution of reinforcement learning agents.
   - Only reward evolution is implemented, though.
 - Very fast, backed by [jax](https://jax.readthedocs.io/en/latest/index.html) and [phyjax2d](https://github.com/kngwyu/phyjax2d).
