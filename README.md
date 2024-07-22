@@ -7,18 +7,17 @@ In addition to packages in [pyproject.toml](./pyproject.toml), [typer](https://t
 You can just install it by `pip install typer` in your venv.
 Maybe runnable in Mac or Windows, but I only tested this on Linux (Ubuntu and Arch).
 
-Since the simulation is really slow on CPU, I strongly recommend to use GPUs.
-You can refer to [jax's document](https://jax.readthedocs.io/en/latest/installation.html) to how to make GPUs work properly with Jax.
-The easiest way is running `pip install jax[cuda12]` if you have a NVIDIA newly enough.
+Since the simulation is really slow on CPU, I strongly recommend to use GPU.
+You can refer to [jax's document](https://jax.readthedocs.io/en/latest/installation.html) to how to make GPU work properly with Jax.
+The easiest way is running `pip install jax[cuda12]` if you have a NVIDIA driver newly enough.
 This installs all necessary CUDA binaries from PyPI.
 
-I guess TPUs on Google Cloud may also work, but I have never tested.
+I guess Google TPU may also work, but I have never tested it.
 
 ## Commands for reproducing experiments in our [ALIFE2024 paper](https://arxiv.org/abs/2406.15016)
 
-Jinja2-style template strings are used below.
-Specifically, `{{ seed }}` should be replaced by actual value.
-I used `1~5` in most experiments, but when agents get extinct, some additional seeds are used to prepare five successful runs.
+In the commands below, `{{ seed }}` should be replaced by actual value.
+I used 1 to 5 in most experiments, but when agents get extinct, some additional seeds are used to prepare five successful runs.
 `{{ your_log_dir }}` also should replaced.
 Note that these commands generate 10~20 GBs of log files.
 
