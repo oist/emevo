@@ -1,38 +1,139 @@
-# EmEvo
-[![Tests](https://github.com/oist/emevo/actions/workflows/tests.yml/badge.svg)](https://github.com/oist/emevo/actions/workflows/tests.yml)
+# EmEvo ALIFE2024 branch
 
-- Library + Set of Experiments for simulating **Em**bodied **Evo**lution of virtual agents.
-- Bultiin birth and death rules.
-- Enable to simulate evolution of reinforcement learning agents.
-  - Only reward evolution is implemented, though.
-- Very fast, backed by [jax](https://jax.readthedocs.io/en/latest/index.html) and [phyjax2d](https://github.com/kngwyu/phyjax2d).
+This branch is reserved for reproducibility of our [ALIFE2024 paper](https://arxiv.org/abs/2406.15016).
 
-**CAUTION**
+## Requirements
+In addition to packages in [pyproject.toml](./pyproject.toml), [typer](https://typer.tiangolo.com/) is required to run experiments.
+You can just install it by `pip install typer` in your venv.
+Maybe runnable in Mac or Windows, but I only tested this on Linux (Ubuntu and Arch).
 
-While I want to make it as open as OpenAI gym was, I didn't have enough working time to write documents and stabilize API.
-So now (July 2024), this is just open sourced for reproducibility of my paper and not very usable for others. Apologies.
+Since the simulation is really slow on CPU, I strongly recommend to use GPUs.
+You can refer to [jax's document](https://jax.readthedocs.io/en/latest/installation.html) to how to make GPUs work properly with Jax.
+The easiest way is running `pip install jax[cuda12]` if you have a NVIDIA newly enough.
+This installs all necessary CUDA binaries from PyPI.
 
-## Experiments in our [ALIFE2024 paper](https://arxiv.org/abs/2406.15016)
+I guess TPUs on Google Cloud may also work, but I have never tested.
 
-See [alife2024 branch](https://github.com/oist/emevo/tree/alife2024).
+## Commands for reproducing experiments in our [ALIFE2024 paper](https://arxiv.org/abs/2406.15016)
 
-## Development
-Tooling is based on [nox](https://github.com/wntrblm/nox).
-You can compile all requirements by running
+Jinja2-style template strings are used below.
+Specifically, `{{ seed }}` should be replaced by actual value.
+I used `1~5` in most experiments, but when agents get extinct, some additional seeds are used to prepare five successful runs.
+`{{ your_log_dir }}` also should replaced.
+Note that these commands generate 10~20 GBs of log files.
+
+You can use `--force-gpu` flag to exit program when GPU is not available.
+
+### 'Baseline' environment
+
 ```
-nox -s compile
+python experiments/cf_simple.py \\
+    evolve \\
+    --seed={{ seed }} \\
+    --action-cost=2e-5 \\
+    --act-reward-coef=0.01 \\
+    --cfconfig-path=config/env/20240607-normal.toml \\
+    --gopsconfig-path=config/gops/20240326-cauthy-002.toml \\
+    --logdir={{ your_log_dir }}
 ```
 
-### Run examples
-Test CircleForaging environment
+### 'Large' environment
+
 ```
-nox -s smoke
+python experiments/cf_simple.py \\
+    evolve \\
+    --seed={{ seed }} \\
+    --action-cost=2e-5 \\
+    --act-reward-coef=0.01 \\
+    --cfconfig-path=config/env/20240607-large.toml \\
+    --gopsconfig-path=config/gops/20240326-cauthy-002.toml \\
+    --logdir={{ your_log_dir }}
 ```
 
-### Run tests
+### 'Small' environment
+
 ```
-nox -s tests
+python experiments/cf_simple.py \\
+    evolve \\
+    --seed={{ seed }} \\
+    --action-cost=2e-5 \\
+    --act-reward-coef=0.01 \\
+    --cfconfig-path=config/env/20240607-small.toml \\
+    --gopsconfig-path=config/gops/20240326-cauthy-002.toml \\
+    --logdir={{ your_log_dir }}
 ```
+
+### 'Centered food' environment
+
+```
+python experiments/cf_simple.py \\
+    evolve \\
+    --seed={{ seed }} \\
+    --action-cost=2e-5 \\
+    --act-reward-coef=0.01 \\
+    --cfconfig-path=config/env/20240607-centered.toml \\
+    --gopsconfig-path=config/gops/20240326-cauthy-002.toml \\
+    --logdir={{ your_log_dir }}
+```
+
+
+### 'Food relocation' environment
+
+```
+python experiments/cf_simple.py \
+    evolve \
+    --seed={{ seed }} \
+    --action-cost=2e-5 \
+    --act-reward-coef=0.01 \
+    --cfconfig-path=config/env/20240607-moving.toml \
+    --gopsconfig-path=config/gops/20240326-cauthy-002.toml \
+    --logdir={{ your_log_dir }}
+```
+
+### Environment with 'Poor Foods'
+
+```
+python experiments/cf_simple.py \
+    evolve \
+    --seed={{ seed }} \
+    --action-cost=2e-5 \
+    --act-reward-coef=0.01 \
+    --cfconfig-path=config/env/20240609-2f-93.toml \
+    --gopsconfig-path=config/gops/20240326-cauthy-002.toml \
+    --logdir={{ your_log_dir }}
+```
+
+### Environment with 'Poison'
+
+```
+python experiments/cf_simple.py \
+    evolve \
+    --seed={{ seed }} \
+    --action-cost=2e-5 \
+    --act-reward-coef=0.01 \
+    --cfconfig-path=config/env/20240611-poison-06.toml \
+    --gopsconfig-path=config/gops/20240326-cauthy-002.toml \
+    --logdir={{ your_log_dir }}
+```
+
+## Visualizing learned agents
+
+You can use [PySide6](https://pypi.org/project/PySide6/)-based widget to explore the behavior of evolved agents.
+Below is the example of running the widget for baseline setting from (1024000 * 8 =) 8192000 step to 8392000 step.
+
+```
+python \
+    experiments/cf_simple.py \
+    widget \
+    {{ your_log_dir }}/state-9.npz \
+    --cfconfig-path=config/env/20240607-normal.toml \\
+    --log-path={{ your_log_dir }}/log-9.parquet \
+    --start=0 \
+    --end=200000 \
+    --profile-and-rewards-path={{ your_log_dir }}/profile_and_rewards.parquet
+```
+
+You can also watch agents in [demo site](https://emevo-alife2024.pages.dev/).
 
 # License
 [Apache LICENSE 2.0](./LICENSE)
