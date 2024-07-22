@@ -3,9 +3,9 @@ from __future__ import annotations
 import enum
 import functools
 import warnings
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
-from typing import Any, Callable, Literal, NamedTuple, Union
+from typing import Any, Literal, NamedTuple
 
 import chex
 import jax
@@ -404,8 +404,8 @@ def _set_b2a(
     return xy_a_reset.at[a_idx].add(xy_b_with_sentinel[b_idx])
 
 
-_MaybeLocatingFn = Union[LocatingFn, str, tuple[str, ...]]
-_MaybeNumFn = Union[FoodNumFn, str, tuple[str, ...]]
+_MaybeLocatingFn = LocatingFn | str | tuple[str, ...]
+_MaybeNumFn = FoodNumFn | str | tuple[str, ...]
 
 
 class CircleForaging(Env):
@@ -480,10 +480,10 @@ class CircleForaging(Env):
         self._food_loc_fns, self._initial_foodloc_states = [], []
         self._food_num_fns, self._initial_foodnum_states = [], []
         if n_food_sources > 1:
-            assert isinstance(food_loc_fn, (list, tuple)) and n_food_sources == len(
+            assert isinstance(food_loc_fn, list | tuple) and n_food_sources == len(
                 food_loc_fn
             )
-            assert isinstance(food_num_fn, (list, tuple)) and n_food_sources == len(
+            assert isinstance(food_num_fn, list | tuple) and n_food_sources == len(
                 food_num_fn
             )
         else:

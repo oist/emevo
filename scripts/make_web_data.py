@@ -119,7 +119,7 @@ def main(
     for i, point in enumerate(starting_points):
         ld_start = point
         if deincr_log_idx:
-            point = point +1
+            point = point + 1
         index = point // 1024000
         ldfi = ldf.filter(
             (pl.col("step") >= ld_start) & (pl.col("step") <= ld_start + length)

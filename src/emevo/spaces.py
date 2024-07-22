@@ -199,7 +199,7 @@ class DiscreteSpace(Space[jax.Array, jnp.dtype]):
 
     def __init__(self, n: int, start: int = 0) -> None:
         assert n > 0, "n (counts) have to be positive"
-        assert isinstance(start, (int, jnp.integer))
+        assert isinstance(start, int | jnp.integer)
         self.dtype = jnp.dtype(int)
         self.shape = ()
         self.n = n

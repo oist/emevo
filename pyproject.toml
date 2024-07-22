@@ -68,6 +68,7 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "UP"]
+ignore = ["B905"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
@@ -75,4 +76,4 @@ select = ["E", "F", "B", "UP"]
 # For typer
 "experiments/*.py" = ["B008", "UP006", "UP007"]
 "smoke-tests/*.py" = ["B008", "UP006", "UP007"]
-"scripts/*.py" = ["UP006", "UP035"]
+"scripts/*.py" = ["UP006", "UP035", "UP007"]

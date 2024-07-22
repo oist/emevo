@@ -7,9 +7,8 @@ import enum
 import sys
 import warnings
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from functools import partial
-from typing import Callable
 
 import jax
 import jax.numpy as jnp

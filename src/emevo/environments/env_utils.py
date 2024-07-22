@@ -5,8 +5,8 @@ from __future__ import annotations
 import dataclasses
 import enum
 import functools
-from collections.abc import Iterable
-from typing import Any, Callable, Protocol, cast
+from collections.abc import Callable, Iterable
+from typing import Any, Protocol, cast
 
 import chex
 import jax

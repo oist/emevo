@@ -5,7 +5,8 @@ Currently, only supports circles and lines.
 
 from __future__ import annotations
 
-from typing import Callable, ClassVar
+from collections.abc import Callable
+from typing import ClassVar
 
 import jax.numpy as jnp
 import moderngl as mgl
