@@ -299,6 +299,7 @@ class Logger:
     mode: LogMode
     log_interval: int
     savestate_interval: int
+    min_age_for_save: int
     dropped_keys: list[str] = dataclasses.field(default_factory=_default_dropped_keys)
     reward_fn_dict: dict[int, RewardFn] = dataclasses.field(default_factory=dict)
     profile_dict: dict[int, SavedProfile] = dataclasses.field(default_factory=dict)
@@ -409,11 +410,14 @@ class Logger:
         net: eqx.Module,
         unique_id: jax.Array,
         slots: jax.Array,
+        ages: jax.Array,
     ) -> None:
         if "agent" not in self.mode.value:
             return
 
-        for uid, slot in zip(np.array(unique_id), np.array(slots)):
+        for uid, slot, age in zip(np.array(unique_id), np.array(slots), np.array(ages)):
+            if age < self.min_age_for_save:
+                continue
             sliced_net = get_slice(net, slot)
             modelpath = self.logdir.joinpath(f"trained-{uid}.eqx")
             eqx.tree_serialise_leaves(modelpath, sliced_net)

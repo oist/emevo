@@ -287,6 +287,7 @@ def run_evolution(
 
     for i, key_i in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key_i)
+        old_state = env_state
         env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
             env_state,
             obs,
@@ -321,7 +322,13 @@ def run_evolution(
         # Save network
         log_with_step = log.with_step(i * n_rollout_steps)
         log_death = log_with_step.filter_death()
-        logger.save_agents(pponet, log_death.dead, log_death.slots)
+        ages = old_state.status.age[log_death.slots]
+        logger.save_agents(
+            pponet,
+            log_death.dead,
+            log_death.slots,
+            ages + log_death.step - i * n_rollout_steps,
+        )
         log_birth = log_with_step.filter_birth()
         # Initialize network and adam state for new agents
         is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
@@ -359,6 +366,7 @@ def run_evolution(
         pponet,
         env_state.unique_id.unique_id[is_active],
         jnp.arange(len(is_active))[is_active],
+        env_state.status.age[is_active],
     )
 
 
@@ -382,6 +390,7 @@ def evolve(
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20240224-ls-square.toml",
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240318-cauchy.toml",
+    min_age_for_save: int = 0,
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
@@ -436,6 +445,7 @@ def evolve(
         mode=log_mode,
         log_interval=log_interval,
         savestate_interval=savestate_interval,
+        min_age_for_save=min_age_for_save,
     )
     run_evolution(
         key=key,
