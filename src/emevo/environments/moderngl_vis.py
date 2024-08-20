@@ -243,7 +243,7 @@ def _get_clip_ranges(lengthes: list[float]) -> list[tuple[float, float]]:
 
 def _get_sc_color(colors: NDArray, state: State) -> NDArray:
     # Clip labels to make it work when less number of colors are provided
-    label = np.clip(np.array(state.label), min=0, max=len(colors) - 1)
+    label = np.clip(np.array(state.label), 0, len(colors) - 1)
     default_color = colors[label].astype(np.float32) / 255.0
     inactive_color = np.ones_like(default_color)
     is_active_expanded = np.expand_dims(state.is_active, axis=1)
