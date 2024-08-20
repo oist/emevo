@@ -208,7 +208,7 @@ class EnergyLogisticBirth(BirthFunction):
 class SlopeELBirth(BirthFunction):
     slope: float = 1.0
     scale: float = 0.1
-    const: float = 1.0
+    const: float = 0.0
 
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         del age
