@@ -1,5 +1,5 @@
-birth_fn = "emevo.birth_and_death.SlopeELBirth"
-hazard_fn = "emevo.birth_and_death.ConstantBirth"
+birth_fn = "emevo.birth_and_death.ConstantBirth"
+hazard_fn = "emevo.birth_and_death.SlopeELGHazard"
 
 [hazard_params]
 scale = 0.01
