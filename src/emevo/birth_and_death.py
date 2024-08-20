@@ -208,14 +208,28 @@ class EnergyLogisticBirth(BirthFunction):
 class SlopeELBirth(BirthFunction):
     slope: float = 1.0
     scale: float = 0.1
+    const: float = 1.0
 
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         del age
-        return self.scale / (1.0 + jnp.exp(-energy * self.slope))
+        return self.scale / (self.c + jnp.exp(-energy * self.slope))
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         """Birth function b(t)"""
         return age * self(age, energy)
+
+
+@dataclasses.dataclass(frozen=True)
+class ConstantBirth(BirthFunction):
+    const: float = 0.001
+
+    def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        del age, energy
+        return jnp.array(self.const)
+
+    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        del energy
+        return age * self.const
 
 
 def compute_cumulative_hazard(
