@@ -165,7 +165,11 @@ def loss_function(
     policy_dist = make_inormal(net_out.mean, net_out.logstd)
     log_prob = policy_dist.log_prob(batch.actions)
     policy_ratio = jnp.exp(log_prob - batch.log_action_probs)
-    clipped_ratio = jnp.clip(policy_ratio, 1.0 - ppo_clip_eps, 1.0 + ppo_clip_eps)
+    clipped_ratio = jnp.clip(
+        policy_ratio,
+        a_min=1.0 - ppo_clip_eps,
+        a_max=1.0 + ppo_clip_eps,
+    )
     clipped_objective = jnp.fmin(
         policy_ratio * batch.advantages,
         clipped_ratio * batch.advantages,

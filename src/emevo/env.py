@@ -49,7 +49,7 @@ class Status:
     def update(self, energy_delta: jax.Array, capacity: float | None = 100.0) -> Self:
         """Update energy."""
         energy = self.energy + energy_delta
-        return replace(self, energy=jnp.clip(energy, min=0.0, max=capacity))
+        return replace(self, energy=jnp.clip(energy, a_min=0.0, a_max=capacity))
 
 
 def init_status(max_n: int, init_energy: float) -> Status:
