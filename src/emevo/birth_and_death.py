@@ -224,8 +224,8 @@ class ConstantBirth(BirthFunction):
     const: float = 0.001
 
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        del age, energy
-        return jnp.array(self.const)
+        del age
+        return jnp.ones_like(energy) * self.const
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         del energy

@@ -65,13 +65,15 @@ def vis_birth_2d(
     energy_max: float = 16,
     age: float = 100.0,
     initial: bool = True,
+    color: str | tuple[float, float, float] = "xkcd:bluish purple",
+    label: str | None = None,
 ) -> Line2D:
     energy_max_int = int(energy_max)
     birthrate = birth_fn(
         age=jnp.ones(energy_max_int) * age,
         energy=jnp.arange(energy_max),
     )
-    lines = ax.plot(np.arange(energy_max_int), birthrate, color="xkcd:bluish purple")
+    lines = ax.plot(np.arange(energy_max_int), birthrate, color=color, label=label)
     if initial:
         ax.grid(True, which="major")
         ax.set_xlabel("Energy $e$", fontsize=14)
