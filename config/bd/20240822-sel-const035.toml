@@ -9,4 +9,4 @@ alpha_age = 2e-7
 beta = 4e-6
 
 [birth_params]
-const = 0.0004
+const = 0.00035
