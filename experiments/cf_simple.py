@@ -120,7 +120,13 @@ def exec_rollout(
         )
         # Birth and death
         death_prob = hazard_fn(state_t1.status.age, state_t1.status.energy)
-        dead = jax.random.bernoulli(hazard_key, p=death_prob)
+        dead_nonzero = jax.random.bernoulli(hazard_key, p=death_prob)
+        dead = jnp.where(
+            # If the agent's energy is lower than 0, it should immediately die
+            state_t1.status.energy < 0.0,
+            jnp.ones_like(dead_nonzero),
+            dead_nonzero,
+        )
         state_t1d = env.deactivate(state_t1, dead)
         birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
         possible_parents = jnp.logical_and(

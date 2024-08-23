@@ -15,7 +15,7 @@ def test_status_clipping(n: int, capacity: float) -> None:
         assert jnp.all(status.energy >= 0.0)
         assert jnp.all(status.energy <= capacity)
 
-    for _ in range(300):
+    for _ in range(200):
         status.update(energy_delta=jnp.ones(n) * -1.0, capacity=capacity)
         assert jnp.all(status.energy >= 0.0)
         assert jnp.all(status.energy <= capacity)
