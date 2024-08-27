@@ -209,10 +209,13 @@ class SlopeELBirth(BirthFunction):
     slope: float = 1.0
     scale: float = 0.1
     const: float = 0.0
+    delay: float = 0.0
 
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         del age
-        return self.const + self.scale / (1.0 + jnp.exp(-energy * self.slope))
+        return self.const + self.scale / (
+            1.0 + jnp.exp(self.delay - energy * self.slope)
+        )
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         """Birth function b(t)"""
