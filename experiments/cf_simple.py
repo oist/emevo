@@ -316,8 +316,10 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
-            popl = jnp.sum(env_state.unique_id.is_active())
-            print(f"Population: {int(popl)}")
+            is_active = env_state.unique_id.is_active()
+            popl = int(jnp.sum(is_active))
+            avg_e = float(jnp.mean(env_state.status.energy[is_active]))
+            print(f"Population: {popl} Avg. Energy: {avg_e}")
 
         # Extinct?
         n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
@@ -382,7 +384,6 @@ app = typer.Typer(pretty_exceptions_show_locals=False)
 @app.command()
 def evolve(
     seed: int = 1,
-    action_cost: float = 4e-5,
     adam_lr: float = 3e-4,
     adam_eps: float = 1e-7,
     gamma: float = 0.999,
@@ -391,7 +392,7 @@ def evolve(
     minibatch_size: int = 256,
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
-    act_reward_coef: float = 0.001,
+    act_reward_coef: float = 0.01,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20240224-ls-square.toml",
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
@@ -426,8 +427,6 @@ def evolve(
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
     mutation = gopsconfig.load_model()
-    # Override config
-    cfconfig.force_energy_consumption = action_cost
     # Make env
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
