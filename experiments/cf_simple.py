@@ -294,6 +294,7 @@ def run_evolution(
     for i, key_i in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
         epoch_key, init_key = jax.random.split(key_i)
         old_state = env_state
+        # Use `with jax.disable_jit():` here for debugging
         env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
             env_state,
             obs,

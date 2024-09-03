@@ -23,10 +23,8 @@ class FoodNumState:
     internal: jax.Array
 
     def n_max_recover(self) -> jax.Array:
-        return jnp.clip(
-            jnp.ceil(self.internal - self.current).astype(jnp.int32),
-            a_min=0,
-        )
+        internal_int = jnp.floor(self.internal).astype(jnp.int32)
+        return jnp.clip(internal_int - self.current, a_min=0)
 
     def eaten(self, n: int | jax.Array) -> Self:
         return FoodNumState(
