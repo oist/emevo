@@ -397,7 +397,7 @@ def evolve(
     entropy_weight: float = 0.001,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20240224-ls-square.toml",
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
-    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240326-cauchy-002.toml",
+    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240326-cauthy-002.toml",
     min_age_for_save: int = 0,
     env_override: str = "",
     birth_override: str = "",
