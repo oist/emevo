@@ -402,6 +402,7 @@ def evolve(
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
+    gops_params_override: str = "",
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
     log_interval: int = 1000,
@@ -424,6 +425,7 @@ def evolve(
     cfconfig.apply_override(env_override)
     bdconfig.apply_birth_override(birth_override)
     bdconfig.apply_hazard_override(hazard_override)
+    gopsconfig.apply_params_override(gops_params_override)
 
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
