@@ -147,6 +147,12 @@ class GopsConfig:
                 params[k] = v
         return _load_cls(self.path)(**params)
 
+    def apply_params_override(self, override: str) -> None:
+        if 0 < len(override):
+            override_dict = json.loads(override)
+            for key, value in override_dict.items():
+                self.params[key] = value
+
 
 @chex.dataclass
 class Log:
