@@ -16,11 +16,6 @@ from numpy.typing import NDArray
 from pyarrow import Table
 
 
-class Edge(NamedTuple):
-    node: Node
-    distance: float | NDArray = 1.0
-
-
 datafield = functools.partial(dataclasses.field, compare=False, hash=False, repr=False)
 _ROOT_INDEX = -1
 
@@ -32,23 +27,28 @@ class Node:
     is_root: dataclasses.InitVar[bool] = dataclasses.field(default=False)
     birth_time: int | None = None
     parent_ref: ReferenceType[Node] | None = datafield(default=None)
-    children: list[Edge] = datafield(default_factory=list)
-    attribute: NDArray | None = datafield(default=None, repr=False)
+    children: list[Node] = datafield(default_factory=list)
     info: dict[str, Any] = datafield(default_factory=dict)
 
     def __post_init__(self, is_root: bool) -> None:
         if not is_root and self.index < 0:
             raise ValueError(f"Negative index {self.index} is not allowed as an index")
 
-    def add_child(self, child: Node, distance: float | NDArray = 1.0, **kwargs) -> None:
+    def __hash__(self) -> int:
+        return self.index
+
+    def __eq__(self, other: Node) -> bool:
+        return self.index == other.index
+
+    def add_child(self, child: Node, **kwargs) -> None:
         if child.parent_ref is not None:
             raise RuntimeError(f"Child {child.index} already has a parent")
         child.info = kwargs
-        self.children.append(Edge(child, distance))
+        self.children.append(child)
         child.parent_ref = make_weakref(self)
 
     def sort_children(self) -> None:
-        self.children.sort(key=lambda node_and_edge: node_and_edge[0].index)
+        self.children.sort(key=lambda child: child.index)
 
     @property
     def n_children(self) -> int:
@@ -95,14 +95,31 @@ class Node:
 
 
 @dataclasses.dataclass
+class Edge:
+    parent: Node
+    child: Node
+
+    def __hash__(self) -> int:
+        return self.parent.index * (2 ** 30) + self.child.index
+
+    def __eq__(self, other: Edge) -> bool:
+        return self.parent == other.parent and self.parent == other.parent
+
+    def __lt__(self, other: Edge) -> bool:
+        if self.parent.index == other.parent.index:
+            return self.child.index < other.child.index
+        else:
+            return self.parent.index < other.parent.index
+
+
+@dataclasses.dataclass
 class Tree:
     root: Node
     nodes: dict[int, Node]
 
     @staticmethod
     def from_iter(
-        iterator: Iterable[tuple[int, int] | tuple[int, int, dict]],
-        root_idx: int = -1,
+        iterator: Iterable[tuple[int, int] | tuple[int, int, dict]], root_idx: int = 0
     ) -> Tree:
         nodes = {}
         root = Node(index=_ROOT_INDEX, is_root=True)
@@ -140,13 +157,13 @@ class Tree:
     ) -> Tree:
         birth_steps = {}
 
-        def table_iter() -> Iterable[tuple[int, int]]:
+        def table_iter() -> Iterable[tuple[int, int, dict]]:
             for batch in table.to_batches():
                 bd = batch.to_pydict()
-                zipped = zip(bd["unique_id"], bd["parent"], bd["birthtime"])
-                for idx, pidx, step in zipped:
-                    birth_steps[idx] = step
-                    yield idx, pidx
+                for row in batch.to_pylist():
+                    idx = row.pop("unique_id")
+                    birth_steps[idx] = row.pop("birthtime")
+                    yield idx, row.pop("parent"), row
 
         tree = Tree.from_iter(table_iter(), root_idx=root_idx)
         for idx, node in tree.nodes.items():
@@ -167,21 +184,21 @@ class Tree:
     def add_root(self, node: Node) -> None:
         self.root.add_child(node)
 
-    def all_edges(self) -> Iterable[tuple[int, int]]:
+    def all_edges(self) -> Iterable[Edge]:
         for node in self.nodes.values():
-            for child, _ in node.children:
-                yield node.index, child.index
+            for child in node.children:
+                yield Edge(node, child)
 
     def as_networkx(self) -> nx.Graph:
         tree = nx.Graph()
         for node in self.nodes.values():
             tree.add_node(node.index)
-            for child, distance in node.children:
-                if distance is None:
-                    tree.add_edge(node.index, child.index)
-                else:
-                    tree.add_edge(node.index, child.index, distance=distance)
+            for child in node.children:
+                tree.add_edge(node.index, child.index)
         return tree
+
+    def length(self) -> int:
+        return len(self.nodes)
 
     def traverse(self, preorder: bool = True) -> Iterable[Node]:
         return self.root.traverse(preorder=preorder, include_self=False)
@@ -191,7 +208,7 @@ class Tree:
 
         def split_nodes(node: Node, threshold: int) -> int:
             n_families = 0
-            for child, _ in node.children:
+            for child in node.children:
                 # Number of children that are not splitted
                 n_existing_children = split_nodes(child, threshold)
                 n_families += n_existing_children
@@ -214,7 +231,7 @@ class Tree:
 
         def colorize(node: Node, color: int) -> None:
             categ[node.index] = color
-            for child, _ in node.children:
+            for child in node.children:
                 if child.index not in splitted_roots:
                     colorize(child, color)
 
@@ -228,7 +245,7 @@ class Tree:
 
         def children(node: Node) -> Iterable[Node]:
             yield node
-            for child, _ in node.children:
+            for child in node.children:
                 if child.index not in splitted_roots:
                     yield from children(child)
 
