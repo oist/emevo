@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 from collections.abc import Iterable, Sequence
-from typing import Any, NamedTuple
+from typing import Any
 from weakref import ReferenceType
 from weakref import ref as make_weakref
 
@@ -100,7 +100,7 @@ class Edge:
     child: Node
 
     def __hash__(self) -> int:
-        return self.parent.index * (2 ** 30) + self.child.index
+        return self.parent.index * (2**30) + self.child.index
 
     def __eq__(self, other: Edge) -> bool:
         return self.parent == other.parent and self.parent == other.parent
@@ -110,6 +110,13 @@ class Edge:
             return self.child.index < other.child.index
         else:
             return self.parent.index < other.parent.index
+
+
+@dataclasses.dataclass
+class SplitNode:
+    size: int
+    reward_mean: dict[str, float] | None = None
+    children: list[int] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
@@ -159,7 +166,6 @@ class Tree:
 
         def table_iter() -> Iterable[tuple[int, int, dict]]:
             for batch in table.to_batches():
-                bd = batch.to_pydict()
                 for row in batch.to_pylist():
                     idx = row.pop("unique_id")
                     birth_steps[idx] = row.pop("birthtime")
@@ -203,61 +209,177 @@ class Tree:
     def traverse(self, preorder: bool = True) -> Iterable[Node]:
         return self.root.traverse(preorder=preorder, include_self=False)
 
-    def _splitted_roots(self, min_group_size) -> set[int]:
-        splitted_roots = set()
+    def split(
+        self,
+        min_group_size: int = 1000,
+        method: str = "greedy",
+        n_trial: int = 5,
+        reward_keys: list[str] | None = None,
+    ) -> dict[int, SplitNode]:
+        if method == "greedy":
+            split_nodes = self._split_greedy(min_group_size)
+        elif method == "reward":
+            split_nodes = self._split_reward_mean(min_group_size, n_trial, reward_keys)
+        else:
+            raise ValueError(f"Unsupported split method: {method}")
 
-        def split_nodes(node: Node, threshold: int) -> int:
-            n_families = 0
-            for child in node.children:
-                # Number of children that are not splitted
-                n_existing_children = split_nodes(child, threshold)
-                n_families += n_existing_children
+        return split_nodes
 
-            if n_families + 1 >= threshold:
-                splitted_roots.add(node.index)
-                return 0
-            else:
-                return n_families + 1
-
-        for root, _ in self.root.children:
-            if split_nodes(root, min_group_size) != 0:
-                splitted_roots.add(root.index)
-
-        return splitted_roots
-
-    def split(self, min_group_size: int) -> dict[int, int]:
-        splitted_roots = self._splitted_roots(min_group_size)
+    def colorize(self, split_nodes: dict[int, SplitNode]) -> dict[int, int]:
         categ = {node.index: 0 for node in self.nodes.values()}
 
-        def colorize(node: Node, color: int) -> None:
+        def colorize_impl(node: Node, color: int) -> None:
             categ[node.index] = color
             for child in node.children:
-                if child.index not in splitted_roots:
-                    colorize(child, color)
+                if child.index not in split_nodes:
+                    colorize_impl(child, color)
 
-        for i, node_idx in enumerate(splitted_roots):
-            colorize(self.nodes[node_idx], i)
+        for i, node_idx in enumerate(split_nodes):
+            colorize_impl(self.nodes[node_idx], i)
         return categ
 
-    def multilabel_split(self, min_group_size: int) -> list[set[int]]:
-        splitted_roots = self._splitted_roots(min_group_size)
-        labels = []
+    def _split_greedy(self, min_group_size) -> dict[int, SplitNode]:
+        split_nodes = {}
 
-        def children(node: Node) -> Iterable[Node]:
-            yield node
+        def split(node: Node, threshold: int) -> int:
+            size = 0
             for child in node.children:
-                if child.index not in splitted_roots:
-                    yield from children(child)
+                # Number of children that are not splitted
+                n_existing_children = split(child, threshold)
+                size += n_existing_children
 
-        for node_idx in splitted_roots:
-            labeled_nodes = set()
-            node = self.nodes[node_idx]
-            for child in children(node):
-                labeled_nodes.add(child.index)
-            for ancestor in node.ancestors(include_self=False):
-                labeled_nodes.add(ancestor.index)
-            labels.append(labeled_nodes)
-        return labels
+            if size >= threshold:
+                split_nodes[node.index] = SplitNode(size)
+                return 0
+            else:
+                return size
+
+        def find_children(node: Node) -> list[int]:
+            children = []
+            for child in node.children:
+                children += find_children(child)
+
+            if node in split_nodes:
+                split_nodes[node.index].children = children
+                return list[node.index]
+            else:
+                return children
+
+        for root in self.root.children:
+            size = split(root, min_group_size)
+            if size >= min_group_size:
+                split_nodes[root.index] = SplitNode(size)
+                find_children(root)
+
+        return split_nodes
+
+    def _split_reward_mean(
+        self,
+        min_group_size: int,
+        n_trial: int,
+        reward_keys: list[str],
+    ) -> dict[int, str]:
+        split_nodes = {}
+        split_edges = set()
+
+        @functools.cache
+        def compute_reward_mean(
+            node: Node,
+            n_split: int = 0,
+            is_root: bool = False,
+        ) -> tuple[int, dict[str, float]]:
+            if is_root:
+                size_list = [0]
+                reward_mean_lists = {key: [0.0] for key in reward_keys}
+            else:
+                if reward_keys[0] not in node.info:
+                    return 0, {key: 0.0 for key in reward_keys}
+                size_list = [1]
+                reward_mean_lists = {key: [node.info[key]] for key in reward_keys}
+
+            for child in node.children:
+                if (node.index, child.index) in split_edges:
+                    continue
+                n_children, reward_mean = compute_reward_mean(child, n_split=n_split)
+                size_list.append(n_children)
+                for key, rmean in reward_mean.items():
+                    reward_mean_lists[key].append(rmean)
+
+            total_size = np.sum(size_list)
+            rmean_dict = {}
+            for key, rmean in reward_mean_lists.items():
+                rsum = np.sum([nc * rm for nc, rm in zip(size_list, rmean)])
+                rmean_dict[key] = rsum / total_size
+            return total_size, rmean_dict
+
+        def find_maxdiff_edge(n_split: int, min_group_size: int) -> tuple[float, Edge]:
+            max_effect = 0.0
+            max_effect_edge = None
+            for edge in self.all_edges():
+                if (edge.parent.index, edge.child.index) in split_edges:
+                    continue
+                parent_size, parent_reward = compute_reward_mean(
+                    edge.parent,
+                    n_split=n_split,
+                )
+                child_size, child_reward = compute_reward_mean(
+                    edge.child,
+                    n_split=n_split,
+                )
+                if (
+                    child_size < min_group_size
+                    or (parent_size - child_size) < min_group_size
+                ):
+                    continue
+            assert parent_size > child_size, (parent_size, child_size)
+            split_size = parent_size - child_size
+            total_diff = 0.0
+            for key in reward_keys:
+                parent_rew_total = parent_reward[key] * parent_size
+                child_rew_total = child_reward[key] * child_size
+                split_rew = (parent_rew_total - child_rew_total) / split_size
+                total_diff += (child_reward[key] - split_rew) ** 2
+            effect = total_diff**0.5
+            if effect > max_effect:
+                max_effect = effect
+                max_effect_edge = edge
+            return max_effect, max_effect_edge
+
+        for i in range(n_trial):
+            maxe, edge = find_maxdiff_edge(i, min_group_size)
+            parent_size, parent_reward = compute_reward_mean(edge.parent, n_split=i)
+            child_size, child_reward = compute_reward_mean(edge.child, n_split=i)
+            size_new = parent_size - child_size
+            rew_new = {}
+            for key in parent_reward:
+                rew_new[key] = (
+                    parent_reward[key] * parent_size - child_reward[key] * child_size
+                ) / size_new
+            # Make nodes
+            if edge.parent.index in split_nodes:
+                # Add child
+                split_nodes[edge.parent.index].size = size_new
+                split_nodes[edge.parent.index].reward_mean = rew_new
+                split_nodes[edge.parent.index].children.append(edge.child.index)
+            else:
+                split_nodes[edge.parent.index] = SplitNode(
+                    size_new,
+                    rew_new,
+                    children=[edge.child.index],
+                )
+            # Find Parent
+            ancestor = edge.parent.parent
+            while ancestor is not None:
+                if ancestor.index in split_nodes:
+                    if edge.parent.index not in split_nodes[ancestor.index].children:
+                        split_nodes[ancestor.index].children.append(edge.parent.index)
+                        split_nodes[ancestor.index].size -= size_new
+                    break
+                ancestor = ancestor.parent
+            split_nodes[edge.child.index] = SplitNode(child_size, child_reward)
+            split_edges.add((edge.parent.index, edge.child.index))
+
+        return split_nodes
 
     def as_datadict(self, split: int | dict[int, int] | None) -> dict[str, NDArray]:
         """Returns a dict immediately convertable to Pandas dataframe"""
