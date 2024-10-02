@@ -292,7 +292,7 @@ class Tree:
             if size >= threshold:
                 parent = node.parent
                 split_nodes[node.index] = SplitNode(size)
-                if parent is None:
+                if parent is not None:
                     split_edges.add((parent.index, node.index))
                 return 0
             else:
