@@ -278,7 +278,7 @@ class Tree:
         min_group_size: int,
         n_trial: int,
         reward_keys: list[str],
-    ) -> dict[int, str]:
+    ) -> dict[int, SplitNode]:
         split_nodes = {}
         split_edges = set()
 
@@ -381,7 +381,10 @@ class Tree:
 
         return split_nodes
 
-    def as_datadict(self, split: int | dict[int, int] | None) -> dict[str, NDArray]:
+    def as_datadict(
+        self,
+        split_nodes: dict[int, SplitNode] | None = None,
+    ) -> dict[str, NDArray]:
         """Returns a dict immediately convertable to Pandas dataframe"""
 
         indices = list(self.nodes.keys())
@@ -395,18 +398,9 @@ class Tree:
             if len(collected) == len(self.nodes):
                 data_dict[key] = np.array(collected, dtype=type(collected[0]))
 
-        if split is not None:
-            if isinstance(split, int):
-                labels = self.split(split)
-                split_group_size = split
-            else:
-                labels = split
-                split_group_size = len(set(labels.values()))
+        if split_nodes is not None:
+            labels = self.colorize(split_nodes)
             data_dict["label"] = np.array([labels[idx] for idx in indices], dtype=int)
-            multi_labels = self.multilabel_split(split_group_size)
-            for label, labelset in enumerate(multi_labels):
-                bool_list = [idx in labelset for idx in indices]
-                data_dict[f"in-label-{label}"] = np.array(bool_list, dtype=bool)
 
         return data_dict
 
