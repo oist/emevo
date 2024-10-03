@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+
 import enum
+import math
 import functools
 import warnings
 from collections.abc import Callable, Iterable
@@ -404,6 +406,27 @@ def _set_b2a(
     return xy_a_reset.at[a_idx].add(xy_b_with_sentinel[b_idx])
 
 
+def _is_food_energy_coef_varying(
+    food_energy_coef: Iterable[float | tuple[float, ...]],
+) -> tuple[bool,]:
+    has_tuple = any([isinstance(fec, tuple) for fec in food_energy_coef])
+    if has_tuple:
+        length = [len(fec) if isinstance(fec, tuple) else 1 for fec in food_energy_coef]
+        lcm = math.lcm(*length)
+        elements = []
+        for fec in food_energy_coef:
+            if isinstance(fec, tuple):
+                elements.append(fec * (lcm // len(fec)))
+            else:
+                elements.append([fec] * lcm)
+        return True, jnp.array(elements)
+    else:
+        return False, jnp.expand_dims(
+            jnp.array(list(food_energy_coef)),
+            axis=0,
+        )
+
+
 _MaybeLocatingFn = LocatingFn | str | tuple[str, ...]
 _MaybeNumFn = FoodNumFn | str | tuple[str, ...]
 
@@ -418,7 +441,7 @@ class CircleForaging(Env):
         food_num_fn: _MaybeNumFn | list[_MaybeNumFn] = "constant",
         food_loc_fn: _MaybeLocatingFn | list[_MaybeLocatingFn] = "gaussian",
         agent_loc_fn: LocatingFn | str | tuple[str, ...] = "uniform",
-        food_energy_coef: Iterable[float] = (1.0,),
+        food_energy_coef: Iterable[float | tuple[float, ...]] = (1.0,),
         food_color: Iterable[tuple] = (FOOD_COLOR,),
         xlim: tuple[float, float] = (0.0, 200.0),
         ylim: tuple[float, float] = (0.0, 200.0),
@@ -435,6 +458,7 @@ class CircleForaging(Env):
         agent_radius: float = 10.0,
         food_radius: float = 4.0,
         foodloc_interval: int = 1000,
+        fec_intervals: tuple[int, ...] = 1,
         dt: float = 0.1,
         linear_damping: float = 0.8,
         angular_damping: float = 0.6,
@@ -473,11 +497,11 @@ class CircleForaging(Env):
         self._food_radius = food_radius
         self._foodloc_interval = foodloc_interval
         self._n_food_sources = n_food_sources
-        self._food_energy_coef = jnp.expand_dims(
-            jnp.array(list(food_energy_coef)),
-            axis=0,
-        )
         self._food_loc_fns, self._initial_foodloc_states = [], []
+        self._varying_fec, self._food_energy_coef = _is_food_energy_coef_varying(
+            food_energy_coef
+        )
+        self._fec_intervals = jnp.array(fec_intervals, dtype=jnp.int32)
         self._food_num_fns, self._initial_foodnum_states = [], []
         if n_food_sources > 1:
             assert isinstance(food_loc_fn, list | tuple) and n_food_sources == len(
@@ -836,9 +860,14 @@ class CircleForaging(Env):
             self._force_energy_consumption * force_norm + self._basic_energy_consumption
         )
         n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
-        energy_delta = (
-            jnp.sum(n_ate * self._food_energy_coef, axis=1) - energy_consumption
-        )
+        if self._varying_fec:
+            fec_index = jnp.digitize(state.step, bins=self._fec_intervals)
+            fec = jnp.expand_dims(self._food_energy_coef[:, fec_index], axis=0)
+            energy_delta = jnp.sum(n_ate * fec, axis=1) - energy_consumption
+        else:
+            energy_delta = (
+                jnp.sum(n_ate * self._food_energy_coef, axis=1) - energy_consumption
+            )
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
         eaten = jnp.sum(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
