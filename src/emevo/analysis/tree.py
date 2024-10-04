@@ -77,7 +77,7 @@ class Node:
         if include_self:
             yield self
         parent = self.parent
-        if parent is not None and parent.index != _ROOT_INDEX:
+        if parent is not None and parent.index != self.root.index:
             yield from parent.ancestors()
 
     def traverse(
@@ -116,6 +116,7 @@ class SplitNode:
     size: int
     reward_mean: dict[str, float] | None = None
     children: set[int] = dataclasses.field(default_factory=set)
+    parent: int | None = None
 
 
 @functools.cache
@@ -302,7 +303,7 @@ class Tree:
         if size < min_group_size:
             split_nodes[self.root.index] = SplitNode(size)
 
-        for node_index, split_node in split_nodes.items():
+        for node_index in split_nodes:
             if node_index == self.root.index:
                 continue
             # Find Parent
@@ -310,6 +311,7 @@ class Tree:
             while ancestor is not None:
                 if ancestor.index in split_nodes:
                     split_nodes[ancestor.index].children.add(node_index)
+                    split_nodes[node_index].parent = ancestor.index
                     break
                 ancestor = ancestor.parent
 
@@ -380,7 +382,7 @@ class Tree:
             assert max_effect_edge is not None, "Couldn't find maxdiff_edge anymore"
             return max_effect, max_effect_edge
 
-        for i in range(n_trial):
+        for _ in range(n_trial):
             frozen_split_edges = frozenset(split_edges)
             maxe, edge = find_maxdiff_edge(frozen_split_edges)
             parent_size, parent_reward = compute_reward_mean(
@@ -412,6 +414,7 @@ class Tree:
                     split_rew,
                     children=set([edge.child.index]),
                 )
+            split_nodes[edge.child.index] = SplitNode(child_size, child_reward)
             # Find Parent
             ancestor = edge.parent.parent
             while ancestor is not None:
@@ -419,9 +422,9 @@ class Tree:
                     if edge.parent.index not in split_nodes[ancestor.index].children:
                         split_nodes[ancestor.index].children.add(edge.parent.index)
                         split_nodes[ancestor.index].size -= split_size
+                        split_nodes[edge.child.index].parent = ancestor.index
                     break
                 ancestor = ancestor.parent
-            split_nodes[edge.child.index] = SplitNode(child_size, child_reward)
             split_edges.add((edge.parent.index, edge.child.index))
 
         return split_nodes
@@ -490,3 +493,61 @@ class Tree:
         if len(nodes) > 3:
             repr_nodes.append("...")
         return f"Tree(root={self.root}, nodes={', '.join(repr_nodes)})"
+
+
+@dataclasses.dataclass
+class TreeRange:
+    start: float
+    end: float
+    mid: float = dataclasses.field(init=False)
+
+    def __post_init__(self) -> None:
+        self.mid = (self.start + self.end) * 0.5
+
+    def adjust(self, parent: TreeRange) -> None:
+        current_range = self.end - self.start
+        parent_range = parent.end - parent.start
+        adjusted_range = current_range * parent_range
+        self.start = parent.start + parent_range * self.start
+        self.end = self.start + adjusted_range
+
+
+def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
+
+    @functools.cache
+    def n_children(index: int) -> None:
+        total = 1
+        for child_index in split_nodes[index].children:
+            total += n_children(child_index)
+        return total
+
+    def assign_space(nc_list: list[int]) -> NDArray:
+        spaces = []
+        nc_sum = sum(nc_list)
+        prev = 0.0
+        for nc in nc_list:
+            assigned_space = nc / nc_sum
+            spaces.append(TreeRange(prev, prev + assigned_space))
+            prev += assigned_space
+        return assigned_space
+
+    spaces = {}
+
+    def assign_space_to_node(
+        index: int,
+        parent: TreeRange | None = None,
+    ) -> None:
+        nc = len(split_nodes[index].children)
+        if nc == 0:
+            return 1
+        nc_list = [n_children for index in split_nodes[index].children]
+        assigned = assign_space(nc_list)
+        if parent is not None:
+            assigned.adjust(parent)
+        for child in split_nodes[index].children:
+            assign_space_to_node(child, assigned)
+        spaces[index] = assigned
+
+    nc_list = [
+        n_children(index) for index, node in split_nodes.items() if node.parent is None
+    ]
