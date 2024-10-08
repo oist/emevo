@@ -1,8 +1,16 @@
 n_initial_agents = 100
 n_max_agents = 240
-n_max_foods = 120
-food_num_fn = ["linear", 40, 0.2, 120]
-food_loc_fn = ["gaussian", [240.0, 240.0], [48.0, 48.0]]
+n_max_foods = 160
+n_food_sources = 2
+observe_food_label = true
+food_num_fn = [
+    ["linear", 20, 0.2, 120],
+    ["linear", 20, 0.2, 40],
+]
+food_loc_fn = ["uniform", "uniform"]
+food_color = [[254, 2, 162, 255], [2, 254, 162, 255]]
+food_energy_coef = [1.0, [-0.5, -0.6, -0.7, -0.8]]
+fec_intervals = [2048000, 4096000, 6144000, 8192000]
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
 ylim = [0.0, 480.0]

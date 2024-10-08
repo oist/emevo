@@ -320,7 +320,8 @@ def run_evolution(
             is_active = env_state.unique_id.is_active()
             popl = int(jnp.sum(is_active))
             avg_e = float(jnp.mean(env_state.status.energy[is_active]))
-            print(f"Population: {popl} Avg. Energy: {avg_e}")
+            if popl > 0:
+                print(f"Population: {popl} Avg. Energy: {avg_e}")
 
         # Extinct?
         n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore

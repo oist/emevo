@@ -1,0 +1,8 @@
+path = "emevo.genetic_ops.GaussianMutation"
+init_std = 0.1
+init_mean = 0.0
+
+[params]
+std_dev = 0.5
+clip_min = -10.0
+clip_max = 10.0

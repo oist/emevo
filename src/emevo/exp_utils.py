@@ -42,7 +42,7 @@ class CfConfig:
     food_num_fn: str | tuple[Any, ...] = "constant"
     food_loc_fn: str | tuple[Any, ...] = "gaussian"
     agent_loc_fn: str | tuple[Any, ...] = "uniform"
-    food_energy_coef: tuple[float, ...] = (1.0,)
+    food_energy_coef: tuple[float | tuple[float, ...], ...] = (1.0,)
     food_color: tuple[tuple[int, int, int, int], ...] = ((254, 2, 162, 255),)
     xlim: tuple[float, float] = (0.0, 200.0)
     ylim: tuple[float, float] = (0.0, 200.0)
@@ -57,6 +57,7 @@ class CfConfig:
     agent_radius: float = 10.0
     food_radius: float = 4.0
     foodloc_interval: int = 1000
+    fec_intervals: tuple[int, ...] = (1,)
     dt: float = 0.1
     linear_damping: float = 0.8
     angular_damping: float = 0.6
