@@ -499,10 +499,6 @@ class Tree:
 class TreeRange:
     start: float
     end: float
-    mid: float = dataclasses.field(init=False)
-
-    def __post_init__(self) -> None:
-        self.mid = (self.start + self.end) * 0.5
 
     def adjust(self, parent: TreeRange) -> None:
         current_range = self.end - self.start
@@ -511,8 +507,12 @@ class TreeRange:
         self.start = parent.start + parent_range * self.start
         self.end = self.start + adjusted_range
 
+    @property
+    def mid(self) -> float:
+        return (self.start + self.end) * 0.5
 
-def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
+
+def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, TreeRange]:
 
     @functools.cache
     def n_children(index: int) -> None:
@@ -521,7 +521,7 @@ def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
             total += n_children(child_index)
         return total
 
-    def assign_space(nc_list: list[int]) -> NDArray:
+    def assign_space(nc_list: list[int]) -> list[TreeRange]:
         spaces = []
         nc_sum = sum(nc_list)
         prev = 0.0
@@ -529,7 +529,7 @@ def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
             assigned_space = nc / nc_sum
             spaces.append(TreeRange(prev, prev + assigned_space))
             prev += assigned_space
-        return assigned_space
+        return spaces
 
     spaces = {}
 
@@ -551,3 +551,8 @@ def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
     nc_list = [
         n_children(index) for index, node in split_nodes.items() if node.parent is None
     ]
+    root_space_list = assign_space(nc_list)
+    for index, space in zip(split_nodes, root_space_list):
+        assign_space_to_node(index, parent=space)
+
+    return spaces
