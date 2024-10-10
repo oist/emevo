@@ -63,7 +63,7 @@ class Node:
     @functools.cached_property
     def n_total_children(self) -> int:
         total = 0
-        for child, _ in self.children:
+        for child in self.children:
             total += 1 + child.n_total_children
         return total
 
@@ -87,7 +87,7 @@ class Node:
     ) -> Iterable[Node]:
         if include_self and preorder:
             yield self
-        for child, _ in self.children:
+        for child in self.children:
             yield from child.traverse(preorder)
         if include_self and not preorder:
             yield self

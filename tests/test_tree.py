@@ -22,7 +22,7 @@ def treedef() -> list[tuple[int, int]]:
 
 
 def test_from_iter(treedef: list[tuple[int, int]]) -> None:
-    tree = Tree.from_iter(treedef)
+    tree = Tree.from_iter(treedef, root_idx=-1)
     preorder = list(map(operator.attrgetter("index"), tree.traverse(preorder=True)))
     assert preorder == [0, 1, 3, 4, 5, 8, 9, 2, 6, 7]
     postorder = list(map(operator.attrgetter("index"), tree.traverse(preorder=False)))
@@ -33,7 +33,7 @@ def test_from_iter(treedef: list[tuple[int, int]]) -> None:
 def test_split(treedef: list[tuple[int, int]]) -> None:
     tree = Tree.from_iter(treedef)
     sp1 = tree.split(min_group_size=3)
-    assert len(sp1) == 10
+    assert len(sp1) == 4
     assert sp1[0] == 0
     for idx in [1, 3, 4]:
         assert sp1[idx] == 1
@@ -43,7 +43,7 @@ def test_split(treedef: list[tuple[int, int]]) -> None:
         assert sp1[idx] == 3
 
     sp2 = tree.split(min_group_size=4)
-    assert len(sp2) == 10
+    assert len(sp2) == 4
     for idx in [0, 2, 6, 7]:
         assert sp2[idx] == 0
     for idx in [1, 3, 4, 5, 8, 9]:
@@ -63,7 +63,7 @@ def test_multilabel_split(treedef: list[tuple[int, int]]) -> None:
 def test_from_table() -> None:
     table = pq.read_table(ASSET_DIR.joinpath("profile_and_rewards.parquet"))
     tree = Tree.from_table(table, 20)
-    for root, _ in tree.root.children:
+    for root in tree.root.children:
         assert root.index < 10
         assert root.birth_time is not None
         for node in root.traverse():
