@@ -15,7 +15,6 @@ from networkx.drawing.nx_agraph import graphviz_layout
 from numpy.typing import NDArray
 from pyarrow import Table
 
-
 datafield = functools.partial(dataclasses.field, compare=False, hash=False, repr=False)
 
 
@@ -165,8 +164,8 @@ class Tree:
         iterator: Iterable[tuple[int, int] | tuple[int, int, dict]],
         root_idx: int = 0,
     ) -> Tree:
-        nodes = {}
         root = Node(index=root_idx, is_root=True)
+        nodes = {}
 
         for item in iterator:
             if len(item) == 2:
@@ -191,6 +190,7 @@ class Tree:
                 root.add_child(node)
 
             node.sort_children()
+        nodes[root_idx] = root
         return Tree(root, nodes)
 
     @staticmethod
@@ -300,7 +300,7 @@ class Tree:
                 return size
 
         size = split(self.root, min_group_size)
-        if size < min_group_size:
+        if size > 0:
             split_nodes[self.root.index] = SplitNode(size)
 
         for node_index in split_nodes:
@@ -344,6 +344,17 @@ class Tree:
         split_edges = set()
         reward_keys_t = tuple(reward_keys)
 
+        def find_group_root(node: Node) -> int:
+            ancestor_idx = node.index
+            ancestor = node.parent
+            while (
+                ancestor is not None
+                and (ancestor.index, ancestor_idx) not in split_edges
+            ):
+                ancestor_idx = ancestor.index
+                ancestor = ancestor.parent
+            return ancestor_idx
+
         def find_maxdiff_edge(
             frozen_split_edges: frozenset[tuple[int, int]]
         ) -> tuple[float, Edge]:
@@ -352,8 +363,9 @@ class Tree:
             for edge in self.all_edges():
                 if (edge.parent.index, edge.child.index) in split_edges:
                     continue
+                parent_root = find_group_root(edge.parent)
                 parent_size, parent_reward = compute_reward_mean(
-                    edge.parent,
+                    parent_root,
                     skipped_edges=frozen_split_edges,
                     reward_keys=reward_keys_t,
                 )
