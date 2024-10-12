@@ -576,15 +576,25 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
     @Slot()
     def exportData(self) -> None:
         stated = self._mgl_widget.get_stated()
-        # TODO: filename
-        np.savez_compressed(
+        selected_file = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save File",
             "exported.npz",
-            circle_axy=np.array(stated.circle.p.into_axy()),
-            circle_is_active=np.array(stated.circle.is_active),
-            static_circle_axy=np.array(stated.static_circle.p.into_axy()),
-            static_circle_is_active=np.array(stated.static_circle.is_active),
-            static_circle_label=np.array(stated.static_circle.label),
+            "Binary (*.npz)",
         )
+        if selected_file is None:
+            return
+        if selected_file.ends_with(".npz"):
+            np.savez_compressed(
+                selected_file,
+                circle_axy=np.array(stated.circle.p.into_axy()),
+                circle_is_active=np.array(stated.circle.is_active),
+                static_circle_axy=np.array(stated.static_circle.p.into_axy()),
+                static_circle_is_active=np.array(stated.static_circle.is_active),
+                static_circle_label=np.array(stated.static_circle.label),
+            )
+        else:
+            print(f"Invalid file extension: {selected_file}")
 
 
 def start_widget(widget_cls: type[QtWidgets.QWidget], **kwargs) -> None:
