@@ -430,8 +430,6 @@ class Tree:
                 child_rew_total = child_reward[key] * child_size
                 split_rew[key] = (parent_rew_total - child_rew_total) / split_size
             # Make nodes
-            print(edge)
-            print(parent_root)
             if parent_root.index in split_nodes:
                 # Add child
                 split_nodes[parent_root.index].size = split_size
