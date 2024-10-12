@@ -110,6 +110,16 @@ class Edge:
             return self.parent.index < other.parent.index
 
 
+def _collect_descendants(node: Node, include_self: bool = False) -> set[int]:
+    ret = set()
+    if include_self:
+        ret.add(node.index)
+    for child in node.children:
+        descendants = _collect_descendants(child, include_self=True)
+        ret.update(descendants)
+    return ret
+
+
 @dataclasses.dataclass
 class SplitNode:
     size: int
@@ -163,8 +173,11 @@ class Tree:
     def from_iter(
         iterator: Iterable[tuple[int, int] | tuple[int, int, dict]],
         root_idx: int = 0,
+        root_info: dict | None = None,
     ) -> Tree:
         root = Node(index=root_idx, is_root=True)
+        if root_info is not None:
+            root.info = root_info
         nodes = {}
 
         for item in iterator:
@@ -198,6 +211,7 @@ class Tree:
         table: Table,
         initial_population: int | None = None,
         root_idx: int = 0,
+        root_info: dict | None = None,
     ) -> Tree:
         birth_steps = {}
 
@@ -208,7 +222,7 @@ class Tree:
                     birth_steps[idx] = row.pop("birthtime")
                     yield idx, row.pop("parent"), row
 
-        tree = Tree.from_iter(table_iter(), root_idx=root_idx)
+        tree = Tree.from_iter(table_iter(), root_idx=root_idx, root_info=root_info)
         for idx, node in tree.nodes.items():
             if idx in birth_steps:
                 node.birth_time = birth_steps[idx]
@@ -363,7 +377,7 @@ class Tree:
             for edge in self.all_edges():
                 if (edge.parent.index, edge.child.index) in split_edges:
                     continue
-                parent_root = find_group_root(edge.parent)
+                parent_root = self.nodes[find_group_root(edge.parent)]
                 parent_size, parent_reward = compute_reward_mean(
                     parent_root,
                     skipped_edges=frozen_split_edges,
@@ -397,8 +411,9 @@ class Tree:
         for _ in range(n_trial):
             frozen_split_edges = frozenset(split_edges)
             maxe, edge = find_maxdiff_edge(frozen_split_edges)
+            parent_root = self.nodes[find_group_root(edge.parent)]
             parent_size, parent_reward = compute_reward_mean(
-                edge.parent,
+                parent_root,
                 skipped_edges=frozen_split_edges,
                 reward_keys=reward_keys_t,
             )
@@ -415,28 +430,30 @@ class Tree:
                 child_rew_total = child_reward[key] * child_size
                 split_rew[key] = (parent_rew_total - child_rew_total) / split_size
             # Make nodes
-            if edge.parent.index in split_nodes:
+            print(edge)
+            print(parent_root)
+            if parent_root.index in split_nodes:
                 # Add child
-                split_nodes[edge.parent.index].size = split_size
-                split_nodes[edge.parent.index].reward_mean = split_rew
-                split_nodes[edge.parent.index].children.add(edge.child.index)
+                split_nodes[parent_root.index].size = split_size
+                split_nodes[parent_root.index].reward_mean = split_rew
+                split_nodes[parent_root.index].children.add(edge.child.index)
             else:
-                split_nodes[edge.parent.index] = SplitNode(
+                split_nodes[parent_root.index] = SplitNode(
                     split_size,
                     split_rew,
                     children=set([edge.child.index]),
                 )
-            split_nodes[edge.child.index] = SplitNode(child_size, child_reward)
-            # Find Parent
-            ancestor = edge.parent.parent
-            while ancestor is not None:
-                if ancestor.index in split_nodes:
-                    if edge.parent.index not in split_nodes[ancestor.index].children:
-                        split_nodes[ancestor.index].children.add(edge.parent.index)
-                        split_nodes[ancestor.index].size -= split_size
-                        split_nodes[edge.child.index].parent = ancestor.index
-                    break
-                ancestor = ancestor.parent
+            split_nodes[edge.child.index] = SplitNode(
+                child_size,
+                child_reward,
+                parent=parent_root.index,
+            )
+            # Find parent's children that should be moved to child
+            descendants = _collect_descendants(edge.child, include_self=False)
+            moved = descendants.intersection(split_nodes[parent_root.index].children)
+            for child in moved:
+                split_nodes[parent_root.index].children.remove(child)
+                split_nodes[edge.child.index].children.add(child)
             split_edges.add((edge.parent.index, edge.child.index))
 
         return split_nodes

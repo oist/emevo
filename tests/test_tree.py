@@ -21,8 +21,12 @@ def treedef() -> list[tuple[int, int]]:
     return [(1, 0), (4, 1), (3, 1), (5, 1), (9, 5), (8, 5), (2, 0), (6, 2), (7, 2)]
 
 
+def rd(value: float) -> dict[str, float]:
+    return {"reward": value}
+
+
 @pytest.fixture
-def treedef_with_reward() -> list[tuple[int, int]]:
+def treedef_with_rewards() -> list[tuple[int, int, dict[str, float]]]:
     #     0
     #    / \
     #   1   2
@@ -30,7 +34,24 @@ def treedef_with_reward() -> list[tuple[int, int]]:
     # 3 4 5 6 7
     #     |\
     #     8 9
-    return [(1, 0), (4, 1), (3, 1), (5, 1), (9, 5), (8, 5), (2, 0), (6, 2), (7, 2)]
+    #     |
+    #     10
+    #    /  \
+    #   11  12
+    return [
+        (1, 0, rd(1.0)),
+        (4, 1, rd(3.0)),
+        (3, 1, rd(2.0)),
+        (5, 1, rd(-1.0)),
+        (9, 5, rd(-2.0)),
+        (8, 5, rd(-3.0)),
+        (2, 0, rd(4.0)),
+        (6, 2, rd(4.0)),
+        (7, 2, rd(6.0)),
+        (10, 8, rd(4.0)),
+        (11, 10, rd(10.0)),
+        (12, 10, rd(1.0)),
+    ]
 
 
 def test_from_iter(treedef: list[tuple[int, int]]) -> None:
@@ -59,6 +80,36 @@ def test_split(treedef: list[tuple[int, int]]) -> None:
     assert len(sp2) == 2
     assert sp2[0].size == 4, sp2
     assert sp2[1].size == 6
+
+
+def test_split_by_rewards(treedef_with_rewards: list[tuple[int, int, dict]]) -> None:
+    #     0
+    #    /
+    #   1   2
+    #  /|   |\
+    # 3 4 5 6 7
+    #     |\
+    #     8 9
+    #
+    #     10
+    #    /  \
+    #   11  12
+    tree = Tree.from_iter(treedef_with_rewards, root_info=rd(0.0))
+    sp = tree.split(
+        min_group_size=3,
+        method="reward",
+        n_trial=3,
+        reward_keys=["reward"],
+    )
+    assert len(sp) == 4
+    assert sp[0].size == 4
+    assert sp[2].size == 3
+    assert sp[5].size == 3
+    assert sp[10].size == 3
+    assert list(sp[0].children) == [2, 5]
+    assert len(sp[2].children) == 0
+    assert list(sp[5].children) == [10]
+    assert len(sp[10].children) == 0
 
 
 def test_from_table() -> None:
