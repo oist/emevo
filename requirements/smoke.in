@@ -1,4 +1,0 @@
--e .[video]
-py-spy  # for profiling
-tqdm
-typer

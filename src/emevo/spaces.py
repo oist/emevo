@@ -101,7 +101,7 @@ class BoxSpace(Space[jax.Array, jnp.dtype]):
             raise ValueError("manner is not in {'below', 'above', 'both'}")
 
     def clip(self, x: jax.Array) -> jax.Array:
-        return jnp.clip(x, a_min=self.low, a_max=self.high)
+        return jnp.clip(x, min=self.low, max=self.high)
 
     def contains(self, x: jax.Array) -> jax.Array:
         type_ok = jnp.can_cast(x.dtype, self.dtype) and x.shape == self.shape
@@ -206,7 +206,7 @@ class DiscreteSpace(Space[jax.Array, jnp.dtype]):
         self.start = start
 
     def clip(self, x: jax.Array) -> jax.Array:
-        return jnp.clip(x, a_min=self.start, a_max=self.start + self.n)
+        return jnp.clip(x, min=self.start, max=self.start + self.n)
 
     def contains(self, x: jax.Array) -> jax.Array:
         """Return boolean specifying if x is a valid member of this space."""

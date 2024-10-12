@@ -15,7 +15,6 @@ from networkx.drawing.nx_agraph import graphviz_layout
 from numpy.typing import NDArray
 from pyarrow import Table
 
-
 datafield = functools.partial(dataclasses.field, compare=False, hash=False, repr=False)
 
 
@@ -63,7 +62,7 @@ class Node:
     @functools.cached_property
     def n_total_children(self) -> int:
         total = 0
-        for child, _ in self.children:
+        for child in self.children:
             total += 1 + child.n_total_children
         return total
 
@@ -87,7 +86,7 @@ class Node:
     ) -> Iterable[Node]:
         if include_self and preorder:
             yield self
-        for child, _ in self.children:
+        for child in self.children:
             yield from child.traverse(preorder)
         if include_self and not preorder:
             yield self
@@ -109,6 +108,16 @@ class Edge:
             return self.child.index < other.child.index
         else:
             return self.parent.index < other.parent.index
+
+
+def _collect_descendants(node: Node, include_self: bool = False) -> set[int]:
+    ret = set()
+    if include_self:
+        ret.add(node.index)
+    for child in node.children:
+        descendants = _collect_descendants(child, include_self=True)
+        ret.update(descendants)
+    return ret
 
 
 @dataclasses.dataclass
@@ -164,9 +173,12 @@ class Tree:
     def from_iter(
         iterator: Iterable[tuple[int, int] | tuple[int, int, dict]],
         root_idx: int = 0,
+        root_info: dict | None = None,
     ) -> Tree:
-        nodes = {}
         root = Node(index=root_idx, is_root=True)
+        if root_info is not None:
+            root.info = root_info
+        nodes = {}
 
         for item in iterator:
             if len(item) == 2:
@@ -191,6 +203,7 @@ class Tree:
                 root.add_child(node)
 
             node.sort_children()
+        nodes[root_idx] = root
         return Tree(root, nodes)
 
     @staticmethod
@@ -198,6 +211,7 @@ class Tree:
         table: Table,
         initial_population: int | None = None,
         root_idx: int = 0,
+        root_info: dict | None = None,
     ) -> Tree:
         birth_steps = {}
 
@@ -208,7 +222,7 @@ class Tree:
                     birth_steps[idx] = row.pop("birthtime")
                     yield idx, row.pop("parent"), row
 
-        tree = Tree.from_iter(table_iter(), root_idx=root_idx)
+        tree = Tree.from_iter(table_iter(), root_idx=root_idx, root_info=root_info)
         for idx, node in tree.nodes.items():
             if idx in birth_steps:
                 node.birth_time = birth_steps[idx]
@@ -300,7 +314,7 @@ class Tree:
                 return size
 
         size = split(self.root, min_group_size)
-        if size < min_group_size:
+        if size > 0:
             split_nodes[self.root.index] = SplitNode(size)
 
         for node_index in split_nodes:
@@ -344,6 +358,17 @@ class Tree:
         split_edges = set()
         reward_keys_t = tuple(reward_keys)
 
+        def find_group_root(node: Node) -> int:
+            ancestor_idx = node.index
+            ancestor = node.parent
+            while (
+                ancestor is not None
+                and (ancestor.index, ancestor_idx) not in split_edges
+            ):
+                ancestor_idx = ancestor.index
+                ancestor = ancestor.parent
+            return ancestor_idx
+
         def find_maxdiff_edge(
             frozen_split_edges: frozenset[tuple[int, int]]
         ) -> tuple[float, Edge]:
@@ -352,8 +377,9 @@ class Tree:
             for edge in self.all_edges():
                 if (edge.parent.index, edge.child.index) in split_edges:
                     continue
+                parent_root = self.nodes[find_group_root(edge.parent)]
                 parent_size, parent_reward = compute_reward_mean(
-                    edge.parent,
+                    parent_root,
                     skipped_edges=frozen_split_edges,
                     reward_keys=reward_keys_t,
                 )
@@ -385,8 +411,9 @@ class Tree:
         for _ in range(n_trial):
             frozen_split_edges = frozenset(split_edges)
             maxe, edge = find_maxdiff_edge(frozen_split_edges)
+            parent_root = self.nodes[find_group_root(edge.parent)]
             parent_size, parent_reward = compute_reward_mean(
-                edge.parent,
+                parent_root,
                 skipped_edges=frozen_split_edges,
                 reward_keys=reward_keys_t,
             )
@@ -403,28 +430,28 @@ class Tree:
                 child_rew_total = child_reward[key] * child_size
                 split_rew[key] = (parent_rew_total - child_rew_total) / split_size
             # Make nodes
-            if edge.parent.index in split_nodes:
+            if parent_root.index in split_nodes:
                 # Add child
-                split_nodes[edge.parent.index].size = split_size
-                split_nodes[edge.parent.index].reward_mean = split_rew
-                split_nodes[edge.parent.index].children.add(edge.child.index)
+                split_nodes[parent_root.index].size = split_size
+                split_nodes[parent_root.index].reward_mean = split_rew
+                split_nodes[parent_root.index].children.add(edge.child.index)
             else:
-                split_nodes[edge.parent.index] = SplitNode(
+                split_nodes[parent_root.index] = SplitNode(
                     split_size,
                     split_rew,
                     children=set([edge.child.index]),
                 )
-            split_nodes[edge.child.index] = SplitNode(child_size, child_reward)
-            # Find Parent
-            ancestor = edge.parent.parent
-            while ancestor is not None:
-                if ancestor.index in split_nodes:
-                    if edge.parent.index not in split_nodes[ancestor.index].children:
-                        split_nodes[ancestor.index].children.add(edge.parent.index)
-                        split_nodes[ancestor.index].size -= split_size
-                        split_nodes[edge.child.index].parent = ancestor.index
-                    break
-                ancestor = ancestor.parent
+            split_nodes[edge.child.index] = SplitNode(
+                child_size,
+                child_reward,
+                parent=parent_root.index,
+            )
+            # Find parent's children that should be moved to child
+            descendants = _collect_descendants(edge.child, include_self=False)
+            moved = descendants.intersection(split_nodes[parent_root.index].children)
+            for child in moved:
+                split_nodes[parent_root.index].children.remove(child)
+                split_nodes[edge.child.index].children.add(child)
             split_edges.add((edge.parent.index, edge.child.index))
 
         return split_nodes
@@ -499,10 +526,6 @@ class Tree:
 class TreeRange:
     start: float
     end: float
-    mid: float = dataclasses.field(init=False)
-
-    def __post_init__(self) -> None:
-        self.mid = (self.start + self.end) * 0.5
 
     def adjust(self, parent: TreeRange) -> None:
         current_range = self.end - self.start
@@ -511,8 +534,12 @@ class TreeRange:
         self.start = parent.start + parent_range * self.start
         self.end = self.start + adjusted_range
 
+    @property
+    def mid(self) -> float:
+        return (self.start + self.end) * 0.5
 
-def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
+
+def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, TreeRange]:
 
     @functools.cache
     def n_children(index: int) -> None:
@@ -521,7 +548,7 @@ def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
             total += n_children(child_index)
         return total
 
-    def assign_space(nc_list: list[int]) -> NDArray:
+    def assign_space(nc_list: list[int]) -> list[TreeRange]:
         spaces = []
         nc_sum = sum(nc_list)
         prev = 0.0
@@ -529,7 +556,7 @@ def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
             assigned_space = nc / nc_sum
             spaces.append(TreeRange(prev, prev + assigned_space))
             prev += assigned_space
-        return assigned_space
+        return spaces
 
     spaces = {}
 
@@ -551,3 +578,8 @@ def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, float]:
     nc_list = [
         n_children(index) for index, node in split_nodes.items() if node.parent is None
     ]
+    root_space_list = assign_space(nc_list)
+    for index, space in zip(split_nodes, root_space_list):
+        assign_space_to_node(index, parent=space)
+
+    return spaces

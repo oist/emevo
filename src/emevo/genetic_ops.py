@@ -116,7 +116,7 @@ def _clip_minmax(
 ) -> jax.Array:
     if clip_min is None and clip_max is None:
         return x
-    return jnp.clip(x, a_min=clip_min, a_max=clip_max)
+    return jnp.clip(x, min=clip_min, max=clip_max)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -159,4 +159,18 @@ class CauchyMutation(Mutation):
     def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
         cauchy = jax.random.cauchy(prng_key, shape=array.shape)
         res = array + self.loc + cauchy * self.scale
+        return _clip_minmax(res, self.clip_min, self.clip_max)
+
+
+@dataclasses.dataclass(frozen=True)
+class StudentTMutation(Mutation):
+    df: float = 1.0  # Equal to Cauthy
+    loc: float = 0.0
+    scale: float = 1.0
+    clip_min: float | None = None
+    clip_max: float | None = None
+
+    def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
+        t = jax.random.t(prng_key, self.df, shape=array.shape)
+        res = array + self.loc + t * self.scale
         return _clip_minmax(res, self.clip_min, self.clip_max)

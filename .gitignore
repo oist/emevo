@@ -16,3 +16,4 @@ pyrightconfig.json
 *.eqx
 *.parquet
 *.npz
+uv.lock
