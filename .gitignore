@@ -10,6 +10,7 @@
 .virtual_documents/
 .ipynb_checkpoints/
 analysis-notebooks/
+data/
 requirements/*.txt
 # This should be local
 pyrightconfig.json
