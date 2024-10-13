@@ -84,4 +84,5 @@ ignore = ["B905"]
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.3.3",
+    "typer>=0.12"
 ]

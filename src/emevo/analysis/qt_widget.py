@@ -348,7 +348,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         play_button = QtWidgets.QPushButton("▶️")
         play_button.clicked.connect(self._mgl_widget.play)
         export_button = QtWidgets.QPushButton("📤")
-        export_button.clicked.connect(self._exportData)
+        export_button.clicked.connect(self.exportData)
         # Colorbar
         radiobutton_1 = QtWidgets.QRadioButton("Energy")
         radiobutton_2 = QtWidgets.QRadioButton("Num. Children")
