@@ -83,6 +83,8 @@ ignore = ["B905"]
 
 [tool.uv]
 dev-dependencies = [
+    "ipykernel>=6.29.5",
     "pytest>=8.3.3",
-    "typer>=0.12"
+    "seaborn>=0.12",
+    "typer>=0.12",
 ]

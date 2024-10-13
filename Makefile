@@ -21,6 +21,14 @@ publish:
 	uvx twine upload dist/*
 
 
+register:
+	uv run ipython kernel install --user --name=emevo-lab
+
+
+jupyter:
+	uv run --with jupyter jupyter lab --port=9998 --no-browser
+
+
 sync:
 ifeq ($(CUDA_AVAILABLE),1)
 	uv sync --extra=analysis --extra=cuda12
