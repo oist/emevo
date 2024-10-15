@@ -46,6 +46,7 @@ def _mgl_qsurface_fmt() -> QSurfaceFormat:
     fmt.setDepthBufferSize(24)
     fmt.setStencilBufferSize(8)
     fmt.setVersion(4, 1)
+    fmt.setRenderableType(QSurfaceFormat.OpenGL)
     fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
     fmt.setSwapBehavior(QSurfaceFormat.SwapBehavior.DoubleBuffer)
     return fmt
@@ -114,6 +115,7 @@ class MglWidget(QOpenGLWidget):
 
         self.setFixedSize(*self._figsize)
         self.setMouseTracking(True)
+        self._ctx, self._fbo = None, None
 
     def _scale_position(self, position: QPointF) -> tuple[float, float]:
         return (
@@ -130,7 +132,7 @@ class MglWidget(QOpenGLWidget):
 
     def paintGL(self) -> None:
         if not self._initialized:
-            if QGuiApplication.platformName() in ["eglfs", "wayland"]:
+            if QGuiApplication.platformName() == "eglfs":
                 self._ctx = moderngl.create_context(
                     require=410,
                     share=True,
@@ -140,7 +142,7 @@ class MglWidget(QOpenGLWidget):
                 self._ctx = moderngl.create_context(require=410)
             if self._ctx.error != "GL_NO_ERROR":
                 warnings.warn(
-                    f"The qfollowing error occured: {self._ctx.error}",
+                    f"The following error occured: {self._ctx.error}",
                     stacklevel=1,
                 )
             self._fbo = self._ctx.detect_framebuffer()
@@ -401,7 +403,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             env_and_reward_layout.addWidget(self._reward_widget)
             total_layout.addLayout(env_and_reward_layout)
         self.setLayout(total_layout)
-        timer.start(30)  # 40fps
+        timer.start(30)  # 30fps
         # Signals
         self._mgl_widget.selectionChanged.connect(self.updateRewards)
         self._mgl_widget.stepChanged.connect(self.updateStep)

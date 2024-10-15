@@ -240,8 +240,8 @@ def run_evolution(
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
-    input_size = np.prod(obs_space.shape)
-    act_size = np.prod(env.act_space.shape)
+    input_size = int(np.prod(obs_space.shape))
+    act_size = int(np.prod(env.act_space.shape))
 
     def initialize_net(key: chex.PRNGKey) -> NormalPPONet:
         return vmap_net(
@@ -409,7 +409,7 @@ def evolve(
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
-    force_gpu: bool = False,
+    force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
         raise RuntimeError("Detected some problem in CUDA!")
@@ -524,11 +524,16 @@ def widget(
     profile_and_rewards_path: Optional[Path] = None,
     cm_fixed_minmax: str = "",
     env_override: str = "",
+    force_cpu: bool = False,
 ) -> None:
     from emevo.analysis.qt_widget import CFEnvReplayWidget, start_widget
 
+    if force_cpu:
+        jax.config.update("jax_default_device", jax.devices("cpu")[0])
+
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
+
     # For speedup
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
