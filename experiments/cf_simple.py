@@ -524,6 +524,7 @@ def widget(
     profile_and_rewards_path: Optional[Path] = None,
     cm_fixed_minmax: str = "",
     env_override: str = "",
+    scale: float = 2.0,
     force_cpu: bool = False,
 ) -> None:
     from emevo.analysis.qt_widget import CFEnvReplayWidget, start_widget
@@ -574,6 +575,7 @@ def widget(
         self_terminate=self_terminate,
         profile_and_rewards=profile_and_rewards,
         cm_fixed_minmax=cm_fixed_minmax_dict,
+        scale=scale,
     )
 
 

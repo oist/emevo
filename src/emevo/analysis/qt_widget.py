@@ -311,6 +311,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         log_ds: ds.Dataset | None = None,
         profile_and_rewards: pa.Table | None = None,
         cm_fixed_minmax: dict[str, tuple[float, float]] | None = None,
+        scale: float = 2.0,
     ) -> None:
         super().__init__()
 
@@ -321,7 +322,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             timer=timer,
             env=env,
             saved_physics=saved_physics,
-            figsize=(xlim * 2, ylim * 2),
+            figsize=(xlim * scale, ylim * scale),
             start=start,
             end=end,
             slider_offset=step_offset,
@@ -380,6 +381,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(pause_button)
         buttons.addWidget(play_button)
+        buttons.addWidget(export_button)
         left_control.addLayout(buttons)
         left_control.addWidget(self._slider_label)
         left_control.addWidget(self._slider)
@@ -413,9 +415,9 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             self.rewardUpdated.connect(self._reward_widget.updateValues)
         # Initial size
         if profile_and_rewards is None:
-            self.resize(xlim * 3, ylim * 3)
+            self.resize(xlim * scale * 1.5, ylim * scale * 1.5)
         else:
-            self.resize(xlim * 4, ylim * 3)
+            self.resize(xlim * scale * 2.0, ylim * scale * 1.5)
         self._self_terminate = self_terminate
 
     def _check_exit(self) -> None:
@@ -577,8 +579,8 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
 
     @Slot()
     def exportData(self) -> None:
-        stated = self._mgl_widget.get_stated()
-        selected_file = QtWidgets.QFileDialog.getSaveFileName(
+        stated = self._mgl_widget._get_stated()
+        selected_file, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Save File",
             "exported.npz",
@@ -586,7 +588,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         )
         if selected_file is None:
             return
-        if selected_file.ends_with(".npz"):
+        if selected_file.endswith(".npz"):
             np.savez_compressed(
                 selected_file,
                 circle_axy=np.array(stated.circle.p.into_axy()),
