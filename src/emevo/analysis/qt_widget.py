@@ -194,11 +194,9 @@ class BarChart(QtWidgets.QWidget):
         initial_values: dict[str, float | list[float]],
         categ: str = "Rewards",
         title: str = "Bar Chart",
-        yrange_min: float | None = None,
         animation: bool = True,
     ) -> None:
         super().__init__()
-        self._yrange_min = yrange_min
 
         self.barsets = {}
         self.series = QBarSeries()
@@ -221,6 +219,7 @@ class BarChart(QtWidgets.QWidget):
         self.series.attachAxis(self.axis_x)
 
         self.axis_y = QValueAxis()
+        self._yrange_max = 0.0
         self._update_yrange(initial_values.values())
         self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
         self.series.attachAxis(self.axis_y)
@@ -257,11 +256,8 @@ class BarChart(QtWidgets.QWidget):
 
     def _update_yrange(self, values: Iterable[float | list[float]]) -> None:
         values_arr = np.array(list(values))
-        if self._yrange_min is None:
-            yrange_min = np.min(values_arr)
-        else:
-            yrange_min = min(self._yrange_min, np.min(values_arr))
-        self.axis_y.setRange(yrange_min, np.max(values_arr))
+        self._yrange_max = max(self._yrange_max, float(np.max(np.abs(values_arr))))
+        self.axis_y.setRange(-self._yrange_max, self._yrange_max)
 
     @Slot(dict)
     def updateValues(self, title: str, values: dict[str, float | list[float]]) -> None:
@@ -417,7 +413,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         if profile_and_rewards is None:
             self.resize(xlim * scale * 1.5, ylim * scale * 1.5)
         else:
-            self.resize(xlim * scale * 2.0, ylim * scale * 1.5)
+            self.resize(xlim * scale * 1.5, ylim * scale * 1.2)
         self._self_terminate = self_terminate
 
     def _check_exit(self) -> None:
