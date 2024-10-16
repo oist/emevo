@@ -9,7 +9,7 @@ import warnings
 import moderngl
 from PySide6 import QtWidgets
 from PySide6.QtCore import QTimer, Signal
-from PySide6.QtGui import QGuiApplication, QSurfaceFormat
+from PySide6.QtGui import QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 
@@ -60,10 +60,13 @@ class MglWidget(QOpenGLWidget):
         self._ctx.clear(1.0, 1.0, 1.0)
 
 
-if __name__ == "__main__":
-    print(QGuiApplication.platformName())
+def main() -> None:
     app = QtWidgets.QApplication([])
     timer = QTimer()
     widget = MglWidget(timer=timer, figsize=(600, 600))
     widget.show()
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
