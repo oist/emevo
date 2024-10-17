@@ -80,7 +80,8 @@ def main(
     activate = jax.jit(env.activate)
     for i in tqdm(range(steps)):
         before = datetime.datetime.now()
-        state, _ = jit_step(state, jit_sample(keys[i + 1]))
+        act = jit_sample(keys[i + 1])
+        state, _ = jit_step(state, act)
         elapsed = datetime.datetime.now() - before
         if i == 0:
             print(f"Compile: {elapsed.total_seconds()}s")
