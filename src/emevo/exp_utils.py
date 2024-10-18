@@ -11,6 +11,7 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import EllipsisType
 from typing import Any
 
 import chex
@@ -252,7 +253,11 @@ class SavedPhysicsState:
             static_circle_label=static_circle_label,
         )
 
-    def set_by_index(self, i: int, phys: StateDict) -> StateDict:
+    def set_by_index(
+        self,
+        i: int | EllipsisType | tuple[int, int],
+        phys: StateDict,
+    ) -> StateDict:
         phys = phys.nested_replace(
             "circle.p",
             Position.from_axy(self.circle_axy[i]),

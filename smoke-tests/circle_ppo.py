@@ -254,10 +254,10 @@ def train(
     entropy_weight: float = 1e-4,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     env_override: str = "",
-    reset_interval: Optional[int] = None,
-    savelog_path: Optional[Path] = None,
-    xlim: Optional[float] = None,
-    ylim: Optional[float] = None,
+    reset_interval: int | None = None,
+    savelog_path: Path | None = None,
+    xlim: float | None = None,
+    ylim: float | None = None,
     debug_vis: bool = False,
 ) -> None:
     # Load config
@@ -299,9 +299,9 @@ def vis(
     n_total_steps: int = 1000,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     seed: int = 1,
-    videopath: Optional[Path] = None,
-    xlim: Optional[float] = None,
-    ylim: Optional[float] = None,
+    videopath: Path | None = None,
+    xlim: float | None = None,
+    ylim: float | None = None,
     env_override: str = "",
     headless: bool = False,
 ) -> None:

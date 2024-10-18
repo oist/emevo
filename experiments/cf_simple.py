@@ -3,7 +3,7 @@
 import dataclasses
 import json
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 import chex
 import equinox as eqx
@@ -35,19 +35,12 @@ from emevo.exp_utils import (
     SavedProfile,
     is_cuda_ready,
 )
-from emevo.rl.ppo_normal import (
-    NormalPPONet,
-    Rollout,
-    vmap_apply,
-    vmap_batch,
-    vmap_net,
-    vmap_update,
-    vmap_value,
-)
+from emevo.rl import ppo_normal as ppo
 from emevo.spaces import BoxSpace
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
+DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20240823-uniform.toml"
 
 
 @dataclasses.dataclass
@@ -86,21 +79,21 @@ def exec_rollout(
     state: State,
     initial_obs: Obs,
     env: Env,
-    network: NormalPPONet,
+    network: ppo.NormalPPONet,
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
-) -> tuple[State, Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
+) -> tuple[State, ppo.Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
-    ) -> tuple[tuple[State, Obs], tuple[Rollout, Log, FoodLog, SavedPhysicsState]]:
+    ) -> tuple[tuple[State, Obs], tuple[ppo.Rollout, Log, FoodLog, SavedPhysicsState]]:
         act_key, hazard_key, birth_key = jax.random.split(key, 3)
         state_t, obs_t = carried
         obs_t_array = obs_t.as_array()
-        net_out = vmap_apply(network, obs_t_array)
+        net_out = ppo.vmap_apply(network, obs_t_array)
         actions = net_out.policy().sample(seed=act_key)
         state_t1, timestep = env.step(
             state_t,
@@ -109,7 +102,7 @@ def exec_rollout(
         obs_t1 = timestep.obs
         energy = state_t.status.energy
         rewards = reward_fn(timestep.info["n_ate_food"], actions, energy).reshape(-1, 1)
-        rollout = Rollout(
+        rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
             rewards=rewards,
@@ -166,7 +159,7 @@ def exec_rollout(
         (state, initial_obs),
         jax.random.split(prng_key, n_rollout_steps),
     )
-    next_value = vmap_value(network, obs.as_array())
+    next_value = ppo.vmap_value(network, obs.as_array())
     return state, rollout, log, foodlog, phys_state, obs, next_value
 
 
@@ -175,7 +168,7 @@ def epoch(
     state: State,
     initial_obs: Obs,
     env: Env,
-    network: NormalPPONet,
+    network: ppo.NormalPPONet,
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
@@ -188,7 +181,9 @@ def epoch(
     minibatch_size: int,
     n_optim_epochs: int,
     entropy_weight: float,
-) -> tuple[State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, NormalPPONet]:
+) -> tuple[
+    State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, ppo.NormalPPONet
+]:
     keys = jax.random.split(prng_key, env.n_max_agents + 1)
     env_state, rollout, log, foodlog, phys_state, obs, next_value = exec_rollout(
         state,
@@ -201,8 +196,8 @@ def epoch(
         keys[0],
         n_rollout_steps,
     )
-    batch = vmap_batch(rollout, next_value, gamma, gae_lambda)
-    opt_state, pponet = vmap_update(
+    batch = ppo.vmap_batch(rollout, next_value, gamma, gae_lambda)
+    opt_state, pponet = ppo.vmap_update(
         batch,
         network,
         adam_update,
@@ -243,8 +238,8 @@ def run_evolution(
     input_size = int(np.prod(obs_space.shape))
     act_size = int(np.prod(env.act_space.shape))
 
-    def initialize_net(key: chex.PRNGKey) -> NormalPPONet:
-        return vmap_net(
+    def initialize_net(key: chex.PRNGKey) -> ppo.NormalPPONet:
+        return ppo.vmap_net(
             input_size,
             64,
             act_size,
@@ -262,9 +257,9 @@ def run_evolution(
     def replace_net(
         key: chex.PRNGKey,
         flag: jax.Array,
-        pponet: NormalPPONet,
+        pponet: ppo.NormalPPONet,
         opt_state: optax.OptState,
-    ) -> tuple[NormalPPONet, optax.OptState]:
+    ) -> tuple[ppo.NormalPPONet, optax.OptState]:
         initialized = initialize_net(key)
         pponet = eqx_where(flag, initialized, pponet)
         opt_state = jax.tree_util.tree_map(
@@ -396,7 +391,7 @@ def evolve(
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.01,
     entropy_weight: float = 0.001,
-    cfconfig_path: Path = PROJECT_ROOT / "config/env/20240224-ls-square.toml",
+    cfconfig_path: Path = DEFAULT_CFCONFIG,
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240326-cauthy-002.toml",
     min_age_for_save: int = 0,
@@ -483,9 +478,9 @@ def evolve(
 def replay(
     physstate_path: Path,
     backend: str = "pyglet",  # Use "headless" for headless rendering
-    videopath: Optional[Path] = None,
+    videopath: Path | None = None,
     start: int = 0,
-    end: Optional[int] = None,
+    end: int | None = None,
     cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
     env_override: str = "",
 ) -> None:
@@ -517,11 +512,11 @@ def replay(
 def widget(
     physstate_path: Path,
     start: int = 0,
-    end: Optional[int] = None,
-    cfconfig_path: Path = PROJECT_ROOT / "config/env/20231214-square.toml",
-    log_path: Optional[Path] = None,
+    end: int | None = None,
+    cfconfig_path: Path = DEFAULT_CFCONFIG,
+    log_path: Path | None = None,
     self_terminate: bool = False,
-    profile_and_rewards_path: Optional[Path] = None,
+    profile_and_rewards_path: Path | None = None,
     cm_fixed_minmax: str = "",
     env_override: str = "",
     scale: float = 2.0,
@@ -577,6 +572,61 @@ def widget(
         cm_fixed_minmax=cm_fixed_minmax_dict,
         scale=scale,
     )
+
+
+@app.command()
+def vis_policy(
+    physstate_path: Path,
+    policy_path: list[Path],
+    agent_index: int = 0,
+    cfconfig_path: Path = DEFAULT_CFCONFIG,
+    scale: float = 1.0,
+) -> None:
+    from emevo.analysis.policy import draw_policy
+
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+
+    cfconfig.n_initial_agents = 1
+    # Load env state
+    phys_state = SavedPhysicsState.load(physstate_path)
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    key = jax.random.PRNGKey(0)
+    env_state, _ = env.reset(key)
+    loaded_phys = phys_state.set_by_index(..., env_state.physics)
+    env_state = dataclasses.replace(env_state, physics=loaded_phys)
+    # Load agents
+    input_size = int(np.prod(env.obs_space.flatten().shape))
+    act_size = int(np.prod(env.act_space.shape))
+    ref_net = ppo.NormalPPONet(input_size, 64, act_size, key)
+    net_params = []
+    for policy_path_i in policy_path:
+        pponet = eqx.tree_deserialise_leaves(policy_path_i, ref_net)
+        # Append only params of the network, excluding functions (etc. tanh).
+        net_params.append(eqx.filter(pponet, eqx.is_array))
+    net_params = jax.tree.map(lambda *args: jnp.stack(args), *net_params)
+    network = eqx.combine(net_params, ref_net)
+    # Get obs
+    n_agents = cfconfig.n_max_agents
+    zero_action = jnp.zeros((n_agents, *env.act_space.shape))
+    _, timestep = env.step(env_state, zero_action)
+    obs_array = timestep.obs.as_array()
+    obs_i = obs_array[agent_index]
+
+    @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
+    def evaluate(network: ppo.NormalPPONet, obs: jax.Array) -> ppo.Output:
+        return network(obs)
+
+    # Get output
+    output = evaluate(network, obs_i)
+    # Make visualizer
+    xmax = cfconfig.xlim[1]
+    ymax = cfconfig.ylim[1]
+    visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
+    visualizer.render(env_state.physics)
+    image = visualizer.get_image()
+    starting_point = env_state.physics.circle.p.xy[agent_index]
+    draw_policy(image, np.array(output.mean) * 10.0, starting_point)
 
 
 if __name__ == "__main__":
