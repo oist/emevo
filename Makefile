@@ -26,7 +26,7 @@ register:
 
 
 jupyter:
-	uv run --with jupyter jupyter lab --port=9998 --no-browser
+	uv run --with jupyter --with jupyterlab_code_formatter --with black --with isort jupyter lab --port=9998 --no-browser
 
 
 sync:

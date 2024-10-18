@@ -374,12 +374,19 @@ class Tree:
         ) -> tuple[float, Edge]:
             max_effect = 0.0
             max_effect_edge = None
+            failure_causes = {
+                "Edge already used": 0,
+                "Group size is too small": 0,
+                "Effect is too small": 0,
+            }
             for edge in self.all_edges():
                 if (edge.parent.index, edge.child.index) in split_edges:
+                    failure_causes["Edge already used"] += 1
                     continue
                 parent_root = self.nodes[find_group_root(edge.parent)]
                 parent_size, parent_reward = compute_reward_mean(
                     parent_root,
+                    is_root=parent_root.index == self.root.index,
                     skipped_edges=frozen_split_edges,
                     reward_keys=reward_keys_t,
                 )
@@ -392,6 +399,7 @@ class Tree:
                     child_size < min_group_size
                     or (parent_size - child_size) < min_group_size
                 ):
+                    failure_causes["Group size is too small"] += 1
                     continue
                 assert parent_size > child_size, (parent_size, child_size)
                 split_size = parent_size - child_size
@@ -405,7 +413,9 @@ class Tree:
                 if effect > max_effect:
                     max_effect = effect
                     max_effect_edge = edge
-            assert max_effect_edge is not None, "Couldn't find maxdiff_edge anymore"
+                else:
+                    failure_causes["Effect is too small"] += 1
+            assert max_effect_edge is not None, f"Couldn't find maxdiff_edge anymore (Reason: {failure_causes})"
             return max_effect, max_effect_edge
 
         for _ in range(n_trial):
@@ -414,6 +424,7 @@ class Tree:
             parent_root = self.nodes[find_group_root(edge.parent)]
             parent_size, parent_reward = compute_reward_mean(
                 parent_root,
+                is_root=parent_root.index == self.root.index,
                 skipped_edges=frozen_split_edges,
                 reward_keys=reward_keys_t,
             )
