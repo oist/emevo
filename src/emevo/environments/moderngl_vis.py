@@ -265,6 +265,7 @@ class MglRenderer:
         voffsets: tuple[int, ...] = (),
         hoffsets: tuple[int, ...] = (),
         sc_color_opt: NDArray | None = None,
+        sensor_color: NDArray | None = None,
         sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
     ) -> None:
         self._context = context
@@ -332,7 +333,11 @@ class MglRenderer:
                 vertex_shader=_LINE_VERTEX_SHADER,
                 geometry_shader=_LINE_GEOMETRY_SHADER,
                 fragment_shader=_LINE_FRAGMENT_SHADER,
-                color=np.array([0.0, 0.0, 0.0, 0.1], dtype=np.float32),
+                color=(
+                    np.array([0.0, 0.0, 0.0, 0.1], dtype=np.float32)
+                    if sensor_color is None
+                    else sensor_color
+                ),
                 width=np.array([0.001], dtype=np.float32),
             )
 
@@ -461,6 +466,7 @@ class MglVisualizer:
         space: Space,
         stated: StateDict,
         food_color: NDArray,
+        sensor_color: NDArray | None = None,
         figsize: tuple[float, float] | None = None,
         voffsets: tuple[int, ...] = (),
         hoffsets: tuple[int, ...] = (),
@@ -493,6 +499,7 @@ class MglVisualizer:
             voffsets=voffsets,
             hoffsets=hoffsets,
             sc_color_opt=food_color,
+            sensor_color=sensor_color,
             sensor_fn=sensor_fn,
         )
 
