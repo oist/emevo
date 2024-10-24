@@ -106,7 +106,10 @@ class MglWidget(QOpenGLWidget):
             stated=self._get_stated(),
             sc_color_opt=env._food_color,
             sensor_color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
-            sensor_fn=self._get_selected_sensors,
+            sensor_fn=lambda stated: self._env._get_selected_sensor(
+                stated,
+                self._selected_slot,
+            ),
         )
         self._env = env
         self._get_colors = get_colors
@@ -124,20 +127,7 @@ class MglWidget(QOpenGLWidget):
         self.setFixedSize(*self._figsize)
         self.setMouseTracking(True)
         self._ctx, self._fbo = None, None
-        self._selected = None
-
-    def _get_selected_sensors(self, *args, **kwargs) -> tuple[jax.Array, jax.Array]:
-        p1, p2 = self._env._get_sensors(*args, **kwargs)
-        zeros = jnp.ones_like(p1)
-        if self._selected is None:
-            return zeros, zeros
-        else:
-            i = self._selected.item()
-            from_ = i * self._env._n_sensors
-            to = (i + 1) * self._env._n_sensors
-            p1 = zeros.at[from_:to].add(p1[from_:to])
-            p2 = zeros.at[from_:to].add(p2[from_:to])
-            return p1, p2
+        self._selected_slot = 0
 
     def _scale_position(self, position: QPointF) -> tuple[float, float]:
         return (
@@ -195,8 +185,8 @@ class MglWidget(QOpenGLWidget):
         )
         (selected,) = jnp.nonzero(overlap)
         if 0 < selected.shape[0]:
-            self._selected = selected
-            self.selectionChanged.emit(selected[0].item(), self._index)
+            self._selected_slot = selected[0].item()
+            self.selectionChanged.emit(self._selected_slot, self._index)
 
     @Slot()
     def pause(self) -> None:
@@ -530,7 +520,6 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                 if "action" in rew:
                     rew_food = rew["action"]
                 else:
-                    print(rew)
                     warnings.warn("Unsupported reward", stacklevel=1)
                     rew_food = 0.0
                 value[slot] = rew_food

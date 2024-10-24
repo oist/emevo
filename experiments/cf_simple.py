@@ -580,9 +580,10 @@ def vis_policy(
     policy_path: list[Path],
     agent_index: int = 0,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
+    fig_unit: float = 4.0,
     scale: float = 1.0,
 ) -> None:
-    from emevo.analysis.policy import draw_policy
+    from emevo.analysis.policy import draw_cf_policy
 
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
@@ -620,13 +621,22 @@ def vis_policy(
     # Get output
     output = evaluate(network, obs_i)
     # Make visualizer
-    xmax = cfconfig.xlim[1]
-    ymax = cfconfig.ylim[1]
-    visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
+    visualizer = env.visualizer(
+        env_state,
+        figsize=(cfconfig.xlim[1] * scale, cfconfig.ylim[1] * scale),
+        sensor_index=agent_index,
+    )
     visualizer.render(env_state.physics)
-    image = visualizer.get_image()
-    starting_point = env_state.physics.circle.p.xy[agent_index]
-    draw_policy(image, np.array(output.mean) * 10.0, starting_point)
+    visualizer.show()
+    max_force = max(cfconfig.max_force, -cfconfig.min_force)
+    rot = env_state.physics.circle.p.angle[agent_index].item()
+    policy_mean = env.act_space.sigmoid_scale(output.mean)
+    draw_cf_policy(
+        np.array(policy_mean),
+        rotation=rot,
+        fig_unit=fig_unit,
+        max_force=max_force,
+    )
 
 
 if __name__ == "__main__":

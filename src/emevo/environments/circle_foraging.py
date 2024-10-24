@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-
 import enum
-import math
 import functools
+import math
 import warnings
 from collections.abc import Callable, Iterable
 from dataclasses import replace
@@ -280,6 +279,17 @@ _vmap_obs_closest_with_food = jax.vmap(
 )
 
 
+def _first_n_true(boolean_array: jax.Array, n: jax.Array) -> jax.Array:
+    return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) <= n)
+
+
+def _nonzero(arr: jax.Array, n: int) -> jax.Array:
+    """Similar to jax.numpy.nonzero, but simpler"""
+    cums = jnp.cumsum(arr)
+    bincount = jnp.zeros(n, dtype=jnp.int32).at[cums].add(1)
+    return jnp.cumsum(bincount)
+
+
 def _get_sensors(
     shaped: ShapeDict,
     n_sensors: int,
@@ -377,17 +387,6 @@ def nstep(
 
     (state, solver), contacts = jax.lax.scan(body, (stated, solver), jnp.zeros(n))
     return state, solver, contacts
-
-
-def _first_n_true(boolean_array: jax.Array, n: jax.Array) -> jax.Array:
-    return jnp.logical_and(boolean_array, jnp.cumsum(boolean_array) <= n)
-
-
-def _nonzero(arr: jax.Array, n: int) -> jax.Array:
-    """Similar to jax.numpy.nonzero, but simpler"""
-    cums = jnp.cumsum(arr)
-    bincount = jnp.zeros(n, dtype=jnp.int32).at[cums].add(1)
-    return jnp.cumsum(bincount)
 
 
 def _set_b2a(
@@ -802,6 +801,17 @@ class CircleForaging(Env):
             },
         )
 
+    def _get_selected_sensor(
+        self, stated: StateDict, index: int
+    ) -> tuple[jax.Array, jax.Array]:
+        p1, p2 = self._get_sensors(stated=stated)
+        from_ = index * self._n_sensors
+        to = (index + 1) * self._n_sensors
+        zeros = jnp.ones_like(p1)
+        p1 = zeros.at[from_:to].add(p1[from_:to])
+        p2 = zeros.at[from_:to].add(p2[from_:to])
+        return p1, p2
+
     def step(
         self,
         state: CFState,
@@ -1174,6 +1184,7 @@ class CircleForaging(Env):
         self,
         state: CFState,
         figsize: tuple[float, float] | None = None,
+        sensor_index: int | None = None,
         backend: str = "pyglet",
         **kwargs,
     ) -> Visualizer[StateDict]:
@@ -1188,6 +1199,10 @@ class CircleForaging(Env):
             food_color=self._food_color,
             figsize=figsize,
             backend=backend,
-            sensor_fn=self._get_sensors,
+            sensor_fn=(
+                self._get_sensors
+                if sensor_index is None
+                else lambda stated: self._get_selected_sensor(stated, sensor_index)
+            ),
             **kwargs,
         )
