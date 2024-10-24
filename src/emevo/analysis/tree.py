@@ -135,12 +135,13 @@ def compute_reward_mean(
     skipped_edges: frozenset[tuple[int, int]] | None = None,
     reward_keys: tuple[str, ...] = (),
 ) -> tuple[int, dict[str, float]]:
-    if is_root:
-        size_list = [0]
-        reward_mean_lists = {key: [0.0] for key in reward_keys}
-    else:
-        if reward_keys[0] not in node.info:
+    if reward_keys[0] not in node.info:
+        if is_root:
+            size_list = [0]
+            reward_mean_lists = {key: [0.0] for key in reward_keys}
+        else:
             return 0, {key: 0.0 for key in reward_keys}
+    else:
         size_list = [1]
         reward_mean_lists = {key: [node.info[key]] for key in reward_keys}
 
@@ -415,7 +416,9 @@ class Tree:
                     max_effect_edge = edge
                 else:
                     failure_causes["Effect is too small"] += 1
-            assert max_effect_edge is not None, f"Couldn't find maxdiff_edge anymore (Reason: {failure_causes})"
+            assert (
+                max_effect_edge is not None
+            ), f"Couldn't find maxdiff_edge anymore (Reason: {failure_causes})"
             return max_effect, max_effect_edge
 
         for _ in range(n_trial):
