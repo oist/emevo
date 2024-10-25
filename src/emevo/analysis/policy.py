@@ -11,12 +11,13 @@ from phyjax2d import Vec2d
 
 
 def draw_cf_policy(
+    names: list[str],
     policy_means: NDArray,
     rotation: float,
     fig_unit: float,
     max_force: float,
 ) -> None:
-    n_policies = policy_means.shape[0]
+    n_policies = len(names)
     if n_policies == 1:
         fig, ax = plt.subplots(figsize=(fig_unit, fig_unit))
         axes = [ax]
@@ -43,12 +44,14 @@ def draw_cf_policy(
     s_left = u_left * max_force * 0.5 + center
     s_right = u_right * max_force * 0.5 + center
     # Draw the arrows
-    for policy_mean, ax in zip(policy_means, np.ravel(axes)):
+    for title, policy_mean, ax in zip(names, policy_means, np.ravel(axes)):
+        # Misc
         ax.set_xlim(0, max_force * 3)
         ax.set_ylim(0, max_force * 3)
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_aspect("equal", adjustable="box")
+        ax.set_title(title)
         # Circle
         circle = Circle((center.x, center.y), max_force * 0.5, fill=False)
         ax.add_patch(circle)
@@ -59,7 +62,8 @@ def draw_cf_policy(
             s_left.y,
             d_left.x,
             d_left.y,
-            width=max_force * 0.1,
+            # 10% of the width? Looks thinner...
+            width=max_force * 0.3,
             color="r",
         )
         ax.add_patch(arrow)
@@ -70,7 +74,7 @@ def draw_cf_policy(
             s_right.y,
             d_right.x,
             d_right.y,
-            width=max_force * 0.1,
+            width=max_force * 0.3,
             color="r",
         )
         ax.add_patch(arrow)

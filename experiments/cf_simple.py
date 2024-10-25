@@ -578,7 +578,7 @@ def widget(
 def vis_policy(
     physstate_path: Path,
     policy_path: list[Path],
-    agent_index: int = 0,
+    agent_index: int | None = None,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     fig_unit: float = 4.0,
     scale: float = 1.0,
@@ -596,15 +596,24 @@ def vis_policy(
     env_state, _ = env.reset(key)
     loaded_phys = phys_state.set_by_index(..., env_state.physics)
     env_state = dataclasses.replace(env_state, physics=loaded_phys)
+    # agent_index
+    if agent_index is None:
+        file_name = physstate_path.stem
+        if "slot" in file_name:
+            agent_index = int(file_name[file_name.index("slot") + 4 :])
+        else:
+            print("Set --agent-index")
+            return
     # Load agents
     input_size = int(np.prod(env.obs_space.flatten().shape))
     act_size = int(np.prod(env.act_space.shape))
     ref_net = ppo.NormalPPONet(input_size, 64, act_size, key)
-    net_params = []
+    names, net_params = [], []
     for policy_path_i in policy_path:
         pponet = eqx.tree_deserialise_leaves(policy_path_i, ref_net)
         # Append only params of the network, excluding functions (etc. tanh).
         net_params.append(eqx.filter(pponet, eqx.is_array))
+        names.append(policy_path_i.stem)
     net_params = jax.tree.map(lambda *args: jnp.stack(args), *net_params)
     network = eqx.combine(net_params, ref_net)
     # Get obs
@@ -625,6 +634,8 @@ def vis_policy(
         env_state,
         figsize=(cfconfig.xlim[1] * scale, cfconfig.ylim[1] * scale),
         sensor_index=agent_index,
+        sensor_width=0.004,
+        sensor_color=np.array([0.0, 0.0, 0.0, 0.3], dtype=np.float32),
     )
     visualizer.render(env_state.physics)
     visualizer.show()
@@ -632,6 +643,7 @@ def vis_policy(
     rot = env_state.physics.circle.p.angle[agent_index].item()
     policy_mean = env.act_space.sigmoid_scale(output.mean)
     draw_cf_policy(
+        names,
         np.array(policy_mean),
         rotation=rot,
         fig_unit=fig_unit,
