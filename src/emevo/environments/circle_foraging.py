@@ -873,11 +873,10 @@ class CircleForaging(Env):
         if self._varying_fec:
             fec_index = jnp.digitize(state.step, bins=self._fec_intervals)
             fec = jnp.expand_dims(self._food_energy_coef[:, fec_index], axis=0)
-            energy_delta = jnp.sum(n_ate * fec, axis=1) - energy_consumption
+            energy_gain = jnp.sum(n_ate * fec, axis=1)
         else:
-            energy_delta = (
-                jnp.sum(n_ate * self._food_energy_coef, axis=1) - energy_consumption
-            )
+            energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
+        energy_delta = energy_gain - energy_consumption
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
         eaten = jnp.sum(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
@@ -906,6 +905,7 @@ class CircleForaging(Env):
             encount=c2c,
             obs=obs,
             info={
+                "energy_gain": energy_gain,
                 "energy_consumption": energy_consumption,
                 "n_food_regenerated": n_regen,
                 "n_food_eaten": jnp.sum(eaten, axis=0),  # (N_LABEL,)
