@@ -60,10 +60,10 @@ class Node:
             return self.parent_ref()
 
     @functools.cached_property
-    def n_total_children(self) -> int:
+    def n_descendants(self) -> int:
         total = 0
         for child in self.children:
-            total += 1 + child.n_total_children
+            total += 1 + child.n_descendants
         return total
 
     def __lt__(self, other: Any) -> bool:
