@@ -9,9 +9,13 @@ food_num_fn = [
        "scheduled",
         1024000,
         ["logistic", 20, 0.01, 40],
+        ["logistic", 20, 0.01, 50],
         ["logistic", 20, 0.01, 60],
+        ["logistic", 20, 0.01, 70],
         ["logistic", 20, 0.01, 80],
+        ["logistic", 20, 0.01, 90],
         ["logistic", 20, 0.01, 100],
+        ["logistic", 20, 0.01, 110],
         ["logistic", 20, 0.01, 120],
     ]
 ]
