@@ -1,6 +1,7 @@
 """Asexual reward evolution with Circle Foraging"""
 
 import dataclasses
+import itertools
 import json
 from pathlib import Path
 from typing import cast
@@ -579,6 +580,7 @@ def widget(
 def vis_policy(
     physstate_path: Path,
     policy_path: list[Path],
+    subtitle: list[str] | None = None,
     agent_index: int | None = None,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     fig_unit: float = 4.0,
@@ -610,11 +612,14 @@ def vis_policy(
     act_size = int(np.prod(env.act_space.shape))
     ref_net = ppo.NormalPPONet(input_size, 64, act_size, key)
     names, net_params = [], []
-    for policy_path_i in policy_path:
+    for policy_path_i, name in itertools.zip_longest(
+        policy_path,
+        [] if subtitle is None else subtitle,
+    ):
         pponet = eqx.tree_deserialise_leaves(policy_path_i, ref_net)
         # Append only params of the network, excluding functions (etc. tanh).
         net_params.append(eqx.filter(pponet, eqx.is_array))
-        names.append(policy_path_i.stem)
+        names.append(policy_path_i.stem if name is None else name)
     net_params = jax.tree.map(lambda *args: jnp.stack(args), *net_params)
     network = eqx.combine(net_params, ref_net)
     # Get obs
