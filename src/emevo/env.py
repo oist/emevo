@@ -25,9 +25,9 @@ class Status:
     age: jax.Array
     energy: jax.Array
 
-    def step(self) -> Self:
+    def step(self, flag: jax.Array) -> Self:
         """Get older."""
-        return replace(self, age=self.age + 1)
+        return replace(self, age=jnp.where(flag, self.age + 1, self.age))
 
     def activate(
         self,
@@ -35,7 +35,7 @@ class Status:
         child_indices: jax.Array,
         parent_indices: jax.Array,
     ) -> Self:
-        age = self.age.at[child_indices].add(1)
+        age = self.age.at[child_indices].set(0)
         shared_energy = self.energy * energy_share_ratio
         shared_energy_with_sentinel = jnp.concatenate((shared_energy, jnp.zeros(1)))
         shared = shared_energy_with_sentinel[parent_indices]
@@ -44,7 +44,7 @@ class Status:
         return replace(self, age=age, energy=energy)
 
     def deactivate(self, flag: jax.Array) -> Self:
-        return replace(self, age=jnp.where(flag, -1, self.age))
+        return replace(self, age=jnp.where(flag, 0, self.age))
 
     def update(self, energy_delta: jax.Array, capacity: float | None = 100.0) -> Self:
         """Update energy."""
@@ -76,7 +76,7 @@ class UniqueID:
         return UniqueID(unique_id=unique_id, max_uid=max_uid)
 
     def deactivate(self, flag: jax.Array) -> Self:
-        return dataclasses.replace(self, unique_id=jnp.where(flag, -1, self.unique_id))
+        return replace(self, unique_id=jnp.where(flag, -1, self.unique_id))
 
     def is_active(self) -> jax.Array:
         return 1 <= self.unique_id
