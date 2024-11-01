@@ -233,6 +233,7 @@ def run_evolution(
     xmax: float,
     ymax: float,
     logger: Logger,
+    save_interval: int,
     debug_vis: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -326,7 +327,7 @@ def run_evolution(
             print(f"Extinct after {i + 1} epochs")
             break
 
-        # Save network
+        # Save dead agents
         log_with_step = log.with_step(i * n_rollout_steps)
         log_death = log_with_step.filter_death()
         ages = old_state.status.age[log_death.slots]
@@ -335,6 +336,20 @@ def run_evolution(
             log_death.dead,
             log_death.slots,
             ages + log_death.step - i * n_rollout_steps,
+        )
+        log_birth = log_with_step.filter_birth()
+        # Save alive agents
+        saved = jnp.logical_and(
+            env_state.status.age > 0,
+            ((env_state.status.age // n_rollout_steps) % save_interval) == 0,
+        )
+        (saved_slots,) = jnp.nonzero(saved)
+        logger.save_agents(
+            pponet,
+            env_state.unique_id.unique_id[saved_slots],
+            saved_slots,
+            env_state.status.age[saved_slots],
+            prefix="intermediate",
         )
         log_birth = log_with_step.filter_birth()
         # Initialize network and adam state for new agents
@@ -397,6 +412,7 @@ def evolve(
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240326-cauthy-002.toml",
     min_age_for_save: int = 0,
+    save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
@@ -472,6 +488,7 @@ def evolve(
         xmax=cfconfig.xlim[1],
         ymax=cfconfig.ylim[1],
         logger=logger,
+        save_interval=save_interval,
         debug_vis=debug_vis,
     )
 

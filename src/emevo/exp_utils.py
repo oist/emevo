@@ -424,6 +424,7 @@ class Logger:
         unique_id: jax.Array,
         slots: jax.Array,
         ages: jax.Array,
+        prefix: str = "dead",
     ) -> None:
         if "agent" not in self.mode.value:
             return
@@ -432,7 +433,7 @@ class Logger:
             if age < self.min_age_for_save:
                 continue
             sliced_net = get_slice(net, slot)
-            modelpath = self.logdir.joinpath(f"trained-{uid}.eqx")
+            modelpath = self.logdir.joinpath(f"{prefix}-{uid}-age{age}.eqx")
             eqx.tree_serialise_leaves(modelpath, sliced_net)
 
     def save_profile_and_rewards(self) -> None:
