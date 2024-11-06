@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 from collections.abc import Iterable, Sequence
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from weakref import ReferenceType
 from weakref import ref as make_weakref
 
@@ -264,14 +264,20 @@ class Tree:
     def split(
         self,
         min_group_size: int = 1000,
-        method: str = "greedy",
+        method: Literal["greedy", "reward-mean", "reward-sum"] = "greedy",
         n_trial: int = 5,
         reward_keys: list[str] | None = None,
     ) -> dict[int, SplitNode]:
         if method == "greedy":
             split_nodes = self._split_greedy(min_group_size, reward_keys)
-        elif method == "reward":
-            split_nodes = self._split_reward_mean(min_group_size, n_trial, reward_keys)
+        elif method in ["reward-mean", "reward-sum"]:
+            is_mean = "mean" in method
+            split_nodes = self._split_reward_mean(
+                min_group_size,
+                n_trial,
+                reward_keys,
+                compare_mean=is_mean,
+            )
         else:
             raise ValueError(f"Unsupported split method: {method}")
 
@@ -354,6 +360,7 @@ class Tree:
         min_group_size: int,
         n_trial: int,
         reward_keys: list[str],
+        compare_mean: bool = True,
     ) -> dict[int, SplitNode]:
         split_nodes = {}
         split_edges = set()
@@ -371,7 +378,7 @@ class Tree:
             return ancestor_idx
 
         def find_maxdiff_edge(
-            frozen_split_edges: frozenset[tuple[int, int]]
+            frozen_split_edges: frozenset[tuple[int, int]],
         ) -> tuple[float, Edge]:
             max_effect = 0.0
             max_effect_edge = None
@@ -408,8 +415,11 @@ class Tree:
                 for key in reward_keys:
                     parent_rew_total = parent_reward[key] * parent_size
                     child_rew_total = child_reward[key] * child_size
-                    split_rew = (parent_rew_total - child_rew_total) / split_size
-                    total_diff += (child_reward[key] - split_rew) ** 2
+                    if compare_mean:
+                        split_rew = (parent_rew_total - child_rew_total) / split_size
+                        total_diff += (child_reward[key] - split_rew) ** 2
+                    else:
+                        total_diff += (parent_rew_total - child_rew_total) ** 2
                 effect = total_diff**0.5
                 if effect > max_effect:
                     max_effect = effect
@@ -554,7 +564,6 @@ class TreeRange:
 
 
 def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, TreeRange]:
-
     @functools.cache
     def n_children(index: int) -> None:
         total = 1

@@ -97,7 +97,7 @@ def test_split_by_rewards(treedef_with_rewards: list[tuple[int, int, dict]]) -> 
     tree = Tree.from_iter(treedef_with_rewards, root_info=rd(0.0))
     sp = tree.split(
         min_group_size=3,
-        method="reward",
+        method="reward-mean",
         n_trial=3,
         reward_keys=["reward"],
     )
@@ -110,6 +110,22 @@ def test_split_by_rewards(treedef_with_rewards: list[tuple[int, int, dict]]) -> 
     assert len(sp[2].children) == 0
     assert list(sp[5].children) == [10]
     assert len(sp[10].children) == 0
+
+    sp2 = tree.split(
+        min_group_size=3,
+        method="reward-sum",
+        n_trial=3,
+        reward_keys=["reward"],
+    )
+    assert len(sp2) == 4
+    assert sp2[0].size == 4
+    assert sp2[1].size == 3
+    assert sp2[5].size == 3
+    assert sp2[10].size == 3
+    assert list(sp2[0].children) == [1]
+    assert list(sp2[1].children) == [5]
+    assert list(sp2[5].children) == [10]
+    assert len(sp2[10].children) == 0
 
 
 def test_from_table() -> None:
