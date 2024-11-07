@@ -405,7 +405,7 @@ def _set_b2a(
     return xy_a_reset.at[a_idx].add(xy_b_with_sentinel[b_idx])
 
 
-def _is_food_energy_coef_varying(
+def _make_food_energy_coef_array(
     food_energy_coef: Iterable[float | tuple[float, ...]],
 ) -> tuple[bool,]:
     has_tuple = any([isinstance(fec, tuple) for fec in food_energy_coef])
@@ -418,9 +418,9 @@ def _is_food_energy_coef_varying(
                 elements.append(fec * (lcm // len(fec)))
             else:
                 elements.append([fec] * lcm)
-        return True, jnp.array(elements)
+        return jnp.array(elements)
     else:
-        return False, jnp.expand_dims(
+        return jnp.expand_dims(
             jnp.array(list(food_energy_coef)),
             axis=0,
         )
@@ -497,9 +497,7 @@ class CircleForaging(Env):
         self._foodloc_interval = foodloc_interval
         self._n_food_sources = n_food_sources
         self._food_loc_fns, self._initial_foodloc_states = [], []
-        self._varying_fec, self._food_energy_coef = _is_food_energy_coef_varying(
-            food_energy_coef
-        )
+        self._food_energy_coef = _make_food_energy_coef_array(food_energy_coef)
         self._fec_intervals = jnp.array(fec_intervals, dtype=jnp.int32)
         self._food_num_fns, self._initial_foodnum_states = [], []
         if n_food_sources > 1:
@@ -870,12 +868,7 @@ class CircleForaging(Env):
             self._force_energy_consumption * force_norm + self._basic_energy_consumption
         )
         n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
-        if self._varying_fec:
-            fec_index = jnp.digitize(state.step, bins=self._fec_intervals)
-            fec = jnp.expand_dims(self._food_energy_coef[:, fec_index], axis=0)
-            energy_gain = jnp.sum(n_ate * fec, axis=1)
-        else:
-            energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
+        energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
         energy_delta = energy_gain - energy_consumption
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)

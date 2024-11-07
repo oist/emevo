@@ -118,9 +118,6 @@ class BDConfig:
             override_dict = json.loads(override)
             self.hazard_params |= override_dict
 
-    # def __isinstance__(self, value):
-    #     return self.__args__[0](value)
-
 
 def _resolve_cls(d: dict[str, Any]) -> GopsConfig:
     params = {}
