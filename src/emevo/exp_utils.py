@@ -22,6 +22,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import serde
+from numpy.typing import NDArray
 from phyjax2d import Position, StateDict
 
 from emevo import birth_and_death as bd
@@ -175,11 +176,11 @@ class Log:
             step = jnp.tile(jnp.expand_dims(step_arange, axis=1), (1, batch_size))
             slots_arange = jnp.arange(batch_size)
             slots = jnp.tile(slots_arange, (step_size, 1))
-            return LogWithStep(**dataclasses.asdict(self), step=step, slots=slots)
+            return LogWithStep(log=self, step=step, slots=slots)
         elif self.parents.ndim == 1:
             batch_size = self.parents.shape[0]
             return LogWithStep(
-                **dataclasses.asdict(self),
+                log=self,
                 step=jnp.ones(batch_size, dtype=jnp.int32) * from_,
                 slots=jnp.arange(batch_size),
             )
@@ -197,21 +198,28 @@ class FoodLog:
 
 
 @chex.dataclass
-class LogWithStep(Log):
+class LogWithStep:
+    log: Log
     step: jax.Array
     slots: jax.Array
 
     def filter_active(self) -> Any:
-        is_active = self.unique_id > -1
+        is_active = self.log.unique_id > -1
         return jax.tree_util.tree_map(lambda arr: arr[is_active], self)
 
     def filter_birth(self) -> Any:
-        is_birth_event = self.parents > -1
+        is_birth_event = self.log.parents > -1
         return jax.tree_util.tree_map(lambda arr: arr[is_birth_event], self)
 
     def filter_death(self) -> Any:
-        is_death_event = self.dead > -1
+        is_death_event = self.log.dead > -1
         return jax.tree_util.tree_map(lambda arr: arr[is_death_event], self)
+
+    def to_flat_dict(self) -> dict[str, jax.Array]:
+        d = dataclasses.asdict(self.log)  # type: ignore
+        d["step"] = self.step
+        d["slots"] = self.slots
+        return d
 
 
 @dataclasses.dataclass
@@ -316,7 +324,10 @@ class Logger:
     dropped_keys: list[str] = dataclasses.field(default_factory=_default_dropped_keys)
     reward_fn_dict: dict[int, RewardFn] = dataclasses.field(default_factory=dict)
     profile_dict: dict[int, SavedProfile] = dataclasses.field(default_factory=dict)
-    _log_list: list[Log] = dataclasses.field(default_factory=list, init=False)
+    _log_list: list[dict[str, NDArray]] = dataclasses.field(
+        default_factory=list,
+        init=False,
+    )
     _foodlog_list: list[FoodLog] = dataclasses.field(default_factory=list, init=False)
     _physstate_list: list[SavedPhysicsState] = dataclasses.field(
         default_factory=list,
@@ -325,13 +336,13 @@ class Logger:
     _log_index: int = dataclasses.field(default=1, init=False)
     _physstate_index: int = dataclasses.field(default=1, init=False)
 
-    def push_log(self, log: Log) -> None:
+    def push_log(self, log: LogWithStep) -> None:
         if "log" not in self.mode.value:
             return
 
         # Move log to CPU
-        self._log_list.append(jax.tree_util.tree_map(np.array, log))
-
+        logd = log.to_flat_dict()
+        self._log_list.append(jax.tree_util.tree_map(np.array, logd))
         if len(self._log_list) % self.log_interval == 0:
             self._save_log()
 
@@ -345,18 +356,16 @@ class Logger:
         )
         log_dict = {}
 
-        for field in dataclasses.fields(all_log):
-            if field.name in self.dropped_keys:
+        for key, value in all_log.items():
+            if key in self.dropped_keys:
                 continue
-            value = getattr(all_log, field.name)
-            if value.ndim == 2:
-                if value.shape[1] == 1:
-                    value = value.ravel()
-                else:
-                    for i in range(value.shape[1]):
-                        log_dict[f"{field.name}_{i + 1}"] = value[:, i]
-                    continue
-            log_dict[field.name] = value
+            if value.ndim == 2 and value.shape[1] > 1:
+                for i in range(value.shape[1]):
+                    log_dict[f"{key}_{i + 1}"] = value[:, i]
+            elif value.ndim >= 2:
+                log_dict[key] = value.ravel()
+            else:
+                log_dict[key] = value
 
         pq.write_table(
             pa.Table.from_pydict(log_dict),

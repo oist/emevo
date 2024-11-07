@@ -333,11 +333,10 @@ def run_evolution(
         ages = old_state.status.age[log_death.slots]
         logger.save_agents(
             pponet,
-            log_death.dead,
+            log_death.log.dead,
             log_death.slots,
             ages + log_death.step - i * n_rollout_steps,
         )
-        log_birth = log_with_step.filter_birth()
         # Save alive agents
         saved = jnp.logical_and(
             env_state.status.age > 0,
@@ -351,8 +350,8 @@ def run_evolution(
             env_state.status.age[saved_slots],
             prefix="intermediate",
         )
-        log_birth = log_with_step.filter_birth()
         # Initialize network and adam state for new agents
+        log_birth = log_with_step.filter_birth()
         is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
         if jnp.any(is_new):
             pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
@@ -363,15 +362,15 @@ def run_evolution(
             logger.reward_fn_dict,
             reward_fn,
             mutation,
-            log_birth.parents,
-            log_birth.unique_id,
+            log_birth.log.parents,
+            log_birth.log.unique_id,
             log_birth.slots,
         )
         # Update profile
         for step, uid, parent in zip(
             log_birth.step,
-            log_birth.unique_id,
-            log_birth.parents,
+            log_birth.log.unique_id,
+            log_birth.log.parents,
         ):
             ui = uid.item()
             logger.profile_dict[ui] = SavedProfile(step.item(), parent.item(), ui)
