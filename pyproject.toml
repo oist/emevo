@@ -83,14 +83,16 @@ ignore = ["B905"]
 
 [tool.uv]
 dev-dependencies = [
-    "black>=24.10.0",
-    "bqplot>=0.12",
-    "ipykernel>=6.29.5",
-    "isort>=5.13.2",
-    "jupyterlab>=4.0",
-    "jupyterlab-code-formatter>=3.0",
-    "pytest>=8.3.3",
-    "seaborn>=0.12",
-    "typer>=0.12",
-    "tqdm>=4.6",
+    "black >= 24.10.0",
+    "bqplot >= 0.12",
+    "ipykernel >= 6.29.5",
+    "isort >= 5.13.2",
+    "ipympl >= 0.9.4",
+    "jupyterlab >= 4.0",
+    "jupyterlab-code-formatter >= 3.0",
+    "pytest >= 8.3.3",
+    "seaborn >= 0.12",
+    "typer >= 0.12",
+    "tqdm >= 4.6",
+    "pillow>=10.4.0",
 ]

@@ -335,7 +335,7 @@ def _search_bin(value: jax.Array, bins: jax.Array) -> jax.Array:
     return jnp.logical_and(smaller, larger)
 
 
-def _get_tactile(
+def get_tactile(
     n_bins: int,
     s1: State,
     s2: State,
@@ -699,7 +699,7 @@ class CircleForaging(Env):
                 )
             )
 
-            self._food_tactile = lambda _, s1, s2, cmat: _get_tactile(
+            self._food_tactile = lambda _, s1, s2, cmat: get_tactile(
                 self._n_tactile_bins,
                 s1,
                 s2,
@@ -844,13 +844,13 @@ class CircleForaging(Env):
             stated.static_circle,
             c2sc,
         )
-        ag_tactile, _ = _get_tactile(
+        ag_tactile, _ = get_tactile(
             self._n_tactile_bins,
             stated.circle,
             stated.circle,
             c2c,
         )
-        wall_tactile, _ = _get_tactile(
+        wall_tactile, _ = get_tactile(
             self._n_tactile_bins,
             stated.circle,
             stated.segment,

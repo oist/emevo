@@ -24,6 +24,8 @@ def main(
     food_loc_fn: str = "gaussian",
     food_num_fn: str = "constant",
     food_growth_rate: float = 0.1,
+    xlim: float = 200.0,
+    ylim: float = 200.0,
 ) -> None:
     if fixed_agent_loc:
         additional_kwargs = {
@@ -57,6 +59,8 @@ def main(
         foodloc_interval=20,
         obstacles=obstacles,
         **additional_kwargs,
+        xlim=(0.0, 400.0),
+        ylim=(0.0, 400.0),
     )
     key = jax.random.PRNGKey(seed)
     keys = jax.random.split(key, steps + 1)
