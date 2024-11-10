@@ -49,7 +49,7 @@ DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241110-neurotoxin.toml"
 class CfConfigWithToxin(CfConfig):
     toxin_t0: float = 5.0
     toxin_alpha: float = 1.0
-    toxin_decay: float = 0.01
+    toxin_recover_rate: float = 0.01
     toxin_delta: float = 10.0
 
 

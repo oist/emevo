@@ -38,5 +38,5 @@ max_place_attempts = 10
 n_max_food_regen = 10
 toxin_t0 = 5.0
 toxin_alpha = 1.0
-toxin_decay = 0.01
+toxin_recover_rate = 0.01
 toxin_delta = 10.0

@@ -48,13 +48,13 @@ class CircleForagingWithNeurotoxin(CircleForaging):
         toxin_t0: float = 5.0,
         toxin_alpha: float = 1.0,
         toxin_delta: float = 10.0,
-        toxin_decay: float = 0.1,
+        toxin_recover_rate: float = 0.1,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self._toxin_t0 = toxin_t0
         self._toxin_alpha = toxin_alpha
-        self._toxin_decay = toxin_decay
+        self._toxin_recover_rate = toxin_recover_rate
         self._toxin_delta = toxin_delta
         assert self._n_food_sources - 1 == self._food_energy_coef.shape[1]
 
@@ -142,7 +142,7 @@ class CircleForagingWithNeurotoxin(CircleForaging):
             capacity=self._energy_capacity,
         )
         toxin = jnp.clip(
-            status.toxin + n_ate_toxin * self._toxin_delta - self._toxin_decay,
+            status.toxin + n_ate_toxin * self._toxin_delta - self._toxin_recover_rate,
             min=0.0,
         )
         status = replace(status, toxin=toxin)
