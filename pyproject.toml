@@ -94,5 +94,4 @@ dev-dependencies = [
     "seaborn >= 0.12",
     "typer >= 0.12",
     "tqdm >= 4.6",
-    "pillow>=10.4.0",
 ]

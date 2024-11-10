@@ -52,34 +52,6 @@ class Status:
         return replace(self, energy=jnp.clip(energy, max=capacity))
 
 
-@chex.dataclass
-class StatusWithToxin(Status):
-    toxin: jax.Array
-
-    def deactivate(self, flag: jax.Array) -> Self:
-        return replace(
-            self,
-            age=jnp.where(flag, 0, self.age),
-            toxin=jnp.where(flag, 0, self.toxin),
-        )
-
-    def update(
-        self,
-        energy_delta: jax.Array,
-        toxin_delta: jax.Array,
-        capacity: float | None = 100.0,
-        toxin_capacity: float | None = 10.0,
-    ) -> Self:
-        """Update energy and toxin."""
-        energy = self.energy + energy_delta
-        toxin = self.toxin + toxin_delta
-        return replace(
-            self,
-            energy=jnp.clip(energy, max=capacity),
-            toxin=jnp.clip(toxin, max=toxin_capacity),
-        )
-
-
 def init_status(max_n: int, init_energy: float) -> Status:
     return Status(
         age=jnp.zeros(max_n, dtype=jnp.int32),

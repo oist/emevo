@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import typer
-from serde import toml
+from serde import serde, toml
 
 from emevo import Env
 from emevo import birth_and_death as bd
@@ -41,7 +41,16 @@ from emevo.spaces import BoxSpace
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20240823-uniform.toml"
+DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241110-neurotoxin.toml"
+
+
+@serde
+@dataclasses.dataclass
+class CfConfigWithToxin(CfConfig):
+    toxin_t0: float = 5.0
+    toxin_alpha: float = 1.0
+    toxin_decay: float = 0.01
+    toxin_delta: float = 10.0
 
 
 @dataclasses.dataclass
@@ -141,6 +150,7 @@ def exec_rollout(
             parents=parents,
             rewards=rewards.ravel(),
             unique_id=state_t1db.unique_id.unique_id,
+            additional_fields={"n_got_toxin": timestep.info["n_ate_toxin"]},
         )
         foodlog = FoodLog(
             eaten=timestep.info["n_food_eaten"],
@@ -311,6 +321,7 @@ def run_evolution(
             n_optim_epochs,
             entropy_weight,
         )
+        print(jnp.sum(log.additional_fields["n_got_toxin"]))
 
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
@@ -428,7 +439,7 @@ def evolve(
 
     # Load config
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithToxin, f.read())
     with bdconfig_path.open("r") as f:
         bdconfig = toml.from_toml(BDConfig, f.read())
     with gopsconfig_path.open("r") as f:
@@ -444,7 +455,7 @@ def evolve(
     birth_fn, hazard_fn = bdconfig.load_models()
     mutation = gopsconfig.load_model()
     # Make env
-    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
@@ -453,7 +464,7 @@ def evolve(
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=1 + cfconfig.n_food_sources,
+        n_weights=cfconfig.n_food_sources,  # Because one of the foods is toxin
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
@@ -508,7 +519,7 @@ def replay(
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
     end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
@@ -546,13 +557,13 @@ def widget(
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithToxin, f.read())
 
     # For speedup
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
         log_ds = None
@@ -605,12 +616,12 @@ def vis_policy(
     from emevo.analysis.policy import draw_cf_policy
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithToxin, f.read())
 
     cfconfig.n_initial_agents = 1
     # Load env state
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
     key = jax.random.PRNGKey(0)
     env_state, _ = env.reset(key)
     loaded_phys = phys_state.set_by_index(..., env_state.physics)

@@ -6,7 +6,7 @@ import math
 import warnings
 from collections.abc import Callable, Iterable
 from dataclasses import replace
-from typing import Any, Literal, NamedTuple
+from typing import Any, Generic, Literal, NamedTuple, TypeVar
 
 import chex
 import jax
@@ -87,8 +87,11 @@ class CFObs(NamedTuple):
         )
 
 
+S = TypeVar("S", bound=Status)
+
+
 @chex.dataclass
-class CFState:
+class CFState(Generic[S]):
     physics: StateDict
     solver: VelocitySolver
     food_num: list[FoodNumState]
@@ -97,7 +100,7 @@ class CFState:
     key: chex.PRNGKey
     step: jax.Array
     unique_id: UniqueID
-    status: Status
+    status: S
     n_born_agents: jax.Array
 
     @property
@@ -407,7 +410,7 @@ def _set_b2a(
 
 def _make_food_energy_coef_array(
     food_energy_coef: Iterable[float | tuple[float, ...]],
-) -> tuple[bool,]:
+) -> jax.Array:
     has_tuple = any([isinstance(fec, tuple) for fec in food_energy_coef])
     if has_tuple:
         length = [len(fec) if isinstance(fec, tuple) else 1 for fec in food_energy_coef]
@@ -457,7 +460,7 @@ class CircleForaging(Env):
         agent_radius: float = 10.0,
         food_radius: float = 4.0,
         foodloc_interval: int = 1000,
-        fec_intervals: tuple[int, ...] = 1,
+        fec_intervals: tuple[int, ...] = (1,),
         dt: float = 0.1,
         linear_damping: float = 0.8,
         angular_damping: float = 0.6,
@@ -501,12 +504,10 @@ class CircleForaging(Env):
         self._fec_intervals = jnp.array(fec_intervals, dtype=jnp.int32)
         self._food_num_fns, self._initial_foodnum_states = [], []
         if n_food_sources > 1:
-            assert isinstance(food_loc_fn, list | tuple) and n_food_sources == len(
-                food_loc_fn
-            )
-            assert isinstance(food_num_fn, list | tuple) and n_food_sources == len(
-                food_num_fn
-            )
+            assert isinstance(food_loc_fn, list | tuple)
+            assert n_food_sources == len(food_loc_fn)
+            assert isinstance(food_num_fn, list | tuple)
+            assert n_food_sources == len(food_num_fn)
         else:
             food_loc_fn, food_num_fn = [food_loc_fn], [food_num_fn]  # type: ignore
         for maybe_loc_fn in food_loc_fn:  # type: ignore
@@ -812,9 +813,9 @@ class CircleForaging(Env):
 
     def step(
         self,
-        state: CFState,
+        state: CFState[Status],
         action: ArrayLike,
-    ) -> tuple[CFState, TimeStep[CFObs]]:
+    ) -> tuple[CFState[Status], TimeStep[CFObs]]:
         # Add force
         act = jax.vmap(self.act_space.clip)(jnp.array(action))
         f1_raw = jax.lax.slice_in_dim(act, 0, 1, axis=-1)
@@ -921,7 +922,7 @@ class CircleForaging(Env):
 
     def activate(
         self,
-        state: CFState,
+        state: CFState[Status],
         is_parent: jax.Array,
     ) -> tuple[CFState, jax.Array]:
         N = self.n_max_agents
@@ -985,7 +986,7 @@ class CircleForaging(Env):
         )
         return new_state, parent_id
 
-    def deactivate(self, state: CFState, flag: jax.Array) -> CFState:
+    def deactivate(self, state: CFState, flag: jax.Array) -> CFState[Status]:
         expanded_flag = jnp.expand_dims(flag, axis=1)
         p_xy = jnp.where(expanded_flag, NOWHERE, state.physics.circle.p.xy)
         p = replace(state.physics.circle.p, xy=p_xy)
@@ -999,7 +1000,7 @@ class CircleForaging(Env):
         status = state.status.deactivate(flag)
         return replace(state, physics=physics, unique_id=unique_id, status=status)
 
-    def reset(self, key: chex.PRNGKey) -> tuple[CFState, TimeStep[CFObs]]:
+    def reset(self, key: chex.PRNGKey) -> tuple[CFState[Status], TimeStep[CFObs]]:
         physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
         N = self.n_max_agents
         unique_id = init_uniqueid(self._n_initial_agents, N)
@@ -1175,7 +1176,7 @@ class CircleForaging(Env):
 
     def visualizer(
         self,
-        state: CFState,
+        state: CFState[Status],
         figsize: tuple[float, float] | None = None,
         sensor_index: int | None = None,
         backend: str = "pyglet",
@@ -1193,7 +1194,7 @@ class CircleForaging(Env):
             figsize=figsize,
             backend=backend,
             sensor_fn=(
-                self._get_sensors
+                self._get_sensors  # type: ignore
                 if sensor_index is None
                 else lambda stated: self._get_selected_sensor(stated, sensor_index)
             ),

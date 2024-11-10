@@ -60,7 +60,7 @@ def test_from_iter(treedef: list[tuple[int, int]]) -> None:
     assert preorder == [0, 1, 3, 4, 5, 8, 9, 2, 6, 7]
     postorder = list(map(operator.attrgetter("index"), tree.traverse(preorder=False)))
     assert postorder == [3, 4, 8, 9, 5, 1, 6, 7, 2, 0]
-    assert tree.root.n_total_children == 10
+    assert tree.root.n_descendants == 10
 
 
 def test_split(treedef: list[tuple[int, int]]) -> None:

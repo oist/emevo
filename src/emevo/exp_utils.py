@@ -165,6 +165,7 @@ class Log:
     parents: jax.Array
     rewards: jax.Array
     unique_id: jax.Array
+    additional_fields: dict[str, jax.Array] = dataclasses.field(default_factory=dict)
 
     def with_step(self, from_: int) -> LogWithStep:
         if self.parents.ndim == 2:
@@ -214,9 +215,10 @@ class LogWithStep:
 
     def to_flat_dict(self) -> dict[str, jax.Array]:
         d = dataclasses.asdict(self.log)  # type: ignore
+        additional = d.pop("additional_fields")
         d["step"] = self.step
         d["slots"] = self.slots
-        return d
+        return d | additional
 
 
 @dataclasses.dataclass

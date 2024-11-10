@@ -11,6 +11,6 @@ register(
 
 register(
     "CircleForaging-v1",
-    "emevo.environments.circle_foraging_with.CircleForaging",
-    "Phyjax2d circle foraging environment",
+    "emevo.environments.circle_foraging_with_neurotoxin.CircleForagingWithNeurotoxin",
+    "Phyjax2d circle foraging environment with neuro toxin",
 )
