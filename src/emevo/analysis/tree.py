@@ -76,7 +76,7 @@ class Node:
         if include_self:
             yield self
         parent = self.parent
-        if parent is not None and parent.index != self.root.index:
+        if parent is not None:
             yield from parent.ancestors()
 
     def traverse(
@@ -100,8 +100,11 @@ class Edge:
     def __hash__(self) -> int:
         return self.parent.index * (2**30) + self.child.index
 
-    def __eq__(self, other: Edge) -> bool:
-        return self.parent == other.parent and self.parent == other.parent
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Edge):
+            return self.parent == other.parent and self.parent == other.parent
+        else:
+            return False
 
     def __lt__(self, other: Edge) -> bool:
         if self.parent.index == other.parent.index:
