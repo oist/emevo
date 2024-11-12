@@ -70,12 +70,14 @@ class RewardExtractor:
     def extract(
         self,
         ate_food: jax.Array,
+        ate_toxin: jax.Array,
         action: jax.Array,
-        energy: jax.Array,
     ) -> jax.Array:
-        del energy
         act_input = self.act_coef * self.normalize_action(action)
-        return jnp.concatenate((ate_food.astype(jnp.float32), act_input), axis=1)
+        return jnp.concatenate(
+            (ate_food.astype(jnp.float32), ate_toxin.astype(jnp.float32), act_input),
+            axis=1,
+        )
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
@@ -110,8 +112,11 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        energy = state_t.status.energy
-        rewards = reward_fn(timestep.info["n_ate_food"], actions, energy).reshape(-1, 1)
+        rewards = reward_fn(
+            timestep.info["n_ate_food"],
+            jnp.expand_dims(timestep.info["n_ate_toxin"], axis=1),
+            actions,
+        ).reshape(-1, 1)
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -464,7 +469,7 @@ def evolve(
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=cfconfig.n_food_sources,  # Because one of the foods is toxin
+        n_weights=cfconfig.n_food_sources + 1,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,

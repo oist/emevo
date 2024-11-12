@@ -501,7 +501,12 @@ def replay(
     end: int | None = None,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     env_override: str = "",
+    scale: float = 1.0,
+    force_cpu: bool = False,
 ) -> None:
+    if force_cpu:
+        jax.config.update("jax_default_device", jax.devices("cpu")[0])
+
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
     # For speedup
@@ -513,14 +518,16 @@ def replay(
     end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
         env_state,
-        figsize=(cfconfig.xlim[1] * 2, cfconfig.ylim[1] * 2),
+        figsize=(cfconfig.xlim[1] * scale, cfconfig.ylim[1] * scale),
         backend=backend,
     )
     if videopath is not None:
         visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
     for i in range(start, end_index):
-        phys = phys_state.set_by_index(i, env_state.physics)
-        env_state = dataclasses.replace(env_state, physics=phys)
+        ph = phys_state.set_by_index(i, env_state.physics)
+        # Disable rendering agents
+        ph = ph.nested_replace("circle.is_active", jnp.zeros_like(ph.circle.is_active))
+        env_state = dataclasses.replace(env_state, physics=ph)
         visualizer.render(env_state.physics)
         visualizer.show()
     visualizer.close()
