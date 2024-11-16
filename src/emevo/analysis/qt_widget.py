@@ -219,7 +219,6 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._energy_cm = mpl.colormaps["YlGnBu"]
         self._n_children_cm = mpl.colormaps["PuBuGn"]
         self._food_cm = mpl.colormaps["plasma"]
-        self.__cm = mpl.colormaps["plasma"]
         self._norm = mc.Normalize(vmin=0.0, vmax=1.0)
         self._cm_fixed_minmax = {} if cm_fixed_minmax is None else cm_fixed_minmax
         if profile_and_rewards is not None:
@@ -264,10 +263,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         if profile_and_rewards is not None:
             self.rewardUpdated.connect(self._reward_widget.updateValues)
         # Initial size
-        if profile_and_rewards is None:
-            self.resize(xlim * scale * 1.6, ylim * scale * 1.75)
-        else:
-            self.resize(xlim * scale * 1.6, ylim * scale * 1.4)
+        self.resize(int(xlim * scale * 1.6), int(ylim * scale * 1.4))
         self._self_terminate = self_terminate
 
     def _check_exit(self) -> None:

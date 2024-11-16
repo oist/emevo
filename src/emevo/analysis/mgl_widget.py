@@ -65,9 +65,6 @@ class MglWidget(QOpenGLWidget):
         self._scaling = x_range / figsize[0], y_range / figsize[1]
         self._phys_state = saved_physics
         self._index = start
-        # For dragging
-        self._last_mouse_pos = None
-        self._xy_max = jnp.expand_dims(jnp.array([x_range, y_range]), axis=0)
         self._dragged_state = None
         self._make_renderer = partial(
             MglRenderer,
@@ -100,7 +97,13 @@ class MglWidget(QOpenGLWidget):
         self.setFixedSize(*self._figsize)
         self.setMouseTracking(True)
         self._ctx, self._fbo = None, None
+        # For dragging
+        self._last_mouse_pos = None
+        self._dragging_agent = False
+        self._dragging_food = False
+        self._xy_max = jnp.expand_dims(jnp.array([x_range, y_range]), axis=0)
         self._selected_slot = 0
+        self._selected_food_slot = 0
 
     def _scale_position(self, position: QPointF) -> tuple[float, float]:
         return (
@@ -152,42 +155,75 @@ class MglWidget(QOpenGLWidget):
         return self._end_index - 1 <= self._index
 
     def mousePressEvent(self, evt: QMouseEvent) -> None:  # type: ignore
+        if evt.button() != Qt.LeftButton:
+            return
         position = self._scale_position(evt.position())
-        circle = self._get_stated().circle
-        overlap = _overlap(
-            jnp.array(position),
+        sd = self._get_stated()
+        posarray = jnp.array(position)
+
+        def _get_selected(state: State, shape: Circle) -> int | None:
+            overlap = _overlap(posarray, shape, state)
+            (selected,) = jnp.nonzero(overlap)
+            if 0 < selected.shape[0]:
+                return selected[0].item()
+            else:
+                return None
+
+        selected = _get_selected(
+            sd.circle,
             self._env._physics.shaped.circle,
-            circle,
         )
-        (selected,) = jnp.nonzero(overlap)
-        if 0 < selected.shape[0]:
-            self._selected_slot = selected[0].item()
+        if selected is not None:
+            self._selected_slot = selected
             self.selectionChanged.emit(self._selected_slot, self._index)
 
             # Initialize dragging
-            if evt.button() == Qt.LeftButton and self._paused:
+            if self._paused:
                 self._last_mouse_pos = Vec2d(*position)
+                self._dragging_agent = True
+
+        selected = _get_selected(
+            sd.static_circle,
+            self._env._physics.shaped.static_circle,
+        )
+        if selected is not None and self._paused:
+            self._selected_food_slot = selected
+            self._last_mouse_pos = Vec2d(*position)
+            self._dragging_food = True
 
     def mouseReleaseEvent(self, evt: QMouseEvent) -> None:
         if evt.button() == Qt.LeftButton:
             self._last_mouse_pos = None
+            self._dragging_food = False
+            self._dragging_agent = False
 
     def mouseMoveEvent(self, evt: QMouseEvent) -> None:
         current_pos = Vec2d(*self._scale_position(evt.position()))
 
-        if self._selected_slot is not None and self._last_mouse_pos is not None:
+        dragging = self._dragging_agent or self._dragging_food
+        if self._last_mouse_pos is not None and dragging:
             # Compute dx/dy
             dxy = current_pos - self._last_mouse_pos
 
             # Update the physics state
             stated = self._get_stated()
-            circle = stated.circle
-            xy = jnp.clip(
-                circle.p.xy.at[self._selected_slot].add(jnp.array(dxy)),
-                min=0.0,
-                max=self._xy_max,
-            )
-            self._dragged_state = stated.nested_replace("circle.p.xy", xy)
+            if self._dragging_agent:
+                circle = stated.circle
+                xy = jnp.clip(
+                    circle.p.xy.at[self._selected_slot].add(jnp.array(dxy)),
+                    min=self._env._agent_radius,
+                    max=self._xy_max - self._env._agent_radius,
+                )
+                self._dragged_state = stated.nested_replace("circle.p.xy", xy)
+            elif self._dragging_food:
+                static_circle = stated.static_circle
+                xy = jnp.clip(
+                    static_circle.p.xy.at[self._selected_food_slot].add(jnp.array(dxy)),
+                    min=self._env._food_radius,
+                    max=self._xy_max - self._env._food_radius,
+                )
+                self._dragged_state = stated.nested_replace("static_circle.p.xy", xy)
+
             self._last_mouse_pos = current_pos
             self.update()
 
