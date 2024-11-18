@@ -737,6 +737,9 @@ class CircleForaging(Env):
         self._smell_diff_max = smell_diff_max
         self._smell_diff_coef = smell_diff_coef
 
+        # Sensor index
+        self._sensor_index = 0
+
     @staticmethod
     def _make_food_num_fn(
         food_num_fn: str | tuple | FoodNumFn,
@@ -1185,6 +1188,9 @@ class CircleForaging(Env):
         """Create a visualizer for the environment"""
         from emevo.environments import moderngl_vis
 
+        if sensor_index is not None:
+            self._sensor_index = sensor_index
+
         return moderngl_vis.MglVisualizer(
             x_range=self._x_range,
             y_range=self._y_range,
@@ -1196,7 +1202,10 @@ class CircleForaging(Env):
             sensor_fn=(
                 self._get_sensors  # type: ignore
                 if sensor_index is None
-                else lambda stated: self._get_selected_sensor(stated, sensor_index)
+                else lambda stated: self._get_selected_sensor(
+                    stated,
+                    self._sensor_index,
+                )
             ),
             **kwargs,
         )

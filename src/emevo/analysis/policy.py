@@ -39,7 +39,7 @@ def draw_cf_policy(
     # Arrow points
     center = Vec2d(max_force * 1.5, max_force * 1.5)
     unit = Vec2d(0.0, 1.0)
-    d_unit = unit.rotated(math.pi)
+    d_unit = unit.rotated(rotation)
     s_left = unit.rotated(math.pi * 1.25 + rotation) * max_force * 0.5 + center
     s_right = unit.rotated(math.pi * 0.75 + rotation) * max_force * 0.5 + center
     # Draw the arrows
