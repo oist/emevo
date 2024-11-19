@@ -611,7 +611,7 @@ def vis_policy(
     seq_plot: bool = False,
 ) -> None:
     from emevo.analysis.evaluate import eval_policy
-    from emevo.analysis.policy import draw_cf_policy
+    from emevo.analysis.policy import draw_cf_policy, draw_cf_policy_multi
 
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
@@ -630,7 +630,15 @@ def vis_policy(
     # Get outputs
     outputs = eval_policy(env, physstate_path, policy_path, agent_index)
     if seq_plot:
-        pass
+        policy_means = [np.array(output.mean) for output, _, _ in outputs]
+        rot = [state.physics.circle.p.angle[idx].item() for _, state, idx in outputs]
+        draw_cf_policy_multi(
+            names,
+            rot,
+            env.act_space.sigmoid_scale(np.stack(policy_means)),
+            fig_unit=fig_unit,
+            max_force=max_force,
+        )
     else:
         visualizer = None
         for output, env_state, ag_idx in outputs:
