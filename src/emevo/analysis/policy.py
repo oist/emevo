@@ -94,21 +94,22 @@ def draw_cf_policy_multi(
 ) -> None:
     n_policies = len(names)
     n_obs, n_policies = policy_means.shape[:2]
+    observations = [f"Observation {i+1}" for i in range(n_obs)]
     fig, axes = plt.subplots(
-        nrows=n_obs,
-        ncols=n_policies,
-        figsize=(n_policies * fig_unit, n_obs * fig_unit),
+        nrows=n_policies,
+        ncols=n_obs,
+        figsize=(n_obs * fig_unit, n_policies * fig_unit),
     )
     fig.tight_layout()
     # Arrow points
     center = Vec2d(max_force * 1.5, max_force * 1.5)
     unit = Vec2d(0.0, 1.0)
     # Draw the arrows
-    for i, (title, rot) in enumerate(zip(names, rotations)):
+    for j, (obs_title, rot) in enumerate(zip(observations, rotations)):
         d_unit = unit.rotated(rot)
         s_left = unit.rotated(math.pi * 1.25 + rot) * max_force * 0.5 + center
         s_right = unit.rotated(math.pi * 0.75 + rot) * max_force * 0.5 + center
-        for j, policy_mean in enumerate(policy_means[i]):
+        for i, policy_mean in enumerate(policy_means[j]):
             ax = axes[i][j]
             ax.set_xlim(0, max_force * 3)
             ax.set_ylim(0, max_force * 3)
@@ -116,7 +117,9 @@ def draw_cf_policy_multi(
             ax.set_yticks([])
             ax.set_aspect("equal", adjustable="box")
             if i == 0:
-                ax.set_title(title)
+                ax.set_title(obs_title)
+            if j == 0:
+                ax.set_ylabel(names[i])
             # Circle
             circle = Circle((center.x, center.y), max_force * 0.5, fill=False)
             ax.add_patch(circle)

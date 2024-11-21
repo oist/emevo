@@ -644,10 +644,9 @@ def vis_policy(
                     sensor_color=np.array([0.0, 0.0, 0.0, 0.5], dtype=np.float32),
                 )
                 # I don't know why this works...
-                visualizer.render(env_state.physics)
-                visualizer.show()
-                visualizer.render(env_state.physics)
-                visualizer.show()
+                for _ in range(3):
+                    visualizer.render(env_state.physics)
+                    visualizer.show()
             env._sensor_index = ag_idx  # type:ignore
             visualizer.render(env_state.physics)
             images.append(visualizer.get_image())
