@@ -2,7 +2,6 @@
 
 import math
 
-import matplotlib as mpl
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.patches import Arrow, Circle
@@ -16,6 +15,7 @@ def draw_cf_policy(
     rotation: float,
     fig_unit: float,
     max_force: float,
+    show: bool = True,
 ) -> None:
     n_policies = len(names)
     if n_policies == 1:
@@ -80,7 +80,8 @@ def draw_cf_policy(
         )
         ax.add_patch(arrow)
 
-    plt.show()
+    if show:
+        plt.show()
 
 
 def draw_cf_policy_multi(
@@ -89,8 +90,8 @@ def draw_cf_policy_multi(
     policy_means: NDArray,  # (N-obs, N-agents, LR)
     fig_unit: float,
     max_force: float,
+    show: bool = True,
 ) -> None:
-    print(policy_means.shape)
     n_policies = len(names)
     n_obs, n_policies = policy_means.shape[:2]
     fig, axes = plt.subplots(
@@ -145,4 +146,5 @@ def draw_cf_policy_multi(
             )
             ax.add_patch(arrow)
 
-    plt.show()
+    if show:
+        plt.show()

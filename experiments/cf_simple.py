@@ -607,11 +607,13 @@ def vis_policy(
     agent_index: int | None = None,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     fig_unit: float = 4.0,
+    value_fig_unit: float = 4.0,
     scale: float = 1.0,
     seq_plot: bool = False,
 ) -> None:
     from emevo.analysis.evaluate import eval_policy
     from emevo.analysis.policy import draw_cf_policy, draw_cf_policy_multi
+    from emevo.analysis.value import plot_values
 
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
@@ -630,6 +632,26 @@ def vis_policy(
     # Get outputs
     outputs = eval_policy(env, physstate_path, policy_path, agent_index)
     if seq_plot:
+        visualizer = None
+        images = []
+        for output, env_state, ag_idx in outputs:
+            if visualizer is None:
+                visualizer = env.visualizer(
+                    env_state,
+                    figsize=(cfconfig.xlim[1] * scale, cfconfig.ylim[1] * scale),
+                    sensor_index=ag_idx,
+                    sensor_width=0.004,
+                    sensor_color=np.array([0.0, 0.0, 0.0, 0.5], dtype=np.float32),
+                )
+                # I don't know why this works...
+                visualizer.render(env_state.physics)
+                visualizer.show()
+                visualizer.render(env_state.physics)
+                visualizer.show()
+            env._sensor_index = ag_idx  # type:ignore
+            visualizer.render(env_state.physics)
+            images.append(visualizer.get_image())
+            visualizer.show()
         policy_means = [np.array(output.mean) for output, _, _ in outputs]
         rot = [state.physics.circle.p.angle[idx].item() for _, state, idx in outputs]
         draw_cf_policy_multi(
@@ -638,7 +660,10 @@ def vis_policy(
             env.act_space.sigmoid_scale(np.stack(policy_means)),
             fig_unit=fig_unit,
             max_force=max_force,
+            show=False,
         )
+        values = [np.array(output.value).ravel() for output, _, _ in outputs]
+        plot_values(np.stack(values), names, images, fig_unit=value_fig_unit)
     else:
         visualizer = None
         for output, env_state, ag_idx in outputs:
