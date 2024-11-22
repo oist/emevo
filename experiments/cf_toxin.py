@@ -1,7 +1,6 @@
 """Asexual reward evolution with Circle Foraging"""
 
 import dataclasses
-import itertools
 import json
 from pathlib import Path
 from typing import cast
@@ -605,87 +604,6 @@ def widget(
         profile_and_rewards=profile_and_rewards,
         cm_fixed_minmax=cm_fixed_minmax_dict,
         scale=scale,
-    )
-
-
-@app.command()
-def vis_policy(
-    physstate_path: Path,
-    policy_path: list[Path],
-    subtitle: list[str] | None = None,
-    agent_index: int | None = None,
-    cfconfig_path: Path = DEFAULT_CFCONFIG,
-    fig_unit: float = 4.0,
-    scale: float = 1.0,
-) -> None:
-    from emevo.analysis.policy import draw_cf_policy
-
-    with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfigWithToxin, f.read())
-
-    cfconfig.n_initial_agents = 1
-    # Load env state
-    phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
-    key = jax.random.PRNGKey(0)
-    env_state, _ = env.reset(key)
-    loaded_phys = phys_state.set_by_index(..., env_state.physics)
-    env_state = dataclasses.replace(env_state, physics=loaded_phys)
-    # agent_index
-    if agent_index is None:
-        file_name = physstate_path.stem
-        if "slot" in file_name:
-            agent_index = int(file_name[file_name.index("slot") + 4 :])
-        else:
-            print("Set --agent-index")
-            return
-    # Load agents
-    input_size = int(np.prod(env.obs_space.flatten().shape))
-    act_size = int(np.prod(env.act_space.shape))
-    ref_net = ppo.NormalPPONet(input_size, 64, act_size, key)
-    names, net_params = [], []
-    for policy_path_i, name in itertools.zip_longest(
-        policy_path,
-        [] if subtitle is None else subtitle,
-    ):
-        pponet = eqx.tree_deserialise_leaves(policy_path_i, ref_net)
-        # Append only params of the network, excluding functions (etc. tanh).
-        net_params.append(eqx.filter(pponet, eqx.is_array))
-        names.append(policy_path_i.stem if name is None else name)
-    net_params = jax.tree.map(lambda *args: jnp.stack(args), *net_params)
-    network = eqx.combine(net_params, ref_net)
-    # Get obs
-    n_agents = cfconfig.n_max_agents
-    zero_action = jnp.zeros((n_agents, *env.act_space.shape))
-    _, timestep = env.step(env_state, zero_action)
-    obs_array = timestep.obs.as_array()
-    obs_i = obs_array[agent_index]
-
-    @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
-    def evaluate(network: ppo.NormalPPONet, obs: jax.Array) -> ppo.Output:
-        return network(obs)
-
-    # Get output
-    output = evaluate(network, obs_i)
-    # Make visualizer
-    visualizer = env.visualizer(
-        env_state,
-        figsize=(cfconfig.xlim[1] * scale, cfconfig.ylim[1] * scale),
-        sensor_index=agent_index,
-        sensor_width=0.004,
-        sensor_color=np.array([0.0, 0.0, 0.0, 0.3], dtype=np.float32),
-    )
-    visualizer.render(env_state.physics)
-    visualizer.show()
-    max_force = max(cfconfig.max_force, -cfconfig.min_force)
-    rot = env_state.physics.circle.p.angle[agent_index].item()
-    policy_mean = env.act_space.sigmoid_scale(output.mean)
-    draw_cf_policy(
-        names,
-        np.array(policy_mean),
-        rotation=rot,
-        fig_unit=fig_unit,
-        max_force=max_force,
     )
 
 
