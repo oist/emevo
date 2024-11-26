@@ -55,7 +55,7 @@ def draw_cf_policy(
         circle = Circle((center.x, center.y), max_force * 0.5, fill=False)
         ax.add_patch(circle)
         # Left
-        d_left = d_unit * policy_mean[0].item()
+        d_left = d_unit * policy_mean[1].item()
         s_left_shifted = s_left - d_left
         arrow = Arrow(
             s_left_shifted.x,
@@ -68,7 +68,7 @@ def draw_cf_policy(
         )
         ax.add_patch(arrow)
         # Right
-        d_right = d_unit * policy_mean[1].item()
+        d_right = d_unit * policy_mean[0].item()
         s_right_shifted = s_right - d_right
         arrow = Arrow(
             s_right_shifted.x,
@@ -124,7 +124,7 @@ def draw_cf_policy_multi(
             circle = Circle((center.x, center.y), max_force * 0.5, fill=False)
             ax.add_patch(circle)
             # Left
-            d_left = d_unit * policy_mean[0].item()
+            d_left = d_unit * policy_mean[1].item()
             s_left_shifted = s_left - d_left
             arrow = Arrow(
                 s_left_shifted.x,
@@ -137,7 +137,7 @@ def draw_cf_policy_multi(
             )
             ax.add_patch(arrow)
             # Right
-            d_right = d_unit * policy_mean[1].item()
+            d_right = d_unit * policy_mean[0].item()
             s_right_shifted = s_right - d_right
             arrow = Arrow(
                 s_right_shifted.x,

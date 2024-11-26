@@ -60,14 +60,14 @@ def visualize(
     @eqx.filter_jit
     def step(key: chex.PRNGKey, state: State, obs: Obs) -> tuple[State, Obs, jax.Array]:
         net_out = vmap_apply(network, obs.as_array())
-        actions = net_out.policy().sample(seed=key)
-        next_state, timestep = env.step(state, env.act_space.sigmoid_scale(actions))
+        actions = env.act_space.sigmoid_scale(net_out.policy().sample(seed=key))
+        next_state, timestep = env.step(state, actions)
         return next_state, timestep.obs, actions
 
     for key in keys[1:]:
         state, obs, act = step(key, state, obs)
-        del act
         # print(f"Act: {act[0]}")
+        del act
         visualizer.render(state.physics)  # type: ignore
         visualizer.show()
 
@@ -333,8 +333,8 @@ def vis(
     cfconfig.n_max_agents = N_MAX_AGENTS
     env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
     obs_space = env.obs_space.flatten()
-    input_size = np.prod(obs_space.shape)
-    act_size = np.prod(env.act_space.shape)
+    input_size = int(np.prod(obs_space.shape))
+    act_size = int(np.prod(env.act_space.shape))
     net_key, eval_key = jax.random.split(jax.random.PRNGKey(seed))
     pponet = vmap_net(
         input_size,
