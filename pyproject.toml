@@ -91,6 +91,7 @@ dev-dependencies = [
     "ipympl >= 0.9.4",
     "jupyterlab >= 4.0",
     "jupyterlab-code-formatter >= 3.0",
+    "penzai[notebook] >= 0.2",
     "pytest >= 8.3.3",
     "typer >= 0.12",
     "tqdm >= 4.6",
