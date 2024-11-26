@@ -14,9 +14,24 @@ from emevo.exp_utils import SavedPhysicsState
 from emevo.rl import ppo_normal as ppo
 
 
+@eqx.filter_jit
 @eqx.filter_vmap(in_axes=(eqx.if_array(0), None))
 def evaluate(network: ppo.NormalPPONet, obs: jax.Array) -> ppo.Output:
     return network(obs)
+
+
+def load_network(env: Env, policy_path: list[Path]) -> ppo.NormalPPONet:
+    input_size = int(np.prod(env.obs_space.flatten().shape))
+    act_size = int(np.prod(env.act_space.shape))
+    ref_net = ppo.NormalPPONet(input_size, 64, act_size, jax.random.PRNGKey(0))
+    net_params = []
+    for policy_path_i in policy_path:
+        pponet = eqx.tree_deserialise_leaves(policy_path_i, ref_net)
+        # Append only params of the network, excluding functions (etc. tanh).
+        net_params.append(eqx.filter(pponet, eqx.is_array))
+    net_params = jax.tree.map(lambda *args: jnp.stack(args), *net_params)
+    network = eqx.combine(net_params, ref_net)
+    return network
 
 
 def eval_policy(
@@ -25,19 +40,8 @@ def eval_policy(
     policy_path: list[Path],
     agent_index: int | None = None,
 ) -> list[tuple[ppo.Output, CFState, int]]:
-    key = jax.random.PRNGKey(0)
-    env_state, _ = env.reset(key)
-
-    input_size = int(np.prod(env.obs_space.flatten().shape))
-    act_size = int(np.prod(env.act_space.shape))
-    ref_net = ppo.NormalPPONet(input_size, 64, act_size, key)
-    net_params = []
-    for policy_path_i in policy_path:
-        pponet = eqx.tree_deserialise_leaves(policy_path_i, ref_net)
-        # Append only params of the network, excluding functions (etc. tanh).
-        net_params.append(eqx.filter(pponet, eqx.is_array))
-    net_params = jax.tree.map(lambda *args: jnp.stack(args), *net_params)
-    network = eqx.combine(net_params, ref_net)
+    env_state, _ = env.reset(jax.random.PRNGKey(0))
+    network = load_network(env, policy_path)
     # Get obs
     n_agents = env.n_max_agents
     zero_action = jnp.zeros((n_agents, *env.act_space.shape))
