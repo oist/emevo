@@ -289,8 +289,10 @@ def run_evolution(
         logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
         logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
-    for i, key_i in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
-        epoch_key, init_key = jax.random.split(key_i)
+    all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
+    del key  # Don't reuse this key!
+    for i, key_i in enumerate(all_keys):
+        epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
         # Use `with jax.disable_jit():` here for debugging
         env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
@@ -358,7 +360,7 @@ def run_evolution(
 
         # Mutation
         reward_fn = rfn.mutate_reward_fn(
-            key,
+            mutation_key,
             logger.reward_fn_dict,
             reward_fn,
             mutation,
