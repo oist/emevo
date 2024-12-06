@@ -1,5 +1,3 @@
-"""Various hand-coded rules for the effect of food"""
-
 from dataclasses import replace
 from typing import Any
 

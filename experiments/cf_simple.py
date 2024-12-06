@@ -613,9 +613,18 @@ def vis_policy(
     scale: float = 1.0,
     seq_plot: bool = False,
 ) -> None:
+    import importlib
+
+    import matplotlib as mpl
+
     from emevo.analysis.evaluate import eval_policy
     from emevo.analysis.policy import draw_cf_policy, draw_cf_policy_multi
     from emevo.analysis.value import plot_values
+
+    if importlib.util.find_spec("PySide6") is not None:  # type: ignore
+        mpl.use("QtAgg")
+    else:
+        mpl.use("TkAgg")
 
     with cfconfig_path.open("r") as f:
         cfconfig = toml.from_toml(CfConfig, f.read())
@@ -636,6 +645,7 @@ def vis_policy(
     if seq_plot:
         visualizer = None
         images = []
+        policy_means, values = [], []
         for output, env_state, ag_idx in outputs:
             if visualizer is None:
                 visualizer = env.visualizer(
@@ -653,7 +663,8 @@ def vis_policy(
             visualizer.render(env_state.physics)
             images.append(visualizer.get_image())
             visualizer.show()
-        policy_means = [np.array(output.mean) for output, _, _ in outputs]
+            policy_means.append(np.array(output.mean))
+            values.append(np.array(output.value).ravel())
         rot = [state.physics.circle.p.angle[idx].item() for _, state, idx in outputs]
         draw_cf_policy_multi(
             names,
@@ -663,7 +674,6 @@ def vis_policy(
             max_force=max_force,
             show=False,
         )
-        values = [np.array(output.value).ravel() for output, _, _ in outputs]
         plot_values(np.stack(values), names, images, fig_unit=value_fig_unit)
     else:
         visualizer = None

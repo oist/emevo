@@ -478,10 +478,6 @@ class CircleForaging(Env):
         max_place_attempts: int = 10,
         n_max_food_regen: int = 20,
         random_angle: bool = True,  # False when debugging/testing
-        # Only for CircleForagingWithSmell, but placed here to keep config class simple
-        smell_decay_factor: float = 0.01,
-        smell_diff_max: float = 1.0,
-        smell_diff_coef: float = 100.0,
     ) -> None:
         # Coordinate and range
         if env_shape == "square":
@@ -731,11 +727,6 @@ class CircleForaging(Env):
                 sensor_length=sensor_length,
             )
         )
-
-        # Smell
-        self._smell_decay_factor = smell_decay_factor
-        self._smell_diff_max = smell_diff_max
-        self._smell_diff_coef = smell_diff_coef
 
         # Sensor index
         self._sensor_index = 0

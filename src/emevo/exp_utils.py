@@ -74,9 +74,6 @@ class CfConfig:
     n_position_iter: int = 2
     n_physics_iter: int = 5
     max_place_attempts: int = 10
-    smell_decay_factor: float = 0.01
-    smell_diff_max: float = 1.0
-    smell_diff_coef: float = 100.0
     observe_food_label: bool = False
     mouth_range: str = "front"
 
