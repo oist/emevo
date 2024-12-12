@@ -548,17 +548,13 @@ class CircleForaging(Env):
         else:
             obs_list = obstacles
 
-        self._physics = _make_physics(
+        self._physics = self._make_physics(
             dt=dt,
             coordinate=self._coordinate,
             linear_damping=linear_damping,
             angular_damping=angular_damping,
             n_velocity_iter=n_velocity_iter,
             n_position_iter=n_position_iter,
-            n_max_agents=n_max_agents,
-            n_max_foods=n_max_foods,
-            agent_radius=agent_radius,
-            food_radius=food_radius,
             obstacles=obs_list,
         )
         self._agent_indices = jnp.arange(n_max_agents)
@@ -1166,6 +1162,30 @@ class CircleForaging(Env):
             food_num_states,
             food_loc_states,
             n_generated_foods,
+        )
+
+    def _make_physics(
+        self,
+        dt: float,
+        coordinate: CircleCoordinate | SquareCoordinate,
+        linear_damping: float,
+        angular_damping: float,
+        n_velocity_iter: int,
+        n_position_iter: int,
+        obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
+    ) -> Physics:
+        return _make_physics(
+            dt=dt,
+            coordinate=self._coordinate,
+            linear_damping=linear_damping,
+            angular_damping=angular_damping,
+            n_velocity_iter=n_velocity_iter,
+            n_position_iter=n_position_iter,
+            n_max_agents=self.n_max_agents,
+            n_max_foods=self._n_max_foods,
+            agent_radius=self._agent_radius,
+            food_radius=self._food_radius,
+            obstacles=obstacles,
         )
 
     def visualizer(
