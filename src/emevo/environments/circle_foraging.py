@@ -294,21 +294,20 @@ def _nonzero(arr: jax.Array, n: int) -> jax.Array:
 
 
 def _get_sensors(
-    shaped: ShapeDict,
+    shape: Circle,
     n_sensors: int,
     sensor_range: tuple[float, float],
     sensor_length: float,
-    stated: StateDict,
+    state: State,
 ) -> tuple[jax.Array, jax.Array]:
-    assert shaped.circle is not None and stated.circle is not None
-    radius = shaped.circle.radius
+    radius = shape.radius
     p1 = jnp.stack((jnp.zeros_like(radius), radius), axis=1)  # (N, 2)
     p1 = jnp.repeat(p1, n_sensors, axis=0)  # (N x M, 2)
     p2 = p1 + jnp.array([0.0, sensor_length])  # (N x M, 2)
     sensor_rad = jnp.deg2rad(jnp.linspace(*sensor_range, n_sensors))
     sensor_p = Position(
-        angle=jax.vmap(lambda x: x + sensor_rad)(stated.circle.p.angle).ravel(),
-        xy=jnp.repeat(stated.circle.p.xy, n_sensors, axis=0),
+        angle=jax.vmap(lambda x: x + sensor_rad)(state.p.angle).ravel(),
+        xy=jnp.repeat(state.p.xy, n_sensors, axis=0),
     )
     p1 = sensor_p.transform(p1)
     p2 = sensor_p.transform(p2)
@@ -324,7 +323,13 @@ def get_sensor_obs(
     stated: StateDict,
 ) -> jax.Array:
     assert stated.circle is not None
-    p1, p2 = _get_sensors(shaped, n_sensors, sensor_range, sensor_length, stated)
+    p1, p2 = _get_sensors(
+        shaped.circle,
+        n_sensors,
+        sensor_range,
+        sensor_length,
+        stated.circle,
+    )
     if n_food_labels is None:
         return _vmap_obs_closest(shaped, p1, p2, stated)
     else:
@@ -550,7 +555,6 @@ class CircleForaging(Env):
 
         self._physics = self._make_physics(
             dt=dt,
-            coordinate=self._coordinate,
             linear_damping=linear_damping,
             angular_damping=angular_damping,
             n_velocity_iter=n_velocity_iter,
@@ -650,25 +654,17 @@ class CircleForaging(Env):
         else:
             raise ValueError(f"Invalid newborn_loc: {newborn_loc}")
         if isinstance(sensor_range, SensorRange):
-            sensor_range_tuple = SensorRange(sensor_range).as_tuple()
+            self._sensor_range_tuple = SensorRange(sensor_range).as_tuple()
         else:
-            sensor_range_tuple = sensor_range
+            self._sensor_range_tuple = sensor_range
+        self._sensor_length = sensor_length
+
+        self._sensor_obs = self._make_sensor_fn(observe_food_label)
 
         if observe_food_label:
             assert (
                 self._n_food_sources > 1
             ), "n_food_sources should be larager than 1 to include food label obs"
-
-            self._sensor_obs = jax.jit(
-                functools.partial(
-                    get_sensor_obs,
-                    shaped=self._physics.shaped,
-                    n_sensors=n_agent_sensors,
-                    sensor_range=sensor_range_tuple,
-                    sensor_length=sensor_length,
-                    n_food_labels=self._n_food_sources,
-                )
-            )
 
             self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
                 self._n_tactile_bins,
@@ -681,17 +677,6 @@ class CircleForaging(Env):
             self._n_obj = N_OBJECTS + self._n_food_sources - 1
 
         else:
-            self._sensor_obs = jax.jit(
-                functools.partial(
-                    get_sensor_obs,
-                    shaped=self._physics.shaped,
-                    n_sensors=n_agent_sensors,
-                    sensor_range=sensor_range_tuple,
-                    sensor_length=sensor_length,
-                    n_food_labels=None,
-                )
-            )
-
             self._food_tactile = lambda _, s1, s2, cmat: get_tactile(
                 self._n_tactile_bins,
                 s1,
@@ -719,7 +704,7 @@ class CircleForaging(Env):
                 _get_sensors,
                 shaped=self._physics.shaped,
                 n_sensors=n_agent_sensors,
-                sensor_range=sensor_range_tuple,
+                sensor_range=self._sensor_range_tuple,
                 sensor_length=sensor_length,
             )
         )
@@ -791,7 +776,9 @@ class CircleForaging(Env):
         )
 
     def _get_selected_sensor(
-        self, stated: StateDict, index: int
+        self,
+        stated: StateDict,
+        index: int,
     ) -> tuple[jax.Array, jax.Array]:
         p1, p2 = self._get_sensors(stated=stated)
         from_ = index * self._n_sensors
@@ -800,6 +787,32 @@ class CircleForaging(Env):
         p1 = zeros.at[from_:to].add(p1[from_:to])
         p2 = zeros.at[from_:to].add(p2[from_:to])
         return p1, p2
+
+    def _make_sensor_fn(
+        self, observe_food_label: bool
+    ) -> Callable[[StateDict], jax.Array]:
+        if observe_food_label:
+            return jax.jit(
+                functools.partial(
+                    get_sensor_obs,
+                    shaped=self._physics.shaped,
+                    n_sensors=self._n_sensors,
+                    sensor_range=self._sensor_range_tuple,
+                    sensor_length=self._sensor_length,
+                    n_food_labels=self._n_food_sources,
+                )
+            )
+        else:
+            return jax.jit(
+                functools.partial(
+                    get_sensor_obs,
+                    shaped=self._physics.shaped,
+                    n_sensors=self._n_sensors,
+                    sensor_range=self._sensor_range_tuple,
+                    sensor_length=self._sensor_length,
+                    n_food_labels=None,
+                )
+            )
 
     def step(
         self,
@@ -1167,7 +1180,6 @@ class CircleForaging(Env):
     def _make_physics(
         self,
         dt: float,
-        coordinate: CircleCoordinate | SquareCoordinate,
         linear_damping: float,
         angular_damping: float,
         n_velocity_iter: int,
