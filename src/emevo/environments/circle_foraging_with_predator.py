@@ -118,7 +118,7 @@ def get_sensor_obs(
         sensor_length,
         agent_state,
     )
-    p1_pr, p2_apr = _get_sensors(
+    p1_pr, p2_pr = _get_sensors(
         predator_shape,
         n_sensors,
         sensor_range,
