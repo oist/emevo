@@ -18,7 +18,7 @@ from phyjax2d import (
     Vec2d,
     circle_raycast,
     make_approx_circle,
-    make_square,
+    make_square_segments,
     segment_raycast,
 )
 
@@ -40,7 +40,6 @@ from emevo.environments.circle_foraging import (
     CFState,
     CircleForaging,
     _get_sensors,
-    _vmap_obs_closest,
     get_tactile,
     init_uniqueid,
     nstep,
@@ -67,9 +66,13 @@ PREDATOR_COLOR: Color = Color(6, 214, 160)
 
 def _observe_closest(
     shaped: ShapeDict,
+    circle_agent: Circle,
+    circle_predator: Circle,
     p1: jax.Array,
     p2: jax.Array,
     stated: StateDict,
+    state_agent: State,
+    state_predator: State,
 ) -> jax.Array:
     def cr(shape: Circle, state: State) -> Raycast:
         return circle_raycast(0.0, 1.0, p1, p2, shape, state)
@@ -89,11 +92,15 @@ def _observe_closest(
     return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
 
 
-_vmap_obs_closest = jax.vmap(_observe_closest, in_axes=(None, 0, 0, None))
+_vmap_obs_closest = jax.vmap(
+    _observe_closest,
+    in_axes=(None, None, None, 0, 0, None, None, None),
+)
 
 
 def get_sensor_obs(
     shaped: ShapeDict,
+    n_agents: int,
     n_sensors: int,
     sensor_range: tuple[float, float],
     sensor_length: float,
@@ -101,8 +108,45 @@ def get_sensor_obs(
     stated: StateDict,
 ) -> jax.Array:
     assert stated.circle is not None
-    p1, p2 = _get_sensors(shaped, n_sensors, sensor_range, sensor_length, stated)
-    return _vmap_obs_closest(shaped, p1, p2, stated)
+    # Split shape and stated
+    agent_shape, predator_shape = shaped.circle.split(n_agents)
+    agent_state, predator_state = stated.circle.split(n_agents)
+    p1_ag, p2_ag = _get_sensors(
+        agent_shape,
+        n_sensors,
+        sensor_range,
+        sensor_length,
+        agent_state,
+    )
+    p1_pr, p2_apr = _get_sensors(
+        predator_shape,
+        n_sensors,
+        sensor_range,
+        predator_sensor_length,
+        predator_state,
+    )
+
+    agent_obs = _vmap_obs_closest(
+        shaped,
+        agent_shape,
+        predator_shape,
+        p1_ag,
+        p2_ag,
+        stated,
+        agent_state,
+        predator_state,
+    )
+    predator_obs = _vmap_obs_closest(
+        shaped,
+        agent_shape,
+        predator_shape,
+        p1_pr,
+        p2_pr,
+        stated,
+        agent_state,
+        predator_state,
+    )
+    return jnp.concatenate((agent_obs, predator_obs), axis=0)
 
 
 class CircleForagingWithPredator(CircleForaging):
@@ -122,6 +166,7 @@ class CircleForagingWithPredator(CircleForaging):
     ) -> None:
         self._n_max_predators = n_max_predators
         self._predator_radius = predator_radius
+        self._predator_sensor_length = predator_sensor_length
         super().__init__(*args, **kwargs)
 
     def _make_sensor_fn(
@@ -133,11 +178,12 @@ class CircleForagingWithPredator(CircleForaging):
             return jax.jit(
                 functools.partial(
                     get_sensor_obs,
+                    n_agents=self.n_max_agents,
                     shaped=self._physics.shaped,
                     n_sensors=self._n_sensors,
+                    predator_sensor_length=self._predator_sensor_length,
                     sensor_range=self._sensor_range_tuple,
                     sensor_length=self._sensor_length,
-                    n_food_labels=None,
                 )
             )
 
@@ -164,7 +210,7 @@ class CircleForagingWithPredator(CircleForaging):
         if isinstance(self._coordinate, CircleCoordinate):
             walls = make_approx_circle(self._coordinate.center, self._coordinate.radius)
         else:
-            walls = make_square(
+            walls = make_square_segments(
                 *self._coordinate.xlim,
                 *self._coordinate.ylim,
                 rounded_offset=np.floor(self._food_radius * 2 / (np.sqrt(2) - 1.0)),
