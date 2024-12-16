@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import ClassVar
 
+import jax
 import jax.numpy as jnp
 import moderngl as mgl
 import moderngl_window as mglw
@@ -285,7 +286,7 @@ class MglRenderer:
         sc_color_opt: NDArray | None = None,
         sensor_color: NDArray | None = None,
         sensor_width: float = 0.001,
-        sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
+        sensor_fn: Callable[[StateDict], tuple[jax.Array, jax.Array]] | None = None,
     ) -> None:
         self._context = context
 
@@ -366,7 +367,7 @@ class MglRenderer:
 
             def collect_sensors(stated: StateDict) -> NDArray:
                 sensors = np.concatenate(
-                    sensor_fn(stated=stated),  # type: ignore
+                    sensor_fn(state=stated.circle),  # type: ignore
                     axis=1,
                 )
                 sensors = sensors.reshape(-1, 2).astype(jnp.float32)

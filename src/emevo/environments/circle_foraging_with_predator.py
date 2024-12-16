@@ -40,8 +40,8 @@ from emevo.environments.circle_foraging import (
     CFState,
     CircleForaging,
     _get_sensors,
+    _SensorFn,
     get_tactile,
-    init_uniqueid,
     nstep,
 )
 from emevo.environments.env_utils import (
@@ -100,7 +100,7 @@ _vmap_obs_closest = jax.vmap(
 
 def get_sensor_obs(
     shaped: ShapeDict,
-    n_agents: int,
+    n_preys: int,
     n_sensors: int,
     sensor_range: tuple[float, float],
     sensor_length: float,
@@ -109,14 +109,14 @@ def get_sensor_obs(
 ) -> jax.Array:
     assert stated.circle is not None
     # Split shape and stated
-    agent_shape, predator_shape = shaped.circle.split(n_agents)
-    agent_state, predator_state = stated.circle.split(n_agents)
+    prey_shape, predator_shape = shaped.circle.split(n_preys)
+    prey_state, predator_state = stated.circle.split(n_preys)
     p1_ag, p2_ag = _get_sensors(
-        agent_shape,
+        prey_shape,
         n_sensors,
         sensor_range,
         sensor_length,
-        agent_state,
+        prey_state,
     )
     p1_pr, p2_pr = _get_sensors(
         predator_shape,
@@ -126,59 +126,66 @@ def get_sensor_obs(
         predator_state,
     )
 
-    agent_obs = _vmap_obs_closest(
+    prey_obs = _vmap_obs_closest(
         shaped,
-        agent_shape,
+        prey_shape,
         predator_shape,
         p1_ag,
         p2_ag,
         stated,
-        agent_state,
+        prey_state,
         predator_state,
     )
     predator_obs = _vmap_obs_closest(
         shaped,
-        agent_shape,
+        prey_shape,
         predator_shape,
         p1_pr,
         p2_pr,
         stated,
-        agent_state,
+        prey_state,
         predator_state,
     )
-    return jnp.concatenate((agent_obs, predator_obs), axis=0)
+    return jnp.concatenate((prey_obs, predator_obs), axis=0)
 
 
 class CircleForagingWithPredator(CircleForaging):
     def __init__(
         self,
-        *args,
         n_max_predators: int = 20,
         predator_radius: float = 20.0,
         predator_sensor_length: int = 100,
-        predator_max_force: float = 40.0,
-        predator_min_force: float = -20.0,
         predator_init_energy: float = 20.0,
         predator_energy_capacity: float = 100.0,
-        pradator_force_ec: float = 0.01 / 40.0,
+        predator_force_ec: float = 0.01 / 40.0,
         predator_basic_ec: float = 0.0,
         **kwargs,
     ) -> None:
         self._n_max_predators = n_max_predators
         self._predator_radius = predator_radius
         self._predator_sensor_length = predator_sensor_length
-        super().__init__(*args, **kwargs)
+        self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
+        assert self._n_max_preys > 0
+        super().__init__(**kwargs)
+        self._predator_init_energy = predator_init_energy
+        self._predator_energy_capacity = predator_energy_capacity
+        self._predator_force_ec = predator_force_ec
+        self._predator_basic_ec = predator_basic_ec
+        predator_act_ratio = (predator_radius**2) / (self._agent_radius**2)
+        self._act_ratio = (
+            jnp.ones((self.n_max_agents, 1))
+            .at[self._n_max_preys :]
+            .set(predator_act_ratio)
+        )
 
-    def _make_sensor_fn(
-        self, observe_food_label: bool
-    ) -> Callable[[StateDict], jax.Array]:
+    def _make_sensor_fn(self, observe_food_label: bool) -> _SensorFn:
         if observe_food_label:
             raise ValueError("Food label in predator env is not supported")
         else:
             return jax.jit(
                 functools.partial(
                     get_sensor_obs,
-                    n_agents=self.n_max_agents,
+                    n_preys=self._n_max_preys,
                     shaped=self._physics.shaped,
                     n_sensors=self._n_sensors,
                     predator_sensor_length=self._predator_sensor_length,
@@ -229,7 +236,7 @@ class CircleForagingWithPredator(CircleForaging):
                 color=PREDATOR_COLOR,
             )
         # Agents
-        for _ in range(self.n_max_agents):
+        for _ in range(self._n_max_preys):
             builder.add_circle(
                 radius=self._agent_radius,
                 friction=0.2,
@@ -255,8 +262,8 @@ class CircleForagingWithPredator(CircleForaging):
     ) -> tuple[CFState[Status], TimeStep[CFObs]]:
         # Add force
         act = jax.vmap(self.act_space.clip)(jnp.array(action))
-        f1_raw = jax.lax.slice_in_dim(act, 0, 1, axis=-1)
-        f2_raw = jax.lax.slice_in_dim(act, 1, 2, axis=-1)
+        f1_raw = jax.lax.slice_in_dim(act, 0, 1, axis=-1) * self._act_ratio
+        f2_raw = jax.lax.slice_in_dim(act, 1, 2, axis=-1) * self._act_ratio
         f1 = jnp.concatenate((jnp.zeros_like(f1_raw), f1_raw), axis=1)
         f2 = jnp.concatenate((jnp.zeros_like(f2_raw), f2_raw), axis=1)
         circle = state.physics.circle
@@ -276,17 +283,12 @@ class CircleForagingWithPredator(CircleForaging):
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
         # Get tactile obs
+        prey_state, predator_state = stated.circle.split(self._n_max_preys)
         food_tactile, ft_raw = self._food_tactile(
             stated.static_circle.label,
             stated.circle,
             stated.static_circle,
             c2sc,
-        )
-        ag_tactile, _ = get_tactile(
-            self._n_tactile_bins,
-            stated.circle,
-            stated.circle,
-            c2c,
         )
         wall_tactile, _ = get_tactile(
             self._n_tactile_bins,
@@ -294,8 +296,33 @@ class CircleForagingWithPredator(CircleForaging):
             stated.segment,
             seg2c.transpose(),
         )
-        collision = jnp.concatenate(
-            (ag_tactile > 0, food_tactile > 0, wall_tactile > 0),
+        prey_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            prey_state,
+            prey_state,
+            c2c[: self._n_max_preys, : self._n_max_preys],
+        )
+        prey_predator_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            prey_state,
+            predator_state,
+            c2c[: self._n_max_preys, self._n_max_preys :],
+        )
+        predator_prey_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            predator_state,
+            prey_state,
+            c2c[self._n_max_preys :, : self._n_max_preys],
+        )
+        predator_predator_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            predator_state,
+            predator_state,
+            c2c[self._n_max_preys :, self._n_max_preys :],
+        )
+        self_tactile = jnp.concatenate(())
+        tactile = jnp.concatenate(
+            (prey_tactile > 0, food_tactile > 0, wall_tactile > 0),
             axis=1,
         )
         # Gather sensor obs
@@ -326,7 +353,7 @@ class CircleForagingWithPredator(CircleForaging):
         # Construct obs
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
-            collision=collision,
+            collision=tactile,
             angle=stated.circle.p.angle,
             velocity=stated.circle.v.xy,
             angular_velocity=stated.circle.v.angle,

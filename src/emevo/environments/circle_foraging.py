@@ -436,11 +436,13 @@ def _make_food_energy_coef_array(
 
 _MaybeLocatingFn = LocatingFn | str | tuple[str, ...]
 _MaybeNumFn = FoodNumFn | str | tuple[str, ...]
+_SensorFn = Callable[[StateDict], jax.Array]
 
 
 class CircleForaging(Env):
     def __init__(
         self,
+        *,
         n_initial_agents: int = 6,
         n_max_agents: int = 100,
         n_max_foods: int = 40,
@@ -702,7 +704,7 @@ class CircleForaging(Env):
         self._get_sensors = jax.jit(
             functools.partial(
                 _get_sensors,
-                shaped=self._physics.shaped,
+                shape=self._physics.shaped.circle,
                 n_sensors=n_agent_sensors,
                 sensor_range=self._sensor_range_tuple,
                 sensor_length=sensor_length,
@@ -780,7 +782,7 @@ class CircleForaging(Env):
         stated: StateDict,
         index: int,
     ) -> tuple[jax.Array, jax.Array]:
-        p1, p2 = self._get_sensors(stated=stated)
+        p1, p2 = self._get_sensors(state=stated.circle)
         from_ = index * self._n_sensors
         to = (index + 1) * self._n_sensors
         zeros = jnp.ones_like(p1)
@@ -788,9 +790,7 @@ class CircleForaging(Env):
         p2 = zeros.at[from_:to].add(p2[from_:to])
         return p1, p2
 
-    def _make_sensor_fn(
-        self, observe_food_label: bool
-    ) -> Callable[[StateDict], jax.Array]:
+    def _make_sensor_fn(self, observe_food_label: bool) -> _SensorFn:
         if observe_food_label:
             return jax.jit(
                 functools.partial(
