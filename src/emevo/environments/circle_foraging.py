@@ -224,12 +224,9 @@ def _observe_closest(
     p2: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
-    def cr(shape: Circle, state: State) -> Raycast:
-        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
-
-    rc = cr(shaped.circle, stated.circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.circle, stated.circle)
     to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = cr(shaped.static_circle, stated.static_circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.static_circle, stated.static_circle)
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
@@ -249,12 +246,9 @@ def _observe_closest_with_food_labels(
     p2: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
-    def cr(shape: Circle, state: State) -> Raycast:
-        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
-
-    rc = cr(shaped.circle, stated.circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.circle, stated.circle)
     to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = cr(shaped.static_circle, stated.static_circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.static_circle, stated.static_circle)
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     foodlabel_onehot = jax.nn.one_hot(
         stated.static_circle.label,

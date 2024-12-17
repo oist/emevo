@@ -3,14 +3,14 @@ from __future__ import annotations
 import functools
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any
+from typing import Any, NamedTuple
 
 import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Raycast, ShapeDict
+from phyjax2d import Circle, Color, Position, ShapeDict
 from phyjax2d import Space as Physics
 from phyjax2d import (
     SpaceBuilder,
@@ -22,9 +22,8 @@ from phyjax2d import (
     make_square_segments,
     segment_raycast,
 )
-from rich.segment import NamedTuple
 
-from emevo.env import Env, Status, TimeStep, UniqueID, Visualizer, init_uniqueid
+from emevo.env import Status, TimeStep, init_uniqueid
 from emevo.environments.circle_foraging import (
     AGENT_COLOR,
     FOOD_COLOR,
@@ -33,26 +32,14 @@ from emevo.environments.circle_foraging import (
     CFObs,
     CFState,
     CircleForaging,
+    _first_n_true,
     _get_sensors,
+    _nonzero,
     _SensorFn,
     get_tactile,
     nstep,
 )
-from emevo.environments.env_utils import (
-    CircleCoordinate,
-    FoodNum,
-    FoodNumFn,
-    FoodNumState,
-    Locating,
-    LocatingFn,
-    LocatingState,
-    SquareCoordinate,
-    first_to_nth_true,
-    loc_gaussian,
-    place,
-    place_multi,
-)
-from emevo.spaces import BoxSpace, NamedTupleSpace
+from emevo.environments.env_utils import CircleCoordinate, LocatingState
 
 Self = Any
 PREDATOR_COLOR: Color = Color(6, 214, 160)
@@ -60,27 +47,26 @@ PREDATOR_COLOR: Color = Color(6, 214, 160)
 
 def _observe_closest(
     shaped: ShapeDict,
-    circle_agent: Circle,
+    circle_prey: Circle,
     circle_predator: Circle,
     p1: jax.Array,
     p2: jax.Array,
     stated: StateDict,
-    state_agent: State,
+    state_prey: State,
     state_predator: State,
 ) -> jax.Array:
-    def cr(shape: Circle, state: State) -> Raycast:
-        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
-
-    rc = cr(shaped.circle, stated.circle)
-    to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = cr(shaped.static_circle, stated.static_circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, circle_prey, state_prey)
+    to_prey = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    rc = circle_raycast(0.0, 1.0, p1, p2, circle_predator, state_predator)
+    to_predator = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.static_circle, stated.static_circle)
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     obs = jnp.concatenate(
         jax.tree_util.tree_map(
             lambda arr: jnp.max(arr, keepdims=True),
-            (to_c, to_sc, to_seg),
+            (to_prey, to_predator, to_sc, to_seg),
         ),
     )
     return jnp.where(obs == jnp.max(obs, axis=-1, keepdims=True), obs, -1.0)
@@ -158,6 +144,12 @@ class _TactileInfo(NamedTuple):
     n_ate_prey: jax.Array  # (M, 1)
     eaten_foods: jax.Array  # (F,)
     eaten_preys: jax.Array  # (N,)
+
+
+@chex.dataclass
+class CFPredatorState(CFState[Status]):
+    predator_loc: LocatingState
+    n_born_predators: jax.Array
 
 
 class CircleForagingWithPredator(CircleForaging):
@@ -266,11 +258,11 @@ class CircleForagingWithPredator(CircleForaging):
             )
         return builder.build()
 
-    def step(
+    def step(  # type: ignore
         self,
-        state: CFState[Status],
+        state: CFPredatorState,
         action: ArrayLike,
-    ) -> tuple[CFState[Status], TimeStep[CFObs]]:
+    ) -> tuple[CFPredatorState, TimeStep[CFObs]]:
         # Add force
         act = jax.vmap(self.act_space.clip)(jnp.array(action))
         f1_raw = jax.lax.slice_in_dim(act, 0, 1, axis=-1) * self._act_ratio
@@ -359,17 +351,19 @@ class CircleForagingWithPredator(CircleForaging):
                 ),
             },
         )
-        state = CFState(
+        state = CFPredatorState(
             physics=stated,
             solver=solver,
             food_num=food_num,
             agent_loc=state.agent_loc,
+            predator_loc=state.predator_loc,
             food_loc=food_loc,
             key=key,
             step=state.step + 1,
             unique_id=state.unique_id,
             status=status.step(state.unique_id.is_active()),
             n_born_agents=state.n_born_agents,
+            n_born_predators=state.n_born_predators,
         )
         return state, timestep
 
@@ -487,3 +481,106 @@ class CircleForagingWithPredator(CircleForaging):
         # They shouldn't encount now
         timestep = TimeStep(encount=jnp.zeros((N, N), dtype=bool), obs=obs)
         return state, timestep
+
+    def activate(  # type: ignore
+        self,
+        state: CFPredatorState,
+        is_parent: jax.Array,
+    ) -> tuple[CFPredatorState, jax.Array]:
+        N, M = self._n_max_preys, self._n_max_predators
+        circle = state.physics.circle
+        prey_circle, predator_circle = circle.split(self._n_max_preys)
+        next_key, prey_key, predator_key = jax.random.split(state.key, 3)
+        # Place prey
+        prey_pos, prey_is_replaced, prey_parent_idx, prey_replaced_idx = self._place(
+            N,
+            state,
+            prey_key,
+            is_parent[: self._n_max_preys],
+            prey_circle,
+        )
+        # Place predator
+        (
+            predator_pos,
+            predator_is_replaced,
+            predator_parent_idx,
+            predator_replaced_idx,
+        ) = self._place(
+            M,
+            state,
+            predator_key,
+            is_parent[self._n_max_preys :],
+            predator_circle,
+            offset=N,
+        )
+        is_replaced = jnp.concatenate((prey_is_replaced, predator_is_replaced))
+        is_active = jnp.logical_or(is_replaced, circle.is_active)
+        pos = jax.tree.map(lambda a, b: jnp.concatenate((a, b)), prey_pos, predator_pos)
+        physics = replace(
+            state.physics,
+            circle=replace(circle, p=pos, is_active=is_active),
+        )
+        unique_id = state.unique_id.activate(is_replaced)
+        status = state.status.activate(
+            self._energy_share_ratio,
+            jnp.concatenate((prey_replaced_idx, predator_replaced_idx)),
+            jnp.concatenate((prey_parent_idx, predator_parent_idx)),
+        )
+        n_children = jnp.sum(is_parent)
+        new_state = replace(
+            state,
+            physics=physics,
+            unique_id=unique_id,
+            status=status,
+            agent_loc=state.agent_loc.increment(n_children),
+            n_born_agents=state.n_born_agents + n_children,
+            key=next_key,
+        )
+        empty_id = jnp.ones_like(state.unique_id.unique_id) * -1
+        unique_id_with_sentinel = jnp.concatenate(
+            (state.unique_id.unique_id, jnp.zeros(1, dtype=jnp.int32))
+        )
+        parent_id = empty_id.at[replaced_indices].set(
+            unique_id_with_sentinel[parent_indices]
+        )
+        return new_state, parent_id
+
+    def _place(
+        self,
+        n: int,
+        state: CFPredatorState,
+        key: chex.PRNGKey,
+        is_parent: jax.Array,
+        circle: State,
+        offset: int = 0,
+    ) -> tuple[Position, jax.Array, jax.Array, jax.Array]:
+        keys = jax.random.split(key, n + 1)
+        new_xy, ok = self._place_newborn(
+            state.agent_loc,
+            state.physics,
+            keys[1:],
+            circle.p.xy,
+        )
+        is_possible_parent = jnp.logical_and(
+            is_parent,
+            jnp.logical_and(circle.is_active, ok),
+        )
+        is_replaced = _first_n_true(
+            jnp.logical_not(circle.is_active),
+            jnp.sum(is_possible_parent),
+        )
+        is_parent = _first_n_true(is_possible_parent, jnp.sum(is_replaced))
+        # parent_indices := nonzero_indices(parents) + (N, N, N, ....)
+        parent_indices = _nonzero(is_parent, n) + offset
+        # empty_indices := nonzero_indices(not(is_active)) + (N, N, N, ....)
+        replaced_indices = _nonzero(is_replaced, n) + offset
+        # To use .at[].add, append (0, 0) to sampled xy
+        new_xy_with_sentinel = jnp.concatenate((new_xy, jnp.zeros((1, 2))))
+        xy = circle.p.xy.at[replaced_indices].add(new_xy_with_sentinel[parent_indices])
+        if self._random_angle:
+            new_angle = jax.random.uniform(keys[0]) * jnp.pi * 2.0
+            angle = jnp.where(is_replaced, new_angle, circle.p.angle)
+        else:
+            angle = jnp.where(is_replaced, 0.0, circle.p.angle)
+        p = Position(angle=angle, xy=xy)
+        return p, is_replaced, parent_indices, replaced_indices
