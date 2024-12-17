@@ -1020,7 +1020,7 @@ class CircleForaging(Env):
             status=status,
             n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
         )
-        sensor_obs = self._sensor_obs(stated=physics)
+        sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
             collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),

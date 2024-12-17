@@ -3,8 +3,9 @@ from __future__ import annotations
 import functools
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
+import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -21,16 +22,9 @@ from phyjax2d import (
     make_square_segments,
     segment_raycast,
 )
+from rich.segment import NamedTuple
 
-from emevo.env import (
-    Env,
-    Status,
-    TimeStep,
-    UniqueID,
-    Visualizer,
-    init_status,
-    init_uniqueid,
-)
+from emevo.env import Env, Status, TimeStep, UniqueID, Visualizer, init_uniqueid
 from emevo.environments.circle_foraging import (
     AGENT_COLOR,
     FOOD_COLOR,
@@ -147,6 +141,23 @@ def get_sensor_obs(
         predator_state,
     )
     return jnp.concatenate((prey_obs, predator_obs), axis=0)
+
+
+class _TactileInfo(NamedTuple):
+    """
+    N: Num. preys
+    M: Num. predators
+    B: Num. tactile bins
+    F: Num. foods
+    """
+
+    prey2prey: jax.Array  # (N, N)
+    predator2predator: jax.Array  # (M, M)
+    tactile: jax.Array  # (N + M, 1, B)
+    n_ate_food: jax.Array  # (N, 1)
+    n_ate_prey: jax.Array  # (M, 1)
+    eaten_foods: jax.Array  # (F,)
+    eaten_preys: jax.Array  # (N,)
 
 
 class CircleForagingWithPredator(CircleForaging):
@@ -279,95 +290,73 @@ class CircleForagingWithPredator(CircleForaging):
         )
         # Gather circle contacts
         contacts = jnp.max(nstep_contacts, axis=0)
-        c2c = self._physics.get_contact_mat("circle", "circle", contacts)
-        c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
-        seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
         # Get tactile obs
-        prey_state, predator_state = stated.circle.split(self._n_max_preys)
-        food_tactile, ft_raw = self._food_tactile(
-            stated.static_circle.label,
-            stated.circle,
-            stated.static_circle,
-            c2sc,
-        )
-        wall_tactile, _ = get_tactile(
-            self._n_tactile_bins,
-            stated.circle,
-            stated.segment,
-            seg2c.transpose(),
-        )
-        prey_tactile, _ = get_tactile(
-            self._n_tactile_bins,
-            prey_state,
-            prey_state,
-            c2c[: self._n_max_preys, : self._n_max_preys],
-        )
-        prey_predator_tactile, _ = get_tactile(
-            self._n_tactile_bins,
-            prey_state,
-            predator_state,
-            c2c[: self._n_max_preys, self._n_max_preys :],
-        )
-        predator_prey_tactile, _ = get_tactile(
-            self._n_tactile_bins,
-            predator_state,
-            prey_state,
-            c2c[self._n_max_preys :, : self._n_max_preys],
-        )
-        predator_predator_tactile, _ = get_tactile(
-            self._n_tactile_bins,
-            predator_state,
-            predator_state,
-            c2c[self._n_max_preys :, self._n_max_preys :],
-        )
-        self_tactile = jnp.concatenate(())
-        tactile = jnp.concatenate(
-            (prey_tactile > 0, food_tactile > 0, wall_tactile > 0),
-            axis=1,
-        )
+        tactile_info = self._collect_tactile(contacts, stated)
         # Gather sensor obs
-        sensor_obs = self._sensor_obs(stated=stated)
-        # energy_delta = food - coef * |force|
+        sensor_obs = self._sensor_obs(stated=stated)  # type: ignore
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
-        energy_consumption = (
-            self._force_energy_consumption * force_norm + self._basic_energy_consumption
+        # energy_delta = food - coef * |force| for prey
+        prey_energy_consumption = (
+            self._force_energy_consumption * force_norm[: self._n_max_preys]
+            + self._basic_energy_consumption
         )
-        n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
-        energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
-        energy_delta = energy_gain - energy_consumption
+        prey_energy_gain = jnp.sum(
+            tactile_info.n_ate_food * self._food_energy_coef, axis=1
+        )
+        prey_energy_delta = prey_energy_gain - prey_energy_consumption
+        # energy_delta = food - coef * |force| for predator
+        predator_energy_consumption = (
+            self._force_energy_consumption * force_norm[: self._n_max_preys]
+            + self._basic_energy_consumption
+        )
+        predator_energy_gain = jnp.sum(
+            tactile_info.n_ate_food * self._food_energy_coef, axis=1
+        )
+        predator_energy_delta = predator_energy_gain - predator_energy_consumption
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
-        eaten = jnp.sum(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
         stated, food_num, food_loc, n_regen = self._remove_and_regenerate_foods(
             food_key,
-            eaten,  # (N_FOOD, N_LABEL)
+            tactile_info.eaten_foods,  # (N_FOOD, N_LABEL)
             stated,
             state.step,
             state.food_num,
             state.food_loc,
         )
         status = state.status.update(
-            energy_delta=energy_delta,
+            energy_delta=jnp.concatenate(
+                (prey_energy_delta, predator_energy_delta),
+                axis=0,
+            ),
             capacity=self._energy_capacity,
         )
         # Construct obs
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
-            collision=tactile,
+            collision=tactile_info.tactile,
             angle=stated.circle.p.angle,
             velocity=stated.circle.v.xy,
             angular_velocity=stated.circle.v.angle,
             energy=status.energy,
         )
         timestep = TimeStep(
-            encount=c2c,
+            encount=[tactile_info.prey2prey, tactile_info.predator2predator],
             obs=obs,
             info={
-                "energy_gain": energy_gain,
-                "energy_consumption": energy_consumption,
+                "energy_gain": jnp.concatenate(
+                    (prey_energy_gain, predator_energy_gain),
+                    axis=0,
+                ),
+                "energy_consumption": jnp.concatenate(
+                    (prey_energy_consumption, predator_energy_consumption),
+                    axis=0,
+                ),
                 "n_food_regenerated": n_regen,
-                "n_food_eaten": jnp.sum(eaten, axis=0),  # (N_LABEL,)
-                "n_ate_food": n_ate,  # (N_AGENT, N_LABEL)
+                "n_food_eaten": jnp.sum(tactile_info.eaten_foods, axis=0),  # (N_LABEL,)
+                "n_ate_food": jnp.concatenate(
+                    (tactile_info.n_ate_food, tactile_info.n_ate_prey),
+                    axis=0,
+                ),
             },
         )
         state = CFState(
@@ -382,4 +371,119 @@ class CircleForagingWithPredator(CircleForaging):
             status=status.step(state.unique_id.is_active()),
             n_born_agents=state.n_born_agents,
         )
+        return state, timestep
+
+    def _collect_tactile(self, contacts: jax.Array, stated: StateDict) -> _TactileInfo:
+        c2c = self._physics.get_contact_mat("circle", "circle", contacts)
+        c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
+        seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
+        prey_state, predator_state = stated.circle.split(self._n_max_preys)
+        food_tactile, ft_raw = self._food_tactile(
+            stated.static_circle.label,
+            stated.circle,
+            stated.static_circle,
+            c2sc,
+        )
+        wall_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            stated.circle,
+            stated.segment,
+            seg2c.transpose(),
+        )
+        prey_prey_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            prey_state,
+            prey_state,
+            c2c[: self._n_max_preys, : self._n_max_preys],
+        )
+        prey_predator_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            prey_state,
+            predator_state,
+            c2c[: self._n_max_preys, self._n_max_preys :],
+        )
+        predator_prey_tactile, predator_prey_rawt = get_tactile(
+            self._n_tactile_bins,
+            predator_state,
+            prey_state,
+            c2c[self._n_max_preys :, : self._n_max_preys],
+        )
+        predator_predator_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            predator_state,
+            predator_state,
+            c2c[self._n_max_preys :, self._n_max_preys :],
+        )
+        self_tactile = jnp.concatenate(
+            (prey_prey_tactile, predator_predator_tactile),
+            axis=0,
+        )
+        other_tactile = jnp.concatenate(
+            (prey_predator_tactile, predator_prey_tactile),
+            axis=0,
+        )
+        tactile = jnp.concatenate(
+            (self_tactile > 0, other_tactile > 0, food_tactile > 0, wall_tactile > 0),
+            axis=1,
+        )
+        eaten_sum = jnp.sum(
+            ft_raw[: self._n_max_preys, :, :, self._foraging_indices],
+            axis=(0, 3),
+        )
+        eaten_preys_sum = jnp.sum(
+            predator_prey_rawt[:, :, :, self._foraging_indices],
+            axis=(0, 3),
+        )
+        return _TactileInfo(
+            prey2prey=c2c[: self._n_max_preys, : self._n_max_preys],
+            predator2predator=c2c[self._n_max_preys :, self._n_max_preys :],
+            tactile=tactile,
+            n_ate_food=jnp.sum(
+                food_tactile[: self._n_max_preys, :, self._foraging_indices],
+                axis=-1,
+            ),
+            n_ate_prey=jnp.sum(
+                food_tactile[: self._n_max_preys, :, self._foraging_indices],
+                axis=-1,
+            ),
+            eaten_foods=eaten_sum > 0,
+            eaten_preys=eaten_preys_sum > 0,
+        )
+
+    def reset(self, key: chex.PRNGKey) -> tuple[CFState[Status], TimeStep[CFObs]]:
+        prey_energy = jnp.ones(self._n_max_preys, dtype=jnp.float32) * self._init_energy
+        predator_energy = (
+            jnp.ones(self._n_max_predators, dtype=jnp.float32)
+            * self._predator_init_energy
+        )
+        status = Status(
+            age=jnp.zeros(self.n_max_agents, dtype=jnp.int32),
+            energy=jnp.concatenate((prey_energy, predator_energy), axis=0),
+        )
+        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
+        N = self.n_max_agents
+        unique_id = init_uniqueid(self._n_initial_agents, N)
+        state = CFState(
+            physics=physics,
+            solver=self._physics.init_solver(),
+            agent_loc=agent_loc,
+            food_loc=food_loc,
+            food_num=food_num,
+            key=key,
+            step=jnp.array(0, dtype=jnp.int32),
+            unique_id=unique_id,
+            status=status,
+            n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
+        )
+        sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
+        obs = CFObs(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
+            collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),
+            angle=physics.circle.p.angle,
+            velocity=physics.circle.v.xy,
+            angular_velocity=physics.circle.v.angle,
+            energy=state.status.energy,
+        )
+        # They shouldn't encount now
+        timestep = TimeStep(encount=jnp.zeros((N, N), dtype=bool), obs=obs)
         return state, timestep

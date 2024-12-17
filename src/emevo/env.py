@@ -52,13 +52,6 @@ class Status:
         return replace(self, energy=jnp.clip(energy, max=capacity))
 
 
-def init_status(max_n: int, init_energy: float) -> Status:
-    return Status(
-        age=jnp.zeros(max_n, dtype=jnp.int32),
-        energy=jnp.ones(max_n, dtype=jnp.float32) * init_energy,
-    )
-
-
 @chex.dataclass
 class UniqueID:
     """Unique ID for agents. Starts from 1."""
@@ -117,7 +110,7 @@ STATE = TypeVar("STATE", bound="StateProtocol")
 @chex.dataclass
 class TimeStep(Generic[OBS]):
     obs: OBS
-    encount: jax.Array
+    encount: jax.Array | list[jax.Array]
     info: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
