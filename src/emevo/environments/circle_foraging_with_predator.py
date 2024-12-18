@@ -540,6 +540,8 @@ class CircleForagingWithPredator(CircleForaging):
         unique_id_with_sentinel = jnp.concatenate(
             (state.unique_id.unique_id, jnp.zeros(1, dtype=jnp.int32))
         )
+        replaced_indices = jnp.concatenate((prey_replaced_idx, predator_replaced_idx))
+        parent_indices = jnp.concatenate((prey_parent_idx, predator_parent_idx))
         parent_id = empty_id.at[replaced_indices].set(
             unique_id_with_sentinel[parent_indices]
         )
