@@ -349,6 +349,7 @@ class CircleForagingWithPredator(CircleForaging):
                     (tactile_info.n_ate_food, tactile_info.n_ate_prey),
                     axis=0,
                 ),
+                "eaten_preys": tactile_info.eaten_preys,
             },
         )
         state = CFPredatorState(
