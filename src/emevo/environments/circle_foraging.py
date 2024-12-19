@@ -13,7 +13,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Position, Raycast, ShapeDict
+from phyjax2d import Circle, Color, Position, ShapeDict
 from phyjax2d import Space as Physics
 from phyjax2d import (
     SpaceBuilder,

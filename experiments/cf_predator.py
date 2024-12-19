@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import typer
-from serde import toml
+from serde import serde, toml
 
 from emevo import Env
 from emevo import birth_and_death as bd
@@ -35,37 +35,23 @@ from emevo.exp_utils import (
     SavedProfile,
     is_cuda_ready,
 )
+from emevo.reward_extractor import ActFoodExtractor as RewardExtractor
 from emevo.rl import ppo_normal as ppo
-from emevo.spaces import BoxSpace
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20240823-uniform.toml"
 
 
+@serde
 @dataclasses.dataclass
-class RewardExtractor:
-    act_space: BoxSpace
-    act_coef: float
-    _max_norm: jax.Array = dataclasses.field(init=False)
-
-    def __post_init__(self) -> None:
-        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high**2, axis=-1))
-
-    def normalize_action(self, action: jax.Array) -> jax.Array:
-        scaled = self.act_space.sigmoid_scale(action)
-        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
-        return norm / self._max_norm
-
-    def extract(
-        self,
-        ate_food: jax.Array,
-        action: jax.Array,
-        energy: jax.Array,
-    ) -> jax.Array:
-        del energy
-        act_input = self.act_coef * self.normalize_action(action)
-        return jnp.concatenate((ate_food.astype(jnp.float32), act_input), axis=1)
+class CfConfigWithPredator(CfConfig):
+    n_max_predators: int = 20
+    predator_radius: float = 20.0
+    predator_sensor_length: int = 100
+    predator_init_energy: float = 20.0
+    predator_force_ec: float = 0.01 / 40.0
+    predator_basic_ec: float = 0.0
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
@@ -86,6 +72,8 @@ def exec_rollout(
     prng_key: jax.Array,
     n_rollout_steps: int,
 ) -> tuple[State, ppo.Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
+    n_max_predators = env._n_max_predators  # type: ignore
+
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
@@ -113,12 +101,13 @@ def exec_rollout(
         )
         # Birth and death
         death_prob = hazard_fn(state_t1.status.age, state_t1.status.energy)
+        dead_eaten = jnp.concatenate(
+            (timestep.info["eaten_prey"], jnp.zeros(n_max_predators, dtype=bool))
+        )
         dead_nonzero = jax.random.bernoulli(hazard_key, p=death_prob)
-        dead = jnp.where(
-            # If the agent's energy is lower than 0, it should immediately die
-            state_t1.status.energy < 0.0,
-            jnp.ones_like(dead_nonzero),
-            dead_nonzero,
+        # If the agent's energy is lower than 0, it should immediately die
+        dead = jnp.logical_or(
+            state_t1.status.energy < 0.0, jnp.logical_or(dead_eaten, dead_nonzero)
         )
         state_t1d = env.deactivate(state_t1, dead)
         birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
@@ -140,6 +129,7 @@ def exec_rollout(
             parents=parents,
             rewards=rewards.ravel(),
             unique_id=state_t1db.unique_id.unique_id,
+            additional_fields={"eaten_preys": dead_eaten},
         )
         foodlog = FoodLog(
             eaten=timestep.info["n_food_eaten"],
@@ -598,7 +588,6 @@ def widget(
         cm_fixed_minmax=cm_fixed_minmax_dict,
         scale=scale,
     )
-
 
 
 if __name__ == "__main__":

@@ -159,7 +159,6 @@ class CircleForagingWithPredator(CircleForaging):
         predator_radius: float = 20.0,
         predator_sensor_length: int = 100,
         predator_init_energy: float = 20.0,
-        predator_energy_capacity: float = 100.0,
         predator_force_ec: float = 0.01 / 40.0,
         predator_basic_ec: float = 0.0,
         **kwargs,
@@ -171,7 +170,6 @@ class CircleForagingWithPredator(CircleForaging):
         assert self._n_max_preys > 0
         super().__init__(**kwargs)
         self._predator_init_energy = predator_init_energy
-        self._predator_energy_capacity = predator_energy_capacity
         self._predator_force_ec = predator_force_ec
         self._predator_basic_ec = predator_basic_ec
         predator_act_ratio = (predator_radius**2) / (self._agent_radius**2)
