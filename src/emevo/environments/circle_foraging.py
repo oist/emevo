@@ -25,7 +25,7 @@ from phyjax2d import (
     circle_raycast,
     get_relative_angle,
     make_approx_circle,
-    make_square,
+    make_square_segments,
     segment_raycast,
 )
 from phyjax2d import step as physics_step
@@ -189,7 +189,7 @@ def _make_physics(
     if isinstance(coordinate, CircleCoordinate):
         walls = make_approx_circle(coordinate.center, coordinate.radius)
     else:
-        walls = make_square(
+        walls = make_square_segments(
             *coordinate.xlim,
             *coordinate.ylim,
             rounded_offset=np.floor(food_radius * 2 / (np.sqrt(2) - 1.0)),
