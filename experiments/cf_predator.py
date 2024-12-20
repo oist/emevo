@@ -40,7 +40,7 @@ from emevo.rl import ppo_normal as ppo
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20240823-uniform.toml"
+DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241212-predator.toml"
 
 
 @serde
