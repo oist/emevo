@@ -140,6 +140,7 @@ class _TactileInfo(NamedTuple):
     prey2prey: jax.Array  # (N, N)
     predator2predator: jax.Array  # (M, M)
     tactile: jax.Array  # (N + M, 1, B)
+    eaten_preys_per_predator: jax.Array  # (M, N)
     n_ate_food: jax.Array  # (N, 1)
     n_ate_prey: jax.Array  # (M, 1)
     eaten_foods: jax.Array  # (F,)
@@ -168,7 +169,7 @@ class CircleForagingWithPredator(CircleForaging):
         self._predator_sensor_length = predator_sensor_length
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
         assert self._n_max_preys > 0
-        super().__init__(**kwargs)
+        super().__init__(**kwargs, _n_additional_objs=1)
         self._predator_init_energy = predator_init_energy
         self._predator_force_ec = predator_force_ec
         self._predator_basic_ec = predator_basic_ec
@@ -299,9 +300,12 @@ class CircleForagingWithPredator(CircleForaging):
             self._force_energy_consumption * force_norm[: self._n_max_preys]
             + self._basic_energy_consumption
         )
-        predator_energy_gain = jnp.sum(
-            tactile_info.n_ate_food * self._food_energy_coef, axis=1
+        prey_energies = state.status.energy[: self._n_max_preys]
+        predator_energy_gain = jnp.matmul(
+            tactile_info.eaten_preys_per_predator,
+            prey_energies,
         )
+        print(predator_energy_gain.shape)
         predator_energy_delta = predator_energy_gain - predator_energy_consumption
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
@@ -427,18 +431,20 @@ class CircleForagingWithPredator(CircleForaging):
             predator_prey_rawt[:, :, :, self._foraging_indices],
             axis=(0, 3),
         )
+        eaten_preys_per_predator = predator_prey_rawt[:, :, :, self._foraging_indices]
         return _TactileInfo(
             prey2prey=c2c[: self._n_max_preys, : self._n_max_preys],
             predator2predator=c2c[self._n_max_preys :, self._n_max_preys :],
             tactile=tactile,
+            eaten_preys_per_predator=jnp.squeeze(
+                jnp.max(eaten_preys_per_predator, axis=-1),
+                axis=-1,
+            ),
             n_ate_food=jnp.sum(
                 food_tactile[: self._n_max_preys, :, self._foraging_indices],
                 axis=-1,
             ),
-            n_ate_prey=jnp.sum(
-                food_tactile[: self._n_max_preys, :, self._foraging_indices],
-                axis=-1,
-            ),
+            n_ate_prey=jnp.sum(eaten_preys_per_predator, axis=-1),
             eaten_foods=eaten_sum > 0,
             eaten_preys=eaten_preys_sum > 0,
         )

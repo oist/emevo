@@ -479,6 +479,7 @@ class CircleForaging(Env):
         max_place_attempts: int = 10,
         n_max_food_regen: int = 20,
         random_angle: bool = True,  # False when debugging/testing
+        _n_additional_objs: int = 0,  # Used by child classes (e.g., predator)
     ) -> None:
         # Coordinate and range
         if env_shape == "square":
@@ -670,7 +671,7 @@ class CircleForaging(Env):
                 s2,
                 cmat,
             )
-            self._n_obj = N_OBJECTS + self._n_food_sources - 1
+            self._n_obj = N_OBJECTS + self._n_food_sources - 1 + _n_additional_objs
 
         else:
             self._food_tactile = lambda _, s1, s2, cmat: get_tactile(
@@ -679,7 +680,7 @@ class CircleForaging(Env):
                 s2,
                 cmat,
             )
-            self._n_obj = N_OBJECTS
+            self._n_obj = N_OBJECTS + _n_additional_objs
 
         # Spaces
         self.act_space = BoxSpace(low=min_force, high=max_force, shape=(2,))
@@ -860,6 +861,7 @@ class CircleForaging(Env):
         )
         # Gather sensor obs
         sensor_obs = self._sensor_obs(stated=stated)
+        print(sensor_obs.shape)
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_consumption = (
