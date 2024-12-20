@@ -297,8 +297,8 @@ class CircleForagingWithPredator(CircleForaging):
         prey_energy_delta = prey_energy_gain - prey_energy_consumption
         # energy_delta = food - coef * |force| for predator
         predator_energy_consumption = (
-            self._force_energy_consumption * force_norm[: self._n_max_preys]
-            + self._basic_energy_consumption
+            self._predator_force_ec * force_norm[self._n_max_preys :]
+            + self._predator_basic_ec
         )
         prey_energies = state.status.energy[: self._n_max_preys]
         predator_energy_gain = jnp.matmul(
