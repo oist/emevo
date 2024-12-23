@@ -24,7 +24,7 @@ from phyjax2d import (
     segment_raycast,
 )
 
-from emevo.env import Status, TimeStep, init_uniqueid
+from emevo.env import Status, TimeStep, UniqueID
 from emevo.environments.circle_foraging import (
     AGENT_COLOR,
     FOOD_COLOR,
@@ -50,6 +50,26 @@ from emevo.environments.env_utils import (
 
 Self = Any
 PREDATOR_COLOR: Color = Color(6, 214, 160)
+
+
+def _init_uniqueid(
+    n: int,
+    max_n: int,
+    m: int,
+    max_m: int,
+) -> UniqueID:
+    unique_id = jnp.concatenate(
+        (
+            jnp.arange(1, n + 1, dtype=jnp.int32),
+            jnp.zeros(max_n - n, dtype=jnp.int32),
+            jnp.arange(n + 1, n + m + 1, dtype=jnp.int32),
+            jnp.zeros(max_m - m, dtype=jnp.int32),
+        )
+    )
+    return UniqueID(
+        unique_id=unique_id,
+        max_uid=jnp.array(n + m + 1),
+    )
 
 
 def _observe_closest(
@@ -301,7 +321,6 @@ class CircleForagingWithPredator(CircleForaging):
         contacts = jnp.max(nstep_contacts, axis=0)
         # Get tactile obs
         tactile_info = self._collect_tactile(contacts, stated)
-        print(tactile_info.n_ate_prey.shape)
         # Gather sensor obs
         sensor_obs = self._sensor_obs(stated=stated)  # type: ignore
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
@@ -369,7 +388,7 @@ class CircleForagingWithPredator(CircleForaging):
                     (tactile_info.n_ate_food, tactile_info.n_ate_prey),
                     axis=0,
                 ),
-                "eaten_preys": tactile_info.eaten_preys,
+                "eaten_preys": jnp.ravel(tactile_info.eaten_preys),
             },
         )
         state = CFPredatorState(
@@ -480,8 +499,12 @@ class CircleForagingWithPredator(CircleForaging):
             energy=jnp.concatenate((prey_energy, predator_energy), axis=0),
         )
         physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
-        N = self.n_max_agents
-        unique_id = init_uniqueid(self._n_initial_agents, N)
+        unique_id = _init_uniqueid(
+            self._n_initial_agents,
+            self._n_max_preys,
+            self._n_initial_predators,
+            self._n_max_predators,
+        )
         state = CFPredatorState(
             physics=physics,
             solver=self._physics.init_solver(),
@@ -496,6 +519,7 @@ class CircleForagingWithPredator(CircleForaging):
             n_born_predators=jnp.array(self._n_initial_predators, dtype=jnp.int32),
         )
         sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
+        N = self.n_max_agents
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
             collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),
@@ -537,7 +561,6 @@ class CircleForagingWithPredator(CircleForaging):
             predator_key,
             is_parent[self._n_max_preys :],
             predator_circle,
-            offset=N,
         )
         is_replaced = jnp.concatenate((prey_is_replaced, predator_is_replaced))
         is_active = jnp.logical_or(is_replaced, circle.is_active)
@@ -547,12 +570,18 @@ class CircleForagingWithPredator(CircleForaging):
             circle=replace(circle, p=pos, is_active=is_active),
         )
         unique_id = state.unique_id.activate(is_replaced)
+        replaced_indices = jnp.concatenate(
+            (prey_replaced_idx, predator_replaced_idx + self._n_max_preys)
+        )
+        parent_indices = jnp.concatenate(
+            (prey_parent_idx, predator_parent_idx + self._n_max_preys)
+        )
         status = state.status.activate(
             self._energy_share_ratio,
-            jnp.concatenate((prey_replaced_idx, predator_replaced_idx)),
-            jnp.concatenate((prey_parent_idx, predator_parent_idx)),
+            replaced_indices,
+            parent_indices,
         )
-        n_children = jnp.sum(is_parent)
+        n_children = jnp.sum(is_replaced)
         new_state = replace(
             state,
             physics=physics,
@@ -566,8 +595,6 @@ class CircleForagingWithPredator(CircleForaging):
         unique_id_with_sentinel = jnp.concatenate(
             (state.unique_id.unique_id, jnp.zeros(1, dtype=jnp.int32))
         )
-        replaced_indices = jnp.concatenate((prey_replaced_idx, predator_replaced_idx))
-        parent_indices = jnp.concatenate((prey_parent_idx, predator_parent_idx))
         parent_id = empty_id.at[replaced_indices].set(
             unique_id_with_sentinel[parent_indices]
         )
@@ -580,7 +607,6 @@ class CircleForagingWithPredator(CircleForaging):
         key: chex.PRNGKey,
         is_parent: jax.Array,
         circle: State,
-        offset: int = 0,
     ) -> tuple[Position, jax.Array, jax.Array, jax.Array]:
         keys = jax.random.split(key, n + 1)
         new_xy, ok = self._place_newborn(
@@ -599,9 +625,9 @@ class CircleForagingWithPredator(CircleForaging):
         )
         is_parent = _first_n_true(is_possible_parent, jnp.sum(is_replaced))
         # parent_indices := nonzero_indices(parents) + (N, N, N, ....)
-        parent_indices = _nonzero(is_parent, n) + offset
-        # empty_indices := nonzero_indices(not(is_active)) + (N, N, N, ....)
-        replaced_indices = _nonzero(is_replaced, n) + offset
+        parent_indices = _nonzero(is_parent, n)
+        # replaced_indices := nonzero_indices(not(is_active)) + (N, N, N, ....)
+        replaced_indices = _nonzero(is_replaced, n)
         # To use .at[].add, append (0, 0) to sampled xy
         new_xy_with_sentinel = jnp.concatenate((new_xy, jnp.zeros((1, 2))))
         xy = circle.p.xy.at[replaced_indices].add(new_xy_with_sentinel[parent_indices])
@@ -627,7 +653,10 @@ class CircleForagingWithPredator(CircleForaging):
                 jnp.ones(self._n_initial_agents, dtype=bool),
                 jnp.zeros(self._n_max_preys - self._n_initial_agents, dtype=bool),
                 jnp.ones(self._n_initial_predators, dtype=bool),
-                jnp.zeros(self._n_max_predators - self._n_initial_agents, dtype=bool),
+                jnp.zeros(
+                    self._n_max_predators - self._n_initial_predators,
+                    dtype=bool,
+                ),
             )
         )
         # Fill 0 for food
@@ -643,16 +672,11 @@ class CircleForagingWithPredator(CircleForaging):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
-        keys = jax.random.split(
-            key,
-            self._n_initial_agents
-            + self._n_initial_predators
-            + self._n_food_sources
-            + 1,
-        )
+
+        key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
         agent_failed = 0
         agentloc_state = self._initial_agentloc_state
-        for i, key in enumerate(keys[: self._n_initial_agents]):
+        for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,
                 key=key,
@@ -669,8 +693,8 @@ class CircleForagingWithPredator(CircleForaging):
                 del xy
                 agent_failed += 1
 
-        n_total_agents = self._n_initial_agents + self._n_initial_predators
-        for i, key in enumerate(keys[self._n_initial_agents : n_total_agents]):
+        key, *predator_keys = jax.random.split(key, self._n_initial_predators + 1)
+        for i, key in enumerate(predator_keys):
             xy, ok = self._init_predator(
                 loc_state=agentloc_state,
                 key=key,
@@ -692,13 +716,14 @@ class CircleForagingWithPredator(CircleForaging):
             warnings.warn(f"Failed to place {agent_failed} agents!", stacklevel=1)
 
         if self._random_angle:
-            angle = jax.random.uniform(key, shape=stated.circle.p.angle.shape)
+            key, angle_key = jax.random.split(key)
+            angle = jax.random.uniform(angle_key, shape=stated.circle.p.angle.shape)
             stated = stated.nested_replace("circle.p.angle", angle)
 
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, key in enumerate(keys[self._n_initial_agents + 1 :]):
+        for i, key in enumerate(jax.random.split(key, self._n_food_sources)):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],

@@ -47,6 +47,7 @@ DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241212-predator.toml"
 @dataclasses.dataclass
 class CfConfigWithPredator(CfConfig):
     n_max_predators: int = 20
+    n_initial_predators: int = 10
     predator_radius: float = 20.0
     predator_sensor_length: int = 100
     predator_init_energy: float = 20.0
@@ -101,13 +102,14 @@ def exec_rollout(
         )
         # Birth and death
         death_prob = hazard_fn(state_t1.status.age, state_t1.status.energy)
-        dead_eaten = jnp.concatenate(
-            (timestep.info["eaten_prey"], jnp.zeros(n_max_predators, dtype=bool))
-        )
         dead_nonzero = jax.random.bernoulli(hazard_key, p=death_prob)
+        dead_eaten = jnp.concatenate(
+            (timestep.info["eaten_preys"], jnp.zeros(n_max_predators, dtype=bool))
+        )
         # If the agent's energy is lower than 0, it should immediately die
         dead = jnp.logical_or(
-            state_t1.status.energy < 0.0, jnp.logical_or(dead_eaten, dead_nonzero)
+            state_t1.status.energy < 0.0,
+            jnp.logical_or(dead_eaten, dead_nonzero),
         )
         state_t1d = env.deactivate(state_t1, dead)
         birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
@@ -206,7 +208,6 @@ def run_evolution(
     *,
     key: jax.Array,
     env: Env,
-    n_initial_agents: int,
     adam: optax.GradientTransformation,
     gamma: float,
     gae_lambda: float,
@@ -274,13 +275,23 @@ def run_evolution(
     else:
         visualizer = None
 
-    for i in range(n_initial_agents):
-        logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
-        logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
+    # Initial preys
+    for i in range(env._n_initial_agents):  # type: ignore
+        index = i + 1
+        logger.reward_fn_dict[index] = get_slice(reward_fn, index - 1)
+        logger.profile_dict[index] = SavedProfile(0, 0, index)
+
+    # Initial predators
+    for i in range(env._n_initial_predators):  # type: ignore
+        index = i + env._n_initial_agents + 1  # type: ignore
+        logger.reward_fn_dict[index] = get_slice(reward_fn, index - 1)
+        logger.profile_dict[index] = SavedProfile(0, 0, index)
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
     for i, key_i in enumerate(all_keys):
+        print(env_state.unique_id.max_uid)
+        print(list(logger.reward_fn_dict.keys()))
         epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
         # Use `with jax.disable_jit():` here for debugging
@@ -348,6 +359,8 @@ def run_evolution(
             pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
 
         # Mutation
+        print(log_birth.log.parents)
+        print(log_birth.log.unique_id)
         reward_fn = rfn.mutate_reward_fn(
             mutation_key,
             logger.reward_fn_dict,
@@ -462,7 +475,6 @@ def evolve(
     run_evolution(
         key=key,
         env=env,
-        n_initial_agents=cfconfig.n_initial_agents,
         adam=optax.adam(adam_lr, eps=adam_eps),
         gamma=gamma,
         gae_lambda=gae_lambda,

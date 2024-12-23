@@ -861,7 +861,6 @@ class CircleForaging(Env):
         )
         # Gather sensor obs
         sensor_obs = self._sensor_obs(stated=stated)
-        print(sensor_obs.shape)
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_consumption = (
@@ -966,7 +965,7 @@ class CircleForaging(Env):
             replaced_indices,
             parent_indices,
         )
-        n_children = jnp.sum(is_parent)
+        n_children = jnp.sum(is_replaced)
         new_state = replace(
             state,
             physics=physics,
@@ -1057,10 +1056,10 @@ class CircleForaging(Env):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
-        keys = jax.random.split(key, self._n_initial_agents + self._n_food_sources + 1)
+        key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
         agent_failed = 0
         agentloc_state = self._initial_agentloc_state
-        for i, key in enumerate(keys[: self._n_initial_agents]):
+        for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,
                 key=key,
@@ -1081,13 +1080,14 @@ class CircleForaging(Env):
             warnings.warn(f"Failed to place {agent_failed} agents!", stacklevel=1)
 
         if self._random_angle:
-            angle = jax.random.uniform(key, shape=stated.circle.p.angle.shape)
+            key, angle_key = jax.random.split(key)
+            angle = jax.random.uniform(angle_key, shape=stated.circle.p.angle.shape)
             stated = stated.nested_replace("circle.p.angle", angle)
 
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, key in enumerate(keys[self._n_initial_agents + 1 :]):
+        for i, key in enumerate(jax.random.split(key, self._n_food_sources)):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],
