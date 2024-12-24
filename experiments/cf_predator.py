@@ -131,7 +131,10 @@ def exec_rollout(
             parents=parents,
             rewards=rewards.ravel(),
             unique_id=state_t1db.unique_id.unique_id,
-            additional_fields={"eaten_preys": dead_eaten},
+            additional_fields={
+                "eaten_preys": dead_eaten,
+                "possible_parents": possible_parents,
+            },
         )
         foodlog = FoodLog(
             eaten=timestep.info["n_food_eaten"],
@@ -225,6 +228,7 @@ def run_evolution(
     logger: Logger,
     save_interval: int,
     debug_vis: bool,
+    debug_vis_scale: float,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -271,27 +275,22 @@ def run_evolution(
     obs = timestep.obs
 
     if debug_vis:
-        visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
+        visualizer = env.visualizer(
+            env_state,
+            figsize=(xmax * debug_vis_scale, ymax * debug_vis_scale),
+        )
     else:
         visualizer = None
 
-    # Initial preys
-    for i in range(env._n_initial_agents):  # type: ignore
-        index = i + 1
-        logger.reward_fn_dict[index] = get_slice(reward_fn, index - 1)
-        logger.profile_dict[index] = SavedProfile(0, 0, index)
-
-    # Initial predators
-    for i in range(env._n_initial_predators):  # type: ignore
-        index = i + env._n_initial_agents + 1  # type: ignore
-        logger.reward_fn_dict[index] = get_slice(reward_fn, index - 1)
-        logger.profile_dict[index] = SavedProfile(0, 0, index)
+    # Initial agents
+    for i, uid in enumerate(map(int, env_state.unique_id.unique_id)):
+        if uid > 0:
+            logger.reward_fn_dict[uid] = get_slice(reward_fn, i)
+            logger.profile_dict[uid] = SavedProfile(0, 0, uid)
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
     for i, key_i in enumerate(all_keys):
-        print(env_state.unique_id.max_uid)
-        print(list(logger.reward_fn_dict.keys()))
         epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
         # Use `with jax.disable_jit():` here for debugging
@@ -359,8 +358,6 @@ def run_evolution(
             pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
 
         # Mutation
-        print(log_birth.log.parents)
-        print(log_birth.log.unique_id)
         reward_fn = rfn.mutate_reward_fn(
             mutation_key,
             logger.reward_fn_dict,
@@ -412,8 +409,8 @@ def evolve(
     act_reward_coef: float = 0.01,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
-    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
-    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240326-cauthy-002.toml",
+    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
+    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
     min_age_for_save: int = 0,
     save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
@@ -425,6 +422,7 @@ def evolve(
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
+    debug_vis_scale: float = 2.0,
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -492,6 +490,7 @@ def evolve(
         logger=logger,
         save_interval=save_interval,
         debug_vis=debug_vis,
+        debug_vis_scale=debug_vis_scale,
     )
 
 

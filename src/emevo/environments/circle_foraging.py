@@ -1001,7 +1001,8 @@ class CircleForaging(Env):
     def reset(self, key: chex.PRNGKey) -> tuple[CFState[Status], TimeStep[CFObs]]:
         physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
         N = self.n_max_agents
-        unique_id = init_uniqueid(self._n_initial_agents, N)
+        n_agents = jnp.sum(physics.circle.is_active)
+        unique_id = init_uniqueid(int(n_agents), N)
         status = init_status(N, self._init_energy)
         state = CFState(
             physics=physics,
@@ -1013,7 +1014,7 @@ class CircleForaging(Env):
             step=jnp.array(0, dtype=jnp.int32),
             unique_id=unique_id,
             status=status,
-            n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
+            n_born_agents=n_agents,
         )
         sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
         obs = CFObs(
@@ -1032,21 +1033,8 @@ class CircleForaging(Env):
         self,
         key: chex.PRNGKey,
     ) -> tuple[StateDict, LocatingState, list[LocatingState], list[FoodNumState]]:
-        # Set segment
         stated = self._physics.shaped.zeros_state()
         assert stated.circle is not None
-
-        # Set is_active
-        is_active_c = jnp.concatenate(
-            (
-                jnp.ones(self._n_initial_agents, dtype=bool),
-                jnp.zeros(self.n_max_agents - self._n_initial_agents, dtype=bool),
-            )
-        )
-        # Fill 0 for food
-        is_active_s = jnp.zeros(self._n_max_foods, dtype=bool)
-        stated = stated.nested_replace("circle.is_active", is_active_c)
-        stated = stated.nested_replace("static_circle.is_active", is_active_s)
         # Move all circle to the invisiable area
         stated = stated.nested_replace(
             "circle.p.xy",
@@ -1056,8 +1044,9 @@ class CircleForaging(Env):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
+
         key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
-        agent_failed = 0
+        n_agents = 0
         agentloc_state = self._initial_agentloc_state
         for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
@@ -1072,12 +1061,23 @@ class CircleForaging(Env):
                     stated.circle.p.xy.at[i].set(xy),
                 )
                 agentloc_state = agentloc_state.increment()
-            else:
-                del xy
-                agent_failed += 1
+                n_agents += 1
 
-        if agent_failed > 0:
-            warnings.warn(f"Failed to place {agent_failed} agents!", stacklevel=1)
+        if n_agents < self._n_initial_agents:
+            diff = self._n_initial_agents - n_agents
+            warnings.warn(f"Failed to place {diff} agents!", stacklevel=1)
+
+        # Set is_active
+        is_active_c = jnp.concatenate(
+            (
+                jnp.ones(self._n_initial_agents, dtype=bool),
+                jnp.zeros(self.n_max_agents - n_agents, dtype=bool),
+            )
+        )
+        # Fill 0 for food
+        is_active_s = jnp.zeros(self._n_max_foods, dtype=bool)
+        stated = stated.nested_replace("circle.is_active", is_active_c)
+        stated = stated.nested_replace("static_circle.is_active", is_active_s)
 
         if self._random_angle:
             key, angle_key = jax.random.split(key)

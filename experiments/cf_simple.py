@@ -192,7 +192,6 @@ def run_evolution(
     *,
     key: jax.Array,
     env: Env,
-    n_initial_agents: int,
     adam: optax.GradientTransformation,
     gamma: float,
     gae_lambda: float,
@@ -260,9 +259,10 @@ def run_evolution(
     else:
         visualizer = None
 
-    for i in range(n_initial_agents):
-        logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
-        logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
+    for i, is_active in enumerate(env_state.unique_id.is_active()):
+        if is_active:
+            logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
+            logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
@@ -332,7 +332,6 @@ def run_evolution(
         is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
         if jnp.any(is_new):
             pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
-
         # Mutation
         reward_fn = rfn.mutate_reward_fn(
             mutation_key,
@@ -448,7 +447,6 @@ def evolve(
     run_evolution(
         key=key,
         env=env,
-        n_initial_agents=cfconfig.n_initial_agents,
         adam=optax.adam(adam_lr, eps=adam_eps),
         gamma=gamma,
         gae_lambda=gae_lambda,
