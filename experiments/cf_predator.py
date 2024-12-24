@@ -70,10 +70,12 @@ def exec_rollout(
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
+    predator_hazard_fn: bd.HazardFunction,
+    predator_birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
 ) -> tuple[State, ppo.Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
-    n_max_predators = env._n_max_predators  # type: ignore
+    n, m = env._n_max_preys, env._n_max_predators  # type: ignore
 
     def step_rollout(
         carried: tuple[State, Obs],
@@ -101,10 +103,16 @@ def exec_rollout(
             logstds=net_out.logstd,
         )
         # Birth and death
-        death_prob = hazard_fn(state_t1.status.age, state_t1.status.energy)
+        death_prob = jnp.concatenate(
+            (
+                hazard_fn(state_t1.status.age[:n], state_t1.status.energy[:n]),
+                predator_hazard_fn(state_t1.status.age[n:], state_t1.status.energy[n:]),
+            ),
+            axis=0,
+        )
         dead_nonzero = jax.random.bernoulli(hazard_key, p=death_prob)
         dead_eaten = jnp.concatenate(
-            (timestep.info["eaten_preys"], jnp.zeros(n_max_predators, dtype=bool))
+            (timestep.info["eaten_preys"], jnp.zeros(m, dtype=bool))
         )
         # If the agent's energy is lower than 0, it should immediately die
         dead = jnp.logical_or(
@@ -112,7 +120,15 @@ def exec_rollout(
             jnp.logical_or(dead_eaten, dead_nonzero),
         )
         state_t1d = env.deactivate(state_t1, dead)
-        birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
+        birth_prob = jnp.concatenate(
+            (
+                birth_fn(state_t1d.status.age[:n], state_t1d.status.energy[:n]),
+                predator_birth_fn(
+                    state_t1d.status.age[n:], state_t1d.status.energy[n:]
+                ),
+            ),
+            axis=0,
+        )
         possible_parents = jnp.logical_and(
             jnp.logical_and(
                 jnp.logical_not(dead),
@@ -168,6 +184,8 @@ def epoch(
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
+    predator_hazard_fn: bd.HazardFunction,
+    predator_birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
     gamma: float,
@@ -189,6 +207,8 @@ def epoch(
         reward_fn,
         hazard_fn,
         birth_fn,
+        predator_hazard_fn,
+        predator_birth_fn,
         keys[0],
         n_rollout_steps,
     )
@@ -222,6 +242,8 @@ def run_evolution(
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
+    predator_hazard_fn: bd.HazardFunction,
+    predator_birth_fn: bd.BirthFunction,
     mutation: gops.Mutation,
     xmax: float,
     ymax: float,
@@ -302,6 +324,8 @@ def run_evolution(
             reward_fn,
             hazard_fn,
             birth_fn,
+            predator_hazard_fn,
+            predator_birth_fn,
             epoch_key,
             n_rollout_steps,
             gamma,
@@ -411,11 +435,15 @@ def evolve(
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
+    predator_bdconfig_path: Path = PROJECT_ROOT
+    / "config/bd/20240916-sel-a4e7-d15.toml",
     min_age_for_save: int = 0,
     save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
+    predator_birth_override: str = "",
+    predator_hazard_override: str = "",
     gops_params_override: str = "",
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
@@ -435,15 +463,20 @@ def evolve(
         bdconfig = toml.from_toml(BDConfig, f.read())
     with gopsconfig_path.open("r") as f:
         gopsconfig = toml.from_toml(GopsConfig, f.read())
+    with predator_bdconfig_path.open("r") as f:
+        predator_bdconfig = toml.from_toml(BDConfig, f.read())
 
     # Apply overrides
     cfconfig.apply_override(env_override)
     bdconfig.apply_birth_override(birth_override)
     bdconfig.apply_hazard_override(hazard_override)
+    predator_bdconfig.apply_birth_override(predator_birth_override)
+    predator_bdconfig.apply_hazard_override(predator_hazard_override)
     gopsconfig.apply_params_override(gops_params_override)
 
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
+    predator_birth_fn, predator_hazard_fn = predator_bdconfig.load_models()
     mutation = gopsconfig.load_model()
     # Make env
     env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
@@ -484,6 +517,8 @@ def evolve(
         reward_fn=reward_fn_instance,
         hazard_fn=hazard_fn,
         birth_fn=birth_fn,
+        predator_hazard_fn=predator_hazard_fn,
+        predator_birth_fn=predator_birth_fn,
         mutation=cast(gops.Mutation, mutation),
         xmax=cfconfig.xlim[1],
         ymax=cfconfig.ylim[1],
