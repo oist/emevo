@@ -251,6 +251,7 @@ def run_evolution(
     save_interval: int,
     debug_vis: bool,
     debug_vis_scale: float,
+    headless: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -300,6 +301,7 @@ def run_evolution(
         visualizer = env.visualizer(
             env_state,
             figsize=(xmax * debug_vis_scale, ymax * debug_vis_scale),
+            backend="headless" if headless else "pyglet",
         )
     else:
         visualizer = None
@@ -451,6 +453,7 @@ def evolve(
     savestate_interval: int = 1000,
     debug_vis: bool = False,
     debug_vis_scale: float = 2.0,
+    headless: bool = False,
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -526,6 +529,7 @@ def evolve(
         save_interval=save_interval,
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
+        headless=headless,
     )
 
 
