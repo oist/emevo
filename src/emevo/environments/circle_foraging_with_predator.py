@@ -266,15 +266,6 @@ class CircleForagingWithPredator(CircleForaging):
         for obs in obstacles:
             builder.add_segment(p1=obs[0], p2=obs[1], friction=0.2, elasticity=0.4)
 
-        # Predators
-        for _ in range(self._n_max_predators):
-            builder.add_circle(
-                radius=self._predator_radius,
-                friction=0.2,
-                elasticity=0.4,
-                density=0.1,
-                color=PREDATOR_COLOR,
-            )
         # Agents
         for _ in range(self._n_max_preys):
             builder.add_circle(
@@ -283,6 +274,15 @@ class CircleForagingWithPredator(CircleForaging):
                 elasticity=0.4,
                 density=0.1,
                 color=AGENT_COLOR,
+            )
+        # Predators
+        for _ in range(self._n_max_predators):
+            builder.add_circle(
+                radius=self._predator_radius,
+                friction=0.2,
+                elasticity=0.4,
+                density=0.1,
+                color=PREDATOR_COLOR,
             )
         # Foods
         for _ in range(self._n_max_foods):
