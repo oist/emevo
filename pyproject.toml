@@ -43,7 +43,7 @@ analysis = [
 # Meta feature to install CUDA12 jax
 cuda12 = ["jax[cuda12]"]
 widget = ["PySide6 == 6.6.0"]
-video = ["imageio-ffmpeg >= 0.4"]
+video = ["pyav >= 14.0"]
 
 [project.readme]
 file = "README.md"

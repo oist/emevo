@@ -49,28 +49,29 @@ class SaveVideoWrapper(VisWrapper[STATE]):
     ) -> None:
         self.unwrapped = visualizer
         self._path = filename
-        self._writer = None
-        self._iio_kwargs = kwargs
+        self._container = None
+        self._stream = None
+        self._pyav_kwargs = kwargs
         self._count = 0
 
     def close(self) -> None:
         self.unwrapped.close()
-        if self._writer is not None:
-            self._writer.close()
+        if self._container is not None:
+            self._container.close()
 
     def show(self) -> None:
+        import pyav
+
         self._count += 1
         image = self.unwrapped.get_image()
-        if self._writer is None:
-            h, w = image.shape[:2]
-            from imageio_ffmpeg import write_frames
-
-            self._writer = write_frames(
-                self._path,
-                (w, h),
-                pix_fmt_in="rgb24" if image.shape[2] == 3 else "rgba",
-                **self._iio_kwargs,
-            )
-            self._writer.send(None)  # seed the generator
-        self._writer.send(image.tobytes())  # seed the generator
+        if self._container is None:
+            codec = self._pyav_kwargs.get("codec", "h264")
+            rate = self._pyav_kwargs.get("rate", 23.976)
+            self._container = pyav.open(self._path, mode="w")
+            self._stream = self._container.add_stream(codec, rate)
+            self._stream.bit_rate = 8000000
+        # Encode frame
+        frame = pyav.VideoFrame.from_ndarray(image, format="rgba24")
+        packet = self._stream.encode(frame)
+        self._container.mux(packet)
         self.unwrapped.show()
