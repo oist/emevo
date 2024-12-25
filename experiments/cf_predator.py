@@ -342,11 +342,17 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
+            energy = env_state.status.energy
             is_active = env_state.unique_id.is_active()
-            popl = int(jnp.sum(is_active))
-            avg_e = float(jnp.mean(env_state.status.energy[is_active]))
-            if popl > 0:
-                print(f"Population: {popl} Avg. Energy: {avg_e}")
+            n_max_prey = env._n_max_preys  # type: ignore
+            prey_popl = int(jnp.sum(is_active[:n_max_prey]))
+            predator_popl = int(jnp.sum(is_active[n_max_prey:]))
+            if prey_popl > 0:
+                avg_e = float(jnp.mean(energy[is_active.at[n_max_prey:].set(False)]))
+                print(f"Prey Popl: {prey_popl} Avg. Energy: {avg_e}")
+            if predator_popl > 0:
+                avg_e = float(jnp.mean(energy[is_active.at[:n_max_prey].set(False)]))
+                print(f"Predator Popl: {predator_popl} Avg. Energy: {avg_e}")
 
         # Extinct?
         n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
@@ -435,10 +441,10 @@ def evolve(
     act_reward_coef: float = 0.01,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
-    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
+    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20241225-d10.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
     predator_bdconfig_path: Path = PROJECT_ROOT
-    / "config/bd/20240916-sel-a4e7-d15.toml",
+    / "config/bd/20241225-predator-d40.toml",
     min_age_for_save: int = 0,
     save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
