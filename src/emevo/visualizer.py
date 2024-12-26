@@ -60,18 +60,18 @@ class SaveVideoWrapper(VisWrapper[STATE]):
             self._container.close()
 
     def show(self) -> None:
-        import pyav
+        import av
 
+        self.unwrapped.show()
         self._count += 1
         image = self.unwrapped.get_image()
         if self._container is None:
-            codec = self._pyav_kwargs.get("codec", "h264")
-            rate = self._pyav_kwargs.get("rate", 23.976)
-            self._container = pyav.open(self._path, mode="w")
-            self._stream = self._container.add_stream(codec, rate)
+            codec = self._pyav_kwargs.pop("codec", "h264")
+            self._container = av.open(self._path, mode="w")
+            self._stream = self._container.add_stream(codec, **self._pyav_kwargs)
             self._stream.bit_rate = 8000000
         # Encode frame
-        frame = pyav.VideoFrame.from_ndarray(image, format="rgba24")
+        frame = av.VideoFrame.from_ndarray(image[:, :, :3], format="rgb24")
         packet = self._stream.encode(frame)
         self._container.mux(packet)
         self.unwrapped.show()

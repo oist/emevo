@@ -497,7 +497,7 @@ def replay(
         backend=backend,
     )
     if videopath is not None:
-        visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
+        visualizer = SaveVideoWrapper(visualizer, videopath)
     for i in range(start, end_index):
         ph = phys_state.set_by_index(i, env_state.physics)
         # Disable rendering agents
