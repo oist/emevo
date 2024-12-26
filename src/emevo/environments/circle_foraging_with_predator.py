@@ -293,7 +293,9 @@ class CircleForagingWithPredator(CircleForaging):
                 color=FOOD_COLOR,
                 is_static=True,
             )
-        return builder.build()
+        space = builder.build()
+        space.no_collision_constraints[("circle", "static_circle")] = 0, 2
+        return space
 
     def step(  # type: ignore
         self,
@@ -667,6 +669,11 @@ class CircleForagingWithPredator(CircleForaging):
             "circle.p.xy",
             jnp.ones_like(stated.circle.p.xy) * NOWHERE,
         )
+        # Preys have label 0, and predators have label1
+        stated = stated.nested_replace(
+            "circle.label",
+            stated.circle.label.at[self._n_max_preys :].set(1),
+        )
         stated = stated.nested_replace(
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
@@ -738,12 +745,14 @@ class CircleForagingWithPredator(CircleForaging):
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, key in enumerate(jax.random.split(key, self._n_food_sources)):
+        foodkeys = jax.random.split(key, self._n_food_sources)
+        del key
+        for i, foodkey in enumerate(foodkeys):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],
                 n_max_placement=n_initial,
-                key=key,
+                key=foodkey,
                 n_steps=i,
                 stated=stated,
             )

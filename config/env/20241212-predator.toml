@@ -1,6 +1,6 @@
 n_initial_agents = 100
-n_max_agents = 260
-n_max_foods = 120
+n_max_agents = 220
+n_max_foods = 160
 food_num_fn = ["linear", 40, 0.4, 120]
 food_loc_fn = "uniform"
 agent_loc_fn = "uniform"
@@ -29,7 +29,7 @@ n_position_iter = 2
 n_physics_iter = 5
 max_place_attempts = 10
 n_max_food_regen = 10
-n_max_predators = 40
+n_max_predators = 20
 predator_radius = 14.0
 predator_sensor_length = 200
 predator_init_energy = 40.0
