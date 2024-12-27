@@ -294,7 +294,12 @@ class CircleForagingWithPredator(CircleForaging):
                 is_static=True,
             )
         space = builder.build()
-        space.no_collision_constraints[("circle", "static_circle")] = 0, 2
+        space.set_ignore_flags_by_indices(
+            "circle",
+            "static_circle",
+            slice(self._n_max_preys, self.n_max_agents),
+            slice(0, 0),
+        )
         return space
 
     def step(  # type: ignore

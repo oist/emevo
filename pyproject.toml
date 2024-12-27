@@ -98,5 +98,5 @@ dev-dependencies = [
 ]
 
 # For debug
-# [tool.uv.sources]
-# phyjax2d = { path = "../phyjax2d", editable = true }
+[tool.uv.sources]
+phyjax2d = { path = "../phyjax2d", editable = true }
