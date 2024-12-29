@@ -28,7 +28,7 @@ dependencies = [
     "pyarrow >= 9.0",
     "pyserde[toml] >= 0.14",
     "optax >= 0.1",
-    "phyjax2d >= 0.1.4",
+    "phyjax2d >= 0.1.5",
 ]
 dynamic = ["version"]
 
@@ -98,5 +98,5 @@ dev-dependencies = [
 ]
 
 # For debug
-[tool.uv.sources]
-phyjax2d = { path = "../phyjax2d", editable = true }
+# [tool.uv.sources]
+# phyjax2d = { path = "../phyjax2d", editable = true }
