@@ -33,5 +33,5 @@ n_max_predators = 20
 predator_radius = 14.0
 predator_sensor_length = 200
 predator_init_energy = 40.0
-predator_force_ec = 2e-5
-predator_basic_ec = 1e-5
+predator_force_ec = 1e-5
+predator_basic_ec = 5e-4
