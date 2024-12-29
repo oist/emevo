@@ -251,6 +251,7 @@ def run_evolution(
     save_interval: int,
     debug_vis: bool,
     debug_vis_scale: float,
+    debug_print: bool,
     headless: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -342,6 +343,7 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
+        if debug_print:
             energy = env_state.status.energy
             is_active = env_state.unique_id.is_active()
             n_max_prey = env._n_max_preys  # type: ignore
@@ -459,6 +461,7 @@ def evolve(
     savestate_interval: int = 1000,
     debug_vis: bool = False,
     debug_vis_scale: float = 2.0,
+    debug_print: bool = False,
     headless: bool = False,
     force_gpu: bool = True,
 ) -> None:
@@ -536,6 +539,7 @@ def evolve(
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
         headless=headless,
+        debug_print = debug_vis or debug_print,
     )
 
 
