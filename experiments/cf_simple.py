@@ -76,8 +76,7 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        energy = state_t.status.energy
-        rewards = reward_fn(timestep.info["n_ate_food"], actions, energy).reshape(-1, 1)
+        rewards = reward_fn(timestep.info["n_ate_food"], actions).reshape(-1, 1)
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
