@@ -443,10 +443,10 @@ def evolve(
     act_reward_coef: float = 0.01,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
-    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20241225-d10.toml",
+    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
     predator_bdconfig_path: Path = PROJECT_ROOT
-    / "config/bd/20241225-predator-d40.toml",
+    / "config/bd/20241229-predator-d60.toml",
     min_age_for_save: int = 0,
     save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
