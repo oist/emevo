@@ -208,6 +208,9 @@ def run_evolution(
     logger: Logger,
     save_interval: int,
     debug_vis: bool,
+    debug_vis_scale: float,
+    debug_print: bool,
+    headless: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -254,7 +257,11 @@ def run_evolution(
     obs = timestep.obs
 
     if debug_vis:
-        visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
+        visualizer = env.visualizer(
+            env_state,
+            figsize=(xmax * debug_vis_scale, ymax * debug_vis_scale),
+            backend="headless" if headless else "pyglet",
+        )
     else:
         visualizer = None
 
@@ -291,6 +298,7 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
+        if debug_print:
             is_active = env_state.unique_id.is_active()
             popl = int(jnp.sum(is_active))
             avg_e = float(jnp.mean(env_state.status.energy[is_active]))
@@ -396,6 +404,9 @@ def evolve(
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
+    debug_vis_scale: float = 2.0,
+    debug_print: bool = False,
+    headless: bool = False,
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -463,6 +474,9 @@ def evolve(
         logger=logger,
         save_interval=save_interval,
         debug_vis=debug_vis,
+        debug_vis_scale=debug_vis_scale,
+        headless=headless,
+        debug_print = debug_vis or debug_print,
     )
 
 
