@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import abc
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 import chex
 import equinox as eqx
@@ -18,14 +17,12 @@ from emevo import genetic_ops as gops
 Self = Any
 
 
-class RewardFn(abc.ABC, eqx.Module):
-    @abc.abstractmethod
+class RewardFn(Protocol):
     def serialise(self) -> dict[str, float | NDArray]:
-        pass
+        ...
 
-    @abc.abstractmethod
     def __call__(self, *args) -> jax.Array:
-        pass
+        ...
 
 
 RF = TypeVar("RF", bound=RewardFn)
@@ -46,7 +43,7 @@ def serialize_weight(w: jax.Array, keys: list[str]) -> dict[str, jax.Array]:
     return {key: slice_last(w, i) for i, key in enumerate(keys)}
 
 
-class LinearReward(RewardFn):
+class LinearReward(eqx.Module):
     weight: jax.Array
     extractor: Callable[..., jax.Array]
     serializer: Callable[[jax.Array], dict[str, jax.Array]]
@@ -74,7 +71,7 @@ class LinearReward(RewardFn):
         return jax.tree_util.tree_map(_item_or_np, self.serializer(self.weight))
 
 
-class SinhReward(RewardFn):
+class SinhReward(eqx.Module):
     weight: jax.Array
     extractor: Callable[..., jax.Array]
     serializer: Callable[[jax.Array], dict[str, jax.Array]]
@@ -105,7 +102,7 @@ class SinhReward(RewardFn):
         return jax.tree_util.tree_map(_item_or_np, self.serializer(self.weight))
 
 
-class ExponentialReward(RewardFn):
+class ExponentialReward(eqx.Module):
     weight: jax.Array
     scale: jax.Array
     extractor: Callable[..., jax.Array]
@@ -148,7 +145,7 @@ class BoundedExponentialReward(ExponentialReward):
         return jax.vmap(jnp.dot)(extracted, weight)
 
 
-class SigmoidReward(RewardFn):
+class SigmoidReward(eqx.Module):
     weight: jax.Array
     alpha: jax.Array
     extractor: Callable[..., tuple[jax.Array, jax.Array]]
@@ -196,7 +193,7 @@ class SigmoidReward_01(SigmoidReward):
         return jax.vmap(jnp.dot)(filtered, self.weight)
 
 
-class SigmoidExponentialReward(RewardFn):
+class SigmoidExponentialReward(eqx.Module):
     weight: jax.Array
     scale: jax.Array
     alpha: jax.Array
@@ -237,7 +234,7 @@ class SigmoidExponentialReward(RewardFn):
         )
 
 
-class DelayedSEReward(RewardFn):
+class DelayedSEReward(eqx.Module):
     weight: jax.Array
     scale: jax.Array
     delay: jax.Array
@@ -314,7 +311,7 @@ class OffsetDelayedSBEReward(DelayedSEReward):
         return jax.vmap(jnp.dot)(filtered, weight)
 
 
-class OffsetDelayedSinhReward(RewardFn):
+class OffsetDelayedSinhReward(eqx.Module):
     weight: jax.Array
     delay: jax.Array
     extractor: Callable[..., tuple[jax.Array, jax.Array]]
