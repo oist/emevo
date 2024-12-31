@@ -1,4 +1,4 @@
-n_initial_agents = 200
+n_initial_agents = 160
 n_max_agents = 240
 n_max_foods = 200
 food_num_fn = ["linear", 40, 0.4, 200]

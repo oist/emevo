@@ -45,6 +45,7 @@ from emevo.environments.env_utils import (
     CircleCoordinate,
     FoodNumState,
     LocatingState,
+    loc_gaussian,
     place,
 )
 
@@ -217,6 +218,64 @@ class CircleForagingWithPredator(CircleForaging):
                 shaped=self._physics.shaped,
             )
         )
+        if kwargs["newborn_loc"] == "uniform":
+
+            def place_newborn_uniform(
+                state: LocatingState,
+                stated: StateDict,
+                radius: float,
+                key: chex.PRNGKey,
+                _: jax.Array,
+            ) -> tuple[jax.Array, jax.Array]:
+                return place(
+                    n_trial=self._max_place_attempts,
+                    radius=radius,
+                    coordinate=self._coordinate,
+                    loc_fn=self._agent_loc_fn,
+                    shaped=self._physics.shaped,
+                    loc_state=state,
+                    key=key,
+                    n_steps=0,
+                    stated=stated,
+                )
+
+            self._place_newborn = jax.vmap(
+                place_newborn_uniform,
+                in_axes=(None, None, None, 0, None),
+            )
+
+        elif kwargs["newborn_loc"] == "neighbor":
+
+            def place_newborn_neighbor(
+                state: LocatingState,
+                stated: StateDict,
+                radius: float,
+                key: chex.PRNGKey,
+                agent_loc: jax.Array,
+            ) -> tuple[jax.Array, jax.Array]:
+                loc_fn = loc_gaussian(
+                    agent_loc,
+                    jnp.ones_like(agent_loc) * kwargs["neighbor_stddev"],
+                )
+
+                return place(
+                    n_trial=self._max_place_attempts,
+                    radius=radius,
+                    coordinate=self._coordinate,
+                    loc_fn=loc_fn,
+                    shaped=self._physics.shaped,
+                    loc_state=state,
+                    key=key,
+                    n_steps=0,
+                    stated=stated,
+                )
+
+            self._place_newborn = jax.vmap(
+                place_newborn_neighbor,
+                in_axes=(None, None, None, 0, 0),
+            )
+        else:
+            raise ValueError("Invalid newborn_loc")
 
     def _make_sensor_fn(self, observe_food_label: bool) -> _SensorFn:
         if observe_food_label:
@@ -551,6 +610,7 @@ class CircleForagingWithPredator(CircleForaging):
         # Place prey
         prey_pos, prey_is_replaced, prey_parent_idx, prey_replaced_idx = self._place(
             N,
+            self._agent_radius,
             state,
             prey_key,
             is_parent[: self._n_max_preys],
@@ -564,6 +624,7 @@ class CircleForagingWithPredator(CircleForaging):
             predator_replaced_idx,
         ) = self._place(
             M,
+            self._predator_radius,
             state,
             predator_key,
             is_parent[self._n_max_preys :],
@@ -625,6 +686,7 @@ class CircleForagingWithPredator(CircleForaging):
     def _place(
         self,
         n: int,
+        radius: float,
         state: CFPredatorState,
         key: chex.PRNGKey,
         is_parent: jax.Array,
@@ -634,6 +696,7 @@ class CircleForagingWithPredator(CircleForaging):
         new_xy, ok = self._place_newborn(
             state.agent_loc,
             state.physics,
+            radius,
             keys[1:],
             circle.p.xy,
         )
@@ -685,8 +748,8 @@ class CircleForagingWithPredator(CircleForaging):
         )
 
         key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
-        n_preys = 0
         agentloc_state = self._initial_agentloc_state
+        is_active_preys = []
         for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,
@@ -700,14 +763,15 @@ class CircleForagingWithPredator(CircleForaging):
                     stated.circle.p.xy.at[i].set(xy),
                 )
                 agentloc_state = agentloc_state.increment()
-                n_preys += 1
+            is_active_preys.append(ok)
 
+        n_preys = sum(is_active_preys)
         if n_preys < self._n_initial_agents:
             diff = self._n_initial_agents - n_preys
             warnings.warn(f"Failed to place {diff} preys!", stacklevel=1)
 
-        n_predators = 0
         key, *predator_keys = jax.random.split(key, self._n_initial_predators + 1)
+        is_active_predators = []
         for i, key in enumerate(predator_keys):
             xy, ok = self._init_predator(
                 loc_state=agentloc_state,
@@ -722,8 +786,9 @@ class CircleForagingWithPredator(CircleForaging):
                     stated.circle.p.xy.at[index].set(xy),
                 )
                 agentloc_state = agentloc_state.increment()
-                n_predators += 1
+            is_active_predators.append(ok)
 
+        n_predators = sum(is_active_predators)
         if n_predators < self._n_initial_predators:
             diff = self._n_initial_predators - n_predators
             warnings.warn(f"Failed to place {diff} predators", stacklevel=1)
@@ -731,10 +796,13 @@ class CircleForagingWithPredator(CircleForaging):
         # Set is_active
         is_active_c = jnp.concatenate(
             (
-                jnp.ones(n_preys, dtype=bool),
-                jnp.zeros(self._n_max_preys - n_preys, dtype=bool),
-                jnp.ones(n_predators, dtype=bool),
-                jnp.zeros(self._n_max_predators - n_predators, dtype=bool),
+                jnp.array(is_active_preys),
+                jnp.zeros(self._n_max_preys - self._n_initial_agents, dtype=bool),
+                jnp.array(is_active_predators),
+                jnp.zeros(
+                    self._n_max_predators - self._n_initial_predators,
+                    dtype=bool,
+                ),
             )
         )
         # Fill 0 for food

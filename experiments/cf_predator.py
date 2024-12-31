@@ -91,8 +91,7 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        energy = state_t.status.energy
-        rewards = reward_fn(timestep.info["n_ate_food"], actions, energy).reshape(-1, 1)
+        rewards = reward_fn(timestep.info["n_ate_food"], actions).reshape(-1, 1)
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -343,6 +342,7 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
+
         if debug_print:
             energy = env_state.status.energy
             is_active = env_state.unique_id.is_active()
@@ -353,7 +353,8 @@ def run_evolution(
                 avg_e = float(jnp.mean(energy[is_active.at[n_max_prey:].set(False)]))
                 print(f"Prey Popl: {prey_popl} Avg. Energy: {avg_e}")
             if predator_popl > 0:
-                avg_e = float(jnp.mean(energy[is_active.at[:n_max_prey].set(False)]))
+                is_active_predators = is_active.at[:n_max_prey].set(False)
+                avg_e = float(jnp.mean(energy[is_active_predators]))
                 print(f"Predator Popl: {predator_popl} Avg. Energy: {avg_e}")
 
         # Extinct?

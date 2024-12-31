@@ -1048,6 +1048,7 @@ class CircleForaging(Env):
         key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
         n_agents = 0
         agentloc_state = self._initial_agentloc_state
+        is_active = []
         for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,
@@ -1062,6 +1063,7 @@ class CircleForaging(Env):
                 )
                 agentloc_state = agentloc_state.increment()
                 n_agents += 1
+            is_active.append(ok)
 
         if n_agents < self._n_initial_agents:
             diff = self._n_initial_agents - n_agents
@@ -1070,7 +1072,7 @@ class CircleForaging(Env):
         # Set is_active
         is_active_c = jnp.concatenate(
             (
-                jnp.ones(self._n_initial_agents, dtype=bool),
+                jnp.array(is_active),
                 jnp.zeros(self.n_max_agents - n_agents, dtype=bool),
             )
         )
