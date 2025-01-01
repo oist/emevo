@@ -208,6 +208,7 @@ class CircleForagingWithPredator(CircleForaging):
             .at[self._n_max_preys :]
             .set(predator_act_ratio)
         )
+        shaped_nosc = replace(self._physics.shaped, static_circle=None)
         self._init_predator = jax.jit(
             functools.partial(
                 place,
@@ -215,7 +216,7 @@ class CircleForagingWithPredator(CircleForaging):
                 radius=self._predator_radius,
                 coordinate=self._coordinate,
                 loc_fn=self._agent_loc_fn,
-                shaped=self._physics.shaped,
+                shaped=shaped_nosc,
             )
         )
         if kwargs["newborn_loc"] == "uniform":
@@ -223,16 +224,16 @@ class CircleForagingWithPredator(CircleForaging):
             def place_newborn_uniform(
                 state: LocatingState,
                 stated: StateDict,
-                radius: float,
+                is_prey: bool,
                 key: chex.PRNGKey,
                 _: jax.Array,
             ) -> tuple[jax.Array, jax.Array]:
                 return place(
                     n_trial=self._max_place_attempts,
-                    radius=radius,
+                    radius=self._agent_radius if is_prey else self._predator_radius,
                     coordinate=self._coordinate,
                     loc_fn=self._agent_loc_fn,
-                    shaped=self._physics.shaped,
+                    shaped=self._physics.shaped if is_prey else shaped_nosc,
                     loc_state=state,
                     key=key,
                     n_steps=0,
@@ -249,7 +250,7 @@ class CircleForagingWithPredator(CircleForaging):
             def place_newborn_neighbor(
                 state: LocatingState,
                 stated: StateDict,
-                radius: float,
+                is_prey: bool,
                 key: chex.PRNGKey,
                 agent_loc: jax.Array,
             ) -> tuple[jax.Array, jax.Array]:
@@ -260,10 +261,10 @@ class CircleForagingWithPredator(CircleForaging):
 
                 return place(
                     n_trial=self._max_place_attempts,
-                    radius=radius,
+                    radius=self._agent_radius if is_prey else self._predator_radius,
                     coordinate=self._coordinate,
                     loc_fn=loc_fn,
-                    shaped=self._physics.shaped,
+                    shaped=self._physics.shaped if is_prey else shaped_nosc,
                     loc_state=state,
                     key=key,
                     n_steps=0,
@@ -610,7 +611,7 @@ class CircleForagingWithPredator(CircleForaging):
         # Place prey
         prey_pos, prey_is_replaced, prey_parent_idx, prey_replaced_idx = self._place(
             N,
-            self._agent_radius,
+            True,
             state,
             prey_key,
             is_parent[: self._n_max_preys],
@@ -624,7 +625,7 @@ class CircleForagingWithPredator(CircleForaging):
             predator_replaced_idx,
         ) = self._place(
             M,
-            self._predator_radius,
+            False,
             state,
             predator_key,
             is_parent[self._n_max_preys :],
@@ -686,7 +687,7 @@ class CircleForagingWithPredator(CircleForaging):
     def _place(
         self,
         n: int,
-        radius: float,
+        is_prey: bool,
         state: CFPredatorState,
         key: chex.PRNGKey,
         is_parent: jax.Array,
@@ -696,7 +697,7 @@ class CircleForagingWithPredator(CircleForaging):
         new_xy, ok = self._place_newborn(
             state.agent_loc,
             state.physics,
-            radius,
+            is_prey,
             keys[1:],
             circle.p.xy,
         )
