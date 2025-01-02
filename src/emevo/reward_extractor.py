@@ -26,9 +26,10 @@ class ActFoodExtractor:
 
 
 @dataclasses.dataclass
-class SenseActFoodExtractor:
+class SensorActFoodExtractor:
     act_space: BoxSpace
     act_coef: float
+    sensor_indices: tuple | slice
     _max_norm: jax.Array = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
@@ -45,5 +46,11 @@ class SenseActFoodExtractor:
         action: jax.Array,
         sensor_obs: jax.Array,
     ) -> jax.Array:
+        # E.g., sensor with predator: (N_agents, N_sensors, N_obj)
+        used_sensor_obs = sensor_obs[:, :, self.sensor_indices]
+        avg_sensor_obs = jnp.mean(used_sensor_obs, axis=1)  # (N_agents, N_obj)
         act_input = self.act_coef * self.normalize_action(action)
-        return jnp.concatenate((ate_food.astype(jnp.float32), act_input), axis=1)
+        return jnp.concatenate(
+            (ate_food.astype(jnp.float32), act_input, avg_sensor_obs),
+            axis=1,
+        )

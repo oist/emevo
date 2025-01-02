@@ -8,6 +8,7 @@ from typing import cast
 import chex
 import equinox as eqx
 import jax
+import enum
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -35,7 +36,7 @@ from emevo.exp_utils import (
     SavedProfile,
     is_cuda_ready,
 )
-from emevo.reward_extractor import ActFoodExtractor as RewardExtractor
+from emevo.reward_extractor import SensorActFoodExtractor as RewardExtractor
 from emevo.rl import ppo_normal as ppo
 from emevo.visualizer import SaveVideoWrapper
 
@@ -431,6 +432,20 @@ def run_evolution(
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
+class SensorRewardMode(str, enum.Enum):
+    AGENT = "agent"
+    AGENT_FOOD = "agent-food"
+
+    def indices(self) -> slice:
+        if self is self.AGENT:
+            return slice(0, 2)
+        elif self is self.AGENT_FOOD:
+            return slice(0, 3)
+        else:
+            raise AssertionError("Unreachable")
+
+
+
 @app.command()
 def evolve(
     seed: int = 1,
@@ -459,6 +474,7 @@ def evolve(
     gops_params_override: str = "",
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
+    sensor_reward_mode: SensorRewardMode = SensorRewardMode.AGENT,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
