@@ -34,4 +34,4 @@ predator_radius = 14.0
 predator_sensor_length = 200
 predator_init_energy = 240.0
 predator_force_ec = 1e-5
-predator_basic_ec = 5e-4
+predator_basic_ec = 1e-3

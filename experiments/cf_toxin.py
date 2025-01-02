@@ -325,7 +325,6 @@ def run_evolution(
             n_optim_epochs,
             entropy_weight,
         )
-        print(jnp.sum(log.additional_fields["n_got_toxin"]))
 
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
