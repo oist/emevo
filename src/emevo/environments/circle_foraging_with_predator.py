@@ -190,6 +190,7 @@ class CircleForagingWithPredator(CircleForaging):
         predator_init_energy: float = 20.0,
         predator_force_ec: float = 0.01 / 40.0,
         predator_basic_ec: float = 0.0,
+        predator_digestive_rate: float = 0.9,
         **kwargs,
     ) -> None:
         self._n_max_predators = n_max_predators
@@ -202,6 +203,7 @@ class CircleForagingWithPredator(CircleForaging):
         self._predator_init_energy = predator_init_energy
         self._predator_force_ec = predator_force_ec
         self._predator_basic_ec = predator_basic_ec
+        self._predator_digestive_rate = predator_digestive_rate
         predator_act_ratio = (predator_radius**2) / (self._agent_radius**2)
         self._act_ratio = (
             jnp.ones((self.n_max_agents, 1))
@@ -406,7 +408,7 @@ class CircleForagingWithPredator(CircleForaging):
             + self._predator_basic_ec
         )
         prey_energies = state.status.energy[: self._n_max_preys]
-        predator_energy_gain = jnp.matmul(
+        predator_energy_gain = self._predator_digestive_rate * jnp.matmul(
             tactile_info.eaten_preys_per_predator,
             prey_energies,
         )

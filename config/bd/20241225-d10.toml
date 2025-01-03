@@ -5,8 +5,8 @@ hazard_fn = "emevo.birth_and_death.SlopeELGHazard"
 scale = 0.01
 alpha = 0.02
 slope = 0.2
-alpha_age = 4e-7
-beta = 4e-6
+alpha_age = 2e-7
+beta = 2e-6
 
 [birth_params]
 scale = 1e-3

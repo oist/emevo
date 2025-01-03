@@ -53,6 +53,7 @@ class CfConfigWithPredator(CfConfig):
     predator_init_energy: float = 20.0
     predator_force_ec: float = 0.01 / 40.0
     predator_basic_ec: float = 0.0
+    predator_digestive_rate: float = 0.9
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
