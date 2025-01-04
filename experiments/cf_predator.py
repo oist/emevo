@@ -1,9 +1,10 @@
 """Asexual reward evolution with Circle Foraging"""
 
 import dataclasses
+import enum
 import json
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast
 
 import chex
 import equinox as eqx
@@ -57,13 +58,6 @@ class CfConfigWithPredator(CfConfig):
     predator_digestive_rate: float = 0.9
 
 
-def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
-    wd = w.shape[0]
-    rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(wd - 1)}
-    rd["action"] = rfn.slice_last(w, wd - 1)
-    return rd
-
-
 def exec_rollout(
     state: State,
     initial_obs: Obs,
@@ -93,7 +87,11 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        rewards = reward_fn(timestep.info["n_ate_food"], actions).reshape(-1, 1)
+        rewards = reward_fn(
+            timestep.info["n_ate_food"],
+            actions,
+            obs_t1.sensor,
+        ).reshape(-1, 1)
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -228,6 +226,43 @@ def epoch(
     return env_state, obs, log, foodlog, phys_state, opt_state, pponet
 
 
+class SensorRewardMode(str, enum.Enum):
+    AGENT = "agent"
+    AGENT_FOOD = "agent-food"
+
+    def indices(self) -> slice:
+        if self is self.AGENT:
+            return slice(0, 2)
+        elif self is self.AGENT_FOOD:
+            return slice(0, 3)
+        else:
+            raise AssertionError("Unreachable")
+
+    def n_rewards(self) -> int:
+        if self is self.AGENT:
+            return 2
+        elif self is self.AGENT_FOOD:
+            return 3
+        else:
+            raise AssertionError("Unreachable")
+
+    def serialize_fn(self) -> Callable[[jax.Array], dict[str, jax.Array]]:
+        n_sensor_rewards = self.n_rewards()
+        sensor_names = ["prey_sensor", "predator_sensor", "food_sensor"]
+
+        # food, act, sensors
+        def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
+            wd = w.shape[0]
+            n_food_rewards = wd - n_sensor_rewards - 1
+            rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(n_food_rewards)}
+            rd["action"] = rfn.slice_last(w, n_food_rewards)
+            for i, sensor_name in enumerate(sensor_names):
+                rd[sensor_name] = rfn.slice_last(w, i + n_food_rewards + 1)
+            return rd
+
+        return serialize_weight
+
+
 def run_evolution(
     *,
     key: jax.Array,
@@ -311,7 +346,7 @@ def run_evolution(
     # Initial agents
     for i, uid in enumerate(map(int, env_state.unique_id.unique_id)):
         if uid > 0:
-            logger.reward_fn_dict[uid] = get_slice(reward_fn, i)
+            logger.reward_fn_dict[uid] = get_slice(reward_fn, i)  # type: ignore
             logger.profile_dict[uid] = SavedProfile(0, 0, uid)
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
@@ -463,7 +498,7 @@ def evolve(
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
     predator_bdconfig_path: Path = PROJECT_ROOT
-    / "config/bd/20241229-predator-d60.toml",
+    / "config/bd/20241229-predator-d100.toml",
     min_age_for_save: int = 0,
     save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
@@ -514,15 +549,16 @@ def evolve(
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
+        sensor_indices=sensor_reward_mode.indices(),
     )
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=1 + cfconfig.n_food_sources,
+        n_weights=1 + cfconfig.n_food_sources + sensor_reward_mode.n_rewards(),
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
-        serializer=serialize_weight,
+        serializer=sensor_reward_mode.serialize_fn(),
         **gopsconfig.init_kwargs,
     )
 
@@ -557,7 +593,7 @@ def evolve(
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
         headless=headless,
-        debug_print = debug_vis or debug_print,
+        debug_print=debug_vis or debug_print,
     )
 
 
