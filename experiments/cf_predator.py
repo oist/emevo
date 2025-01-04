@@ -467,20 +467,6 @@ def run_evolution(
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
-class SensorRewardMode(str, enum.Enum):
-    AGENT = "agent"
-    AGENT_FOOD = "agent-food"
-
-    def indices(self) -> slice:
-        if self is self.AGENT:
-            return slice(0, 2)
-        elif self is self.AGENT_FOOD:
-            return slice(0, 3)
-        else:
-            raise AssertionError("Unreachable")
-
-
-
 @app.command()
 def evolve(
     seed: int = 1,
