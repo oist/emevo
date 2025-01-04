@@ -191,6 +191,7 @@ class CircleForagingWithPredator(CircleForaging):
         predator_force_ec: float = 0.01 / 40.0,
         predator_basic_ec: float = 0.0,
         predator_digestive_rate: float = 0.9,
+        predator_mouth_range: Literal["same", "narrow"] = "same",
         **kwargs,
     ) -> None:
         self._n_max_predators = n_max_predators
@@ -198,8 +199,20 @@ class CircleForagingWithPredator(CircleForaging):
         self._predator_radius = predator_radius
         self._predator_sensor_length = predator_sensor_length
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
-        assert self._n_max_preys > 0
+        assert self._n_max_preys > 0, f"Too many predators: {n_max_predators}"
+        assert (
+            n_max_predators >= n_initial_predators
+        ), f"Too many initial predators: {n_initial_predators}"
         super().__init__(**kwargs, _n_additional_objs=1)
+
+        if predator_mouth_range == "same":
+            self._predator_foraging_indices = self._foraging_indices
+        elif predator_mouth_range == "narrow":
+            self._predator_foraging_indices = 0, self._n_tactile_bins - 1
+        else:
+            raise ValueError(
+                f"Unsupported predator mouth range: {predator_mouth_range}"
+            )
         self._predator_init_energy = predator_init_energy
         self._predator_force_ec = predator_force_ec
         self._predator_basic_ec = predator_basic_ec

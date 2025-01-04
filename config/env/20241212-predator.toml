@@ -37,3 +37,7 @@ predator_init_energy = 240.0
 predator_force_ec = 2e-5
 predator_basic_ec = 1e-3
 predator_digestive_rate = 0.6
+# Mouth range
+n_tactile_bins = 12
+mouth_range = "full"
+predator_mouth_range = "narrow"
