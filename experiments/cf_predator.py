@@ -9,7 +9,6 @@ from typing import Callable, cast
 import chex
 import equinox as eqx
 import jax
-import enum
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -248,7 +247,13 @@ class SensorRewardMode(str, enum.Enum):
 
     def serialize_fn(self) -> Callable[[jax.Array], dict[str, jax.Array]]:
         n_sensor_rewards = self.n_rewards()
-        sensor_names = ["prey_sensor", "predator_sensor", "food_sensor"]
+
+        if self is self.AGENT:
+            sensor_names = ["prey_sensor", "predator_sensor"]
+        elif self is self.AGENT_FOOD:
+            sensor_names = ["prey_sensor", "predator_sensor", "food_sensor"]
+        else:
+            raise AssertionError("Unreachable")
 
         # food, act, sensors
         def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
