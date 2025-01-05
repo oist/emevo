@@ -113,6 +113,8 @@ class CFState(Generic[S]):
 
 class Obstacle(str, enum.Enum):
     NONE = "none"
+    CENTER = "center"
+    ONE_FOURTH = "one-fourth"
     CENTER_HALF = "center-half"
     CENTER_TWO_THIRDS = "center-two-thirds"
 
@@ -124,6 +126,11 @@ class Obstacle(str, enum.Enum):
         # xmin, xmax, ymin, ymax
         if self == Obstacle.NONE:
             return []
+        # Vertical line that divides the room into two
+        elif self == Obstacle.CENTER:
+            return [(Vec2d(width / 2, 0.0), Vec2d(width / 2, height))]
+        elif self == Obstacle.ONE_FOURTH:
+            return [(Vec2d(width / 4, 0.0), Vec2d(width / 4, height))]
         elif self == Obstacle.CENTER_HALF:
             return [(Vec2d(width / 2, height / 2), Vec2d(width / 2, height))]
         elif self == Obstacle.CENTER_TWO_THIRDS:
@@ -162,7 +169,7 @@ def _get_num_or_loc_fn(
         raise ValueError(f"Invalid value in _get_num_or_loc_fn {arg}")
 
 
-def _make_physics(
+def _make_physics_impl(
     dt: float,
     coordinate: CircleCoordinate | SquareCoordinate,
     linear_damping: float,
@@ -1187,7 +1194,7 @@ class CircleForaging(Env):
         n_position_iter: int,
         obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
     ) -> Physics:
-        return _make_physics(
+        return _make_physics_impl(
             dt=dt,
             coordinate=self._coordinate,
             linear_damping=linear_damping,

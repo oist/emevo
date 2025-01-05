@@ -4,7 +4,7 @@ import functools
 import warnings
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import chex
 import jax
@@ -45,6 +45,7 @@ from emevo.environments.env_utils import (
     CircleCoordinate,
     FoodNumState,
     LocatingState,
+    SquareCoordinate,
     loc_gaussian,
     place,
 )
@@ -192,12 +193,15 @@ class CircleForagingWithPredator(CircleForaging):
         predator_basic_ec: float = 0.0,
         predator_digestive_rate: float = 0.9,
         predator_mouth_range: Literal["same", "narrow"] = "same",
+        # Predators are limited to the right space
+        predator_space_limit: bool = False,
         **kwargs,
     ) -> None:
         self._n_max_predators = n_max_predators
         self._n_initial_predators = n_initial_predators
         self._predator_radius = predator_radius
         self._predator_sensor_length = predator_sensor_length
+        self._predator_space_limit = predator_space_limit
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
         assert self._n_max_preys > 0, f"Too many predators: {n_max_predators}"
         assert (
@@ -213,6 +217,23 @@ class CircleForagingWithPredator(CircleForaging):
             raise ValueError(
                 f"Unsupported predator mouth range: {predator_mouth_range}"
             )
+        if predator_space_limit:
+            obs = kwargs["obstacles"]
+            assert kwargs["env_shape"] == "square"
+            assert obs in ["center", "one-fourth"]
+            xlim = self._xlim[0]
+            if obs == "center":
+                rate = 0.5
+            elif obs == "one-fourth":
+                rate = 0.25
+            else:
+                assert False
+            length = self._xlim[1] - self._xlim[0]
+            xlim = self._xlim[0] + length * rate, self._xlim[1]
+            self._predator_coordinate = SquareCoordinate(xlim, self._ylim)
+        else:
+            self._predator_coordinate = self._coordinate
+
         self._predator_init_energy = predator_init_energy
         self._predator_force_ec = predator_force_ec
         self._predator_basic_ec = predator_basic_ec
@@ -229,7 +250,7 @@ class CircleForagingWithPredator(CircleForaging):
                 place,
                 n_trial=kwargs["max_place_attempts"],
                 radius=self._predator_radius,
-                coordinate=self._coordinate,
+                coordinate=self._predator_coordinate,
                 loc_fn=self._agent_loc_fn,
                 shaped=shaped_nosc,
             )
@@ -246,7 +267,9 @@ class CircleForagingWithPredator(CircleForaging):
                 return place(
                     n_trial=self._max_place_attempts,
                     radius=self._agent_radius if is_prey else self._predator_radius,
-                    coordinate=self._coordinate,
+                    coordinate=self._coordinate
+                    if is_prey
+                    else self._predator_coordinate,
                     loc_fn=self._agent_loc_fn,
                     shaped=self._physics.shaped if is_prey else shaped_nosc,
                     loc_state=state,
@@ -277,7 +300,9 @@ class CircleForagingWithPredator(CircleForaging):
                 return place(
                     n_trial=self._max_place_attempts,
                     radius=self._agent_radius if is_prey else self._predator_radius,
-                    coordinate=self._coordinate,
+                    coordinate=self._coordinate
+                    if is_prey
+                    else self._predator_coordinate,
                     loc_fn=loc_fn,
                     shaped=self._physics.shaped if is_prey else shaped_nosc,
                     loc_state=state,
@@ -328,6 +353,9 @@ class CircleForagingWithPredator(CircleForaging):
             max_velocity=MAX_VELOCITY,
             max_angular_velocity=MAX_ANGULAR_VELOCITY,
         )
+        # Set obstacles first
+        for obs in obstacles:
+            builder.add_segment(p1=obs[0], p2=obs[1], friction=0.2, elasticity=0.4)
         # Set walls
         if isinstance(self._coordinate, CircleCoordinate):
             walls = make_approx_circle(self._coordinate.center, self._coordinate.radius)
@@ -338,8 +366,6 @@ class CircleForagingWithPredator(CircleForaging):
                 rounded_offset=np.floor(self._food_radius * 2 / (np.sqrt(2) - 1.0)),
             )
         builder.add_chain_segments(chain_points=walls, friction=0.2, elasticity=0.4)
-        for obs in obstacles:
-            builder.add_segment(p1=obs[0], p2=obs[1], friction=0.2, elasticity=0.4)
 
         # Agents
         for _ in range(self._n_max_preys):
@@ -373,8 +399,15 @@ class CircleForagingWithPredator(CircleForaging):
             "circle",
             "static_circle",
             slice(self._n_max_preys, self.n_max_agents),
-            slice(0, 0),
+            slice(0, self._n_max_foods),
         )
+        if self._predator_space_limit:
+            space.set_ignore_flags_by_indices(
+                "segment",
+                "circle",
+                slice(0, 1),  # First segment
+                slice(0, self._n_max_preys),
+            )
         return space
 
     def step(  # type: ignore

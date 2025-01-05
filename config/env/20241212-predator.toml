@@ -4,8 +4,6 @@ n_max_foods = 240
 food_num_fn = ["linear", 40, 0.5, 240]
 food_loc_fn = "uniform"
 agent_loc_fn = "uniform"
-xlim = [0.0, 600.0]
-ylim = [0.0, 600.0]
 env_shape = "square"
 neighbor_stddev = 100.0
 n_agent_sensors = 24
@@ -41,3 +39,8 @@ predator_digestive_rate = 0.6
 n_tactile_bins = 12
 mouth_range = "full"
 predator_mouth_range = "narrow"
+# Limit space
+xlim = [0.0, 800.0]
+ylim = [0.0, 600.0]
+predator_space_limit = true
+obstacles = "one-fourth"
