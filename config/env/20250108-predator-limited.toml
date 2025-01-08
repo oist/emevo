@@ -1,8 +1,15 @@
 n_initial_agents = 160
-n_max_agents = 250
-n_max_foods = 300
-food_num_fn = ["linear", 40, 0.5, 300]
-food_loc_fn = "uniform"
+n_max_agents = 260
+n_max_foods = 360
+n_food_sources = 2
+food_num_fn = [
+    ["logistic", 40, 0.4, 180],
+    ["logistic", 40, 0.4, 180],
+]
+food_loc_fn = [
+   ["uniform", [0.0, 480.0, 0.0, 240.0]],
+   ["uniform", [480.0, 960.0, 240.0, 480.0]],
+]
 agent_loc_fn = "uniform"
 env_shape = "square"
 neighbor_stddev = 100.0
@@ -27,15 +34,21 @@ n_position_iter = 2
 n_physics_iter = 5
 max_place_attempts = 10
 n_max_food_regen = 10
-n_max_predators = 10
+# Predators
+n_max_predators = 20
 n_initial_predators = 5
 predator_radius = 14.0
 predator_sensor_length = 200
 predator_init_energy = 240.0
-predator_force_ec = 2e-5
-predator_basic_ec = 1e-3
+predator_force_ec = 1e-4
+predator_basic_ec = 4e-3
 predator_digestive_rate = 0.6
 # Mouth range
 n_tactile_bins = 12
 mouth_range = "full"
 predator_mouth_range = "narrow"
+# Limit space
+xlim = [0.0, 960.0]
+ylim = [0.0, 480.0]
+predator_space_limit = true
+obstacles = "center"

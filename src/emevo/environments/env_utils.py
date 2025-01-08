@@ -328,7 +328,15 @@ def loc_gaussian_mixture(
     return sample
 
 
-def loc_uniform(coordinate: Coordinate) -> LocatingFn:
+def loc_uniform(coordinate_or_list: Coordinate | list[float]) -> LocatingFn:
+    if isinstance(coordinate_or_list, (list, tuple)):
+        coordinate = SquareCoordinate(
+            tuple(coordinate_or_list[:2]),  # type: ignore
+            tuple(coordinate_or_list[2:]),  # type: ignore
+        )
+    else:
+        coordinate = coordinate_or_list
+
     def sample(key: chex.PRNGKey, _n_steps: int, _state: LocatingState) -> jax.Array:
         del _n_steps, _state
         return coordinate.uniform(key)

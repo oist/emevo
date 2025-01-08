@@ -543,10 +543,14 @@ def evolve(
         act_coef=act_reward_coef,
         sensor_indices=sensor_reward_mode.indices(),
     )
+    if cfconfig.observe_food_label:
+        n_food_obs = cfconfig.n_food_sources
+    else:
+        n_food_obs = 1
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=1 + cfconfig.n_food_sources + sensor_reward_mode.n_rewards(),
+        n_weights=1 + n_food_obs + sensor_reward_mode.n_rewards(),
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
