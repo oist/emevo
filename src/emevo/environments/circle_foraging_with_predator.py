@@ -220,16 +220,17 @@ class CircleForagingWithPredator(CircleForaging):
         if predator_space_limit:
             obs = kwargs["obstacles"]
             assert kwargs["env_shape"] == "square"
-            assert obs in ["center", "one-fourth"]
-            xlim = self._xlim[0]
+            assert obs in ["center", "one-fourth", "one-third"]
+            length = self._xlim[1] - self._xlim[0]
             if obs == "center":
-                rate = 0.5
+                xmin = self._xlim[0] + length * 0.5
             elif obs == "one-fourth":
-                rate = 0.25
+                xmin = self._xlim[0] + length * 0.25
+            elif obs == "one-third":
+                xmin = self._xlim[0] + length / 3.0
             else:
                 assert False
-            length = self._xlim[1] - self._xlim[0]
-            xlim = self._xlim[0] + length * rate, self._xlim[1]
+            xlim = xmin, self._xlim[1]
             self._predator_coordinate = SquareCoordinate(xlim, self._ylim)
         else:
             self._predator_coordinate = self._coordinate

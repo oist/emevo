@@ -115,6 +115,7 @@ class Obstacle(str, enum.Enum):
     NONE = "none"
     CENTER = "center"
     ONE_FOURTH = "one-fourth"
+    ONE_THIRD = "one-third"
     CENTER_HALF = "center-half"
     CENTER_TWO_THIRDS = "center-two-thirds"
 
@@ -131,6 +132,8 @@ class Obstacle(str, enum.Enum):
             return [(Vec2d(width / 2, 0.0), Vec2d(width / 2, height))]
         elif self == Obstacle.ONE_FOURTH:
             return [(Vec2d(width / 4, 0.0), Vec2d(width / 4, height))]
+        elif self == Obstacle.ONE_THIRD:
+            return [(Vec2d(width / 3, 0.0), Vec2d(width / 3, height))]
         elif self == Obstacle.CENTER_HALF:
             return [(Vec2d(width / 2, height / 2), Vec2d(width / 2, height))]
         elif self == Obstacle.CENTER_TWO_THIRDS:
