@@ -48,7 +48,7 @@ n_tactile_bins = 12
 mouth_range = "full"
 predator_mouth_range = "narrow"
 # Limit space
-xlim = [0.0, 960.0]
+xlim = [0.0, 720.0]
 ylim = [0.0, 480.0]
 predator_space_limit = true
-obstacles = "center"
+obstacles = "one-third"

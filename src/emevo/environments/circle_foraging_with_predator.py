@@ -179,6 +179,7 @@ class _TactileInfo(NamedTuple):
 @chex.dataclass
 class CFPredatorState(CFState[Status]):
     n_born_predators: jax.Array
+    predator_eat_timer: jax.Array
 
 
 class CircleForagingWithPredator(CircleForaging):
@@ -193,6 +194,7 @@ class CircleForagingWithPredator(CircleForaging):
         predator_basic_ec: float = 0.0,
         predator_digestive_rate: float = 0.9,
         predator_mouth_range: Literal["same", "narrow"] = "same",
+        predator_eat_interval: int = 10,
         # Predators are limited to the right space
         predator_space_limit: bool = False,
         **kwargs,
@@ -203,6 +205,7 @@ class CircleForagingWithPredator(CircleForaging):
         self._predator_sensor_length = predator_sensor_length
         self._predator_space_limit = predator_space_limit
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
+        self._predator_eat_interval = predator_eat_interval
         assert self._n_max_preys > 0, f"Too many predators: {n_max_predators}"
         assert (
             n_max_predators >= n_initial_predators
@@ -436,7 +439,11 @@ class CircleForagingWithPredator(CircleForaging):
         # Gather circle contacts
         contacts = jnp.max(nstep_contacts, axis=0)
         # Get tactile obs
-        tactile_info = self._collect_tactile(contacts, stated)
+        tactile_info = self._collect_tactile(
+            contacts,
+            stated,
+            state.predator_eat_timer <= 0,
+        )
         # Gather sensor obs
         sensor_obs = self._sensor_obs(stated=stated)  # type: ignore
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
@@ -507,6 +514,11 @@ class CircleForagingWithPredator(CircleForaging):
                 "eaten_preys": jnp.ravel(tactile_info.eaten_preys),
             },
         )
+        predator_eat_timer = jnp.where(
+            predator_energy_gain > 0,
+            self._predator_eat_interval,
+            state.predator_eat_timer - 1,
+        )
         state = CFPredatorState(
             physics=stated,
             solver=solver,
@@ -519,10 +531,16 @@ class CircleForagingWithPredator(CircleForaging):
             status=status.step(state.unique_id.is_active()),
             n_born_agents=state.n_born_agents,
             n_born_predators=state.n_born_predators,
+            predator_eat_timer=predator_eat_timer,
         )
         return state, timestep
 
-    def _collect_tactile(self, contacts: jax.Array, stated: StateDict) -> _TactileInfo:
+    def _collect_tactile(
+        self,
+        contacts: jax.Array,
+        stated: StateDict,
+        can_eat: jax.Array,
+    ) -> _TactileInfo:
         c2c = self._physics.get_contact_mat("circle", "circle", contacts)
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
@@ -579,7 +597,11 @@ class CircleForagingWithPredator(CircleForaging):
             ft_raw[: self._n_max_preys, :, :, self._foraging_indices],
             axis=(0, 3),
         )
-        eaten_preys_per_predator = predator_prey_rawt[:, :, :, self._foraging_indices]
+        eaten_preys_per_predator = jnp.where(
+            can_eat.reshape(self._n_max_predators, 1, 1, 1),
+            predator_prey_rawt[:, :, :, self._foraging_indices],
+            False,
+        )
         eaten_preys_sum = jnp.sum(eaten_preys_per_predator, axis=(0, 3))
         return _TactileInfo(
             prey2prey=c2c[: self._n_max_preys, : self._n_max_preys],
@@ -633,6 +655,7 @@ class CircleForagingWithPredator(CircleForaging):
             status=status,
             n_born_agents=n_preys,
             n_born_predators=n_predators,
+            predator_eat_timer=jnp.zeros(self._n_max_predators, dtype=jnp.int32),
         )
         sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
         N = self.n_max_agents

@@ -56,6 +56,7 @@ class CfConfigWithPredator(CfConfig):
     predator_basic_ec: float = 0.0
     predator_digestive_rate: float = 0.9
     predator_space_limit: bool = False
+    predator_eat_interval: int = 10
 
 
 def exec_rollout(
