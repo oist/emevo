@@ -41,5 +41,5 @@ predator_digestive_rate = 0.6
 predator_eat_interval = 10
 # Mouth range
 n_tactile_bins = 12
-mouth_range = "full"
+mouth_range = "front-wide"
 predator_mouth_range = "narrow"

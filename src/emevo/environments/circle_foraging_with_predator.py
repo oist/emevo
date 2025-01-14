@@ -226,6 +226,7 @@ class CircleForagingWithPredator(CircleForaging):
             raise ValueError(
                 f"Unsupported predator mouth range: {predator_mouth_range}"
             )
+
         if predator_space_limit:
             obs = kwargs["obstacles"]
             assert kwargs["env_shape"] == "square"
@@ -606,10 +607,9 @@ class CircleForagingWithPredator(CircleForaging):
         )
         eaten_preys_per_predator = jnp.where(
             can_eat.reshape(self._n_max_predators, 1, 1, 1),
-            predator_prey_rawt[:, :, :, self._foraging_indices],
+            predator_prey_rawt[:, :, :, self._predator_foraging_indices],
             False,
         )
-        eaten_preys_sum = jnp.sum(eaten_preys_per_predator, axis=(0, 3))
         return _TactileInfo(
             prey2prey=c2c[: self._n_max_preys, : self._n_max_preys],
             predator2predator=c2c[self._n_max_preys :, self._n_max_preys :],
@@ -627,7 +627,7 @@ class CircleForagingWithPredator(CircleForaging):
                 axis=(1, 3),
             ),
             eaten_foods=eaten_sum > 0,
-            eaten_preys=eaten_preys_sum > 0,
+            eaten_preys=jnp.max(eaten_preys_per_predator, axis=(0, 3)),
         )
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFPredatorState, TimeStep[CFObs]]:

@@ -884,7 +884,7 @@ class CircleForaging(Env):
         energy_delta = energy_gain - energy_consumption
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
-        eaten = jnp.sum(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
+        eaten = jnp.max(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
         stated, food_num, food_loc, n_regen = self._remove_and_regenerate_foods(
             food_key,
             eaten,  # (N_FOOD, N_LABEL)
