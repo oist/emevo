@@ -83,6 +83,7 @@ def _observe_closest(
     stated: StateDict,
     state_prey: State,
     state_predator: State,
+    ignore_first_seg: bool,
 ) -> jax.Array:
     rc = circle_raycast(0.0, 1.0, p1, p2, circle_prey, state_prey)
     to_prey = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
@@ -92,6 +93,8 @@ def _observe_closest(
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    if ignore_first_seg:
+        to_seg = to_seg.at[0].set(-1.0)
     obs = jnp.concatenate(
         jax.tree_util.tree_map(
             lambda arr: jnp.max(arr, keepdims=True),
@@ -103,7 +106,7 @@ def _observe_closest(
 
 _vmap_obs_closest = jax.vmap(
     _observe_closest,
-    in_axes=(None, None, None, 0, 0, None, None, None),
+    in_axes=(None, None, None, 0, 0, None, None, None, None),
 )
 
 
@@ -115,6 +118,7 @@ def get_sensor_obs(
     sensor_length: float,
     predator_sensor_length: float,
     stated: StateDict,
+    prey_ignore_first_seg: bool,
 ) -> jax.Array:
     assert stated.circle is not None
     # Split shape and stated
@@ -144,6 +148,7 @@ def get_sensor_obs(
         stated,
         prey_state,
         predator_state,
+        prey_ignore_first_seg,
     )
     predator_obs = _vmap_obs_closest(
         shaped,
@@ -154,6 +159,7 @@ def get_sensor_obs(
         stated,
         prey_state,
         predator_state,
+        False,
     )
     return jnp.concatenate((prey_obs, predator_obs), axis=0)
 
@@ -335,6 +341,7 @@ class CircleForagingWithPredator(CircleForaging):
                     predator_sensor_length=self._predator_sensor_length,
                     sensor_range=self._sensor_range_tuple,
                     sensor_length=self._sensor_length,
+                    prey_ignore_first_seg=self._predator_space_limit,
                 )
             )
 
