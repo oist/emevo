@@ -60,6 +60,11 @@ class CfConfigWithPredator(CfConfig):
     predator_mouth_range: str = "same"
 
 
+@dataclasses.dataclass
+class PredatorProfile(SavedProfile):
+    kind: int
+
+
 def exec_rollout(
     state: State,
     initial_obs: Obs,
@@ -352,10 +357,16 @@ def run_evolution(
         visualizer = None
 
     # Initial agents
+    n_max_preys = env._n_max_preys  # type: ignore
     for i, uid in enumerate(map(int, env_state.unique_id.unique_id)):
         if uid > 0:
             logger.reward_fn_dict[uid] = get_slice(reward_fn, i)  # type: ignore
-            logger.profile_dict[uid] = SavedProfile(0, 0, uid)
+            logger.profile_dict[uid] = PredatorProfile(
+                birthtime=0,
+                parent=0,
+                unique_id=uid,
+                kind=int(i < n_max_preys),
+            )
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
@@ -448,13 +459,19 @@ def run_evolution(
             log_birth.slots,
         )
         # Update profile
-        for step, uid, parent in zip(
+        for step, uid, parent, slot in zip(
             log_birth.step,
             log_birth.log.unique_id,
             log_birth.log.parents,
+            log_birth.slots,
         ):
-            ui = uid.item()
-            logger.profile_dict[ui] = SavedProfile(step.item(), parent.item(), ui)
+            uid_int = uid.item()
+            logger.profile_dict[uid_int] = PredatorProfile(
+                birthtime=step.item(),
+                parent=parent.item(),
+                unique_id=uid_int,
+                kind=int(slot < n_max_preys),
+            )
 
         # Push log and physics state
         logger.push_foodlog(foodlog)
