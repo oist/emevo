@@ -62,7 +62,7 @@ class CfConfigWithPredator(CfConfig):
 
 @dataclasses.dataclass
 class PredatorProfile(SavedProfile):
-    kind: int
+    kind: int  # 0: prey 1: predator
 
 
 def exec_rollout(
@@ -365,7 +365,7 @@ def run_evolution(
                 birthtime=0,
                 parent=0,
                 unique_id=uid,
-                kind=int(i < n_max_preys),
+                kind=int(i >= n_max_preys),
             )
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
@@ -470,7 +470,7 @@ def run_evolution(
                 birthtime=step.item(),
                 parent=parent.item(),
                 unique_id=uid_int,
-                kind=int(slot < n_max_preys),
+                kind=int(slot >= n_max_preys),
             )
 
         # Push log and physics state
