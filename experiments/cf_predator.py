@@ -1,10 +1,9 @@
 """Asexual reward evolution with Circle Foraging"""
 
 import dataclasses
-import enum
 import json
 from pathlib import Path
-from typing import Callable, cast
+from typing import cast
 
 import chex
 import equinox as eqx
@@ -42,6 +41,24 @@ from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241212-predator.toml"
+SENSOR_NAMES = ["prey_sensor", "predator_sensor"]
+N_SENSOR_REWARDS = 2
+
+
+def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
+    wd = w.shape[0]
+    n_food_rewards = wd - N_SENSOR_REWARDS - 1
+    rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(n_food_rewards)}
+    rd["action"] = rfn.slice_last(w, n_food_rewards)
+    for i, sensor_name in enumerate(SENSOR_NAMES):
+        rd[sensor_name] = rfn.slice_last(w, i + n_food_rewards + 1)
+    return rd
+
+
+def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
+    # E.g., sensor with predator: (N_agents, N_sensors, N_obj)
+    used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
+    return jnp.mean(used_sensor_obs, axis=1)  # (N_agents, N_obj)
 
 
 @serde
@@ -94,11 +111,11 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        rewards = reward_fn(
-            timestep.info["n_ate_food"],
-            actions,
-            obs_t1.sensor,
-        ).reshape(-1, 1)
+        mean_sensor_obs = get_mean_sensor_obs(obs_t1.sensor)
+        rewards = jnp.expand_dims(
+            reward_fn(timestep.info["n_ate_food"], actions, mean_sensor_obs),
+            axis=1,
+        )
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -130,7 +147,8 @@ def exec_rollout(
             (
                 birth_fn(state_t1d.status.age[:n], state_t1d.status.energy[:n]),
                 predator_birth_fn(
-                    state_t1d.status.age[n:], state_t1d.status.energy[n:]
+                    state_t1d.status.age[n:],
+                    state_t1d.status.energy[n:],
                 ),
             ),
             axis=0,
@@ -156,6 +174,8 @@ def exec_rollout(
             additional_fields={
                 "eaten_preys": dead_eaten,
                 "possible_parents": possible_parents,
+                SENSOR_NAMES[0]: mean_sensor_obs[:, 0],
+                SENSOR_NAMES[1]: mean_sensor_obs[:, 1],
             },
         )
         foodlog = FoodLog(
@@ -231,49 +251,6 @@ def epoch(
         entropy_weight,
     )
     return env_state, obs, log, foodlog, phys_state, opt_state, pponet
-
-
-class SensorRewardMode(str, enum.Enum):
-    AGENT = "agent"
-    AGENT_FOOD = "agent-food"
-
-    def indices(self) -> slice:
-        if self is self.AGENT:
-            return slice(0, 2)
-        elif self is self.AGENT_FOOD:
-            return slice(0, 3)
-        else:
-            raise AssertionError("Unreachable")
-
-    def n_rewards(self) -> int:
-        if self is self.AGENT:
-            return 2
-        elif self is self.AGENT_FOOD:
-            return 3
-        else:
-            raise AssertionError("Unreachable")
-
-    def serialize_fn(self) -> Callable[[jax.Array], dict[str, jax.Array]]:
-        n_sensor_rewards = self.n_rewards()
-
-        if self is self.AGENT:
-            sensor_names = ["prey_sensor", "predator_sensor"]
-        elif self is self.AGENT_FOOD:
-            sensor_names = ["prey_sensor", "predator_sensor", "food_sensor"]
-        else:
-            raise AssertionError("Unreachable")
-
-        # food, act, sensors
-        def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
-            wd = w.shape[0]
-            n_food_rewards = wd - n_sensor_rewards - 1
-            rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(n_food_rewards)}
-            rd["action"] = rfn.slice_last(w, n_food_rewards)
-            for i, sensor_name in enumerate(sensor_names):
-                rd[sensor_name] = rfn.slice_last(w, i + n_food_rewards + 1)
-            return rd
-
-        return serialize_weight
 
 
 def run_evolution(
@@ -520,7 +497,6 @@ def evolve(
     gops_params_override: str = "",
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
-    sensor_reward_mode: SensorRewardMode = SensorRewardMode.AGENT,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
@@ -560,7 +536,6 @@ def evolve(
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
-        sensor_indices=sensor_reward_mode.indices(),
     )
     if cfconfig.observe_food_label:
         n_food_obs = cfconfig.n_food_sources
@@ -569,11 +544,11 @@ def evolve(
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=1 + n_food_obs + sensor_reward_mode.n_rewards(),
+        n_weights=1 + n_food_obs + N_SENSOR_REWARDS,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
-        serializer=sensor_reward_mode.serialize_fn(),
+        serializer=serialize_weight,
         **gopsconfig.init_kwargs,
     )
 
