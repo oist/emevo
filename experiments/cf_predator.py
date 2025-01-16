@@ -58,7 +58,8 @@ def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
 def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
     # E.g., sensor with predator: (N_agents, N_sensors, N_obj)
     used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
-    return jnp.mean(used_sensor_obs, axis=1)  # (N_agents, N_obj)
+    clipped_sensor_obs = jnp.clip(used_sensor_obs, min=0.0)
+    return jnp.mean(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
 
 
 @serde
