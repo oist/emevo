@@ -54,7 +54,7 @@ def visualize(
     backend = "headless" if headless else "pyglet"
     visualizer = env.visualizer(state, figsize=figsize, backend=backend)
     if videopath is not None:
-        visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
+        visualizer = SaveVideoWrapper(visualizer, videopath)
 
     # Returns action for debugging
     @eqx.filter_jit

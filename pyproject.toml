@@ -28,7 +28,7 @@ dependencies = [
     "pyarrow >= 9.0",
     "pyserde[toml] >= 0.14",
     "optax >= 0.1",
-    "phyjax2d >= 0.1",
+    "phyjax2d >= 0.1.6",
 ]
 dynamic = ["version"]
 
@@ -43,7 +43,7 @@ analysis = [
 # Meta feature to install CUDA12 jax
 cuda12 = ["jax[cuda12]"]
 widget = ["PySide6 == 6.6.0"]
-video = ["imageio-ffmpeg >= 0.4"]
+video = ["av >= 14.0"]
 
 [project.readme]
 file = "README.md"
@@ -96,3 +96,7 @@ dev-dependencies = [
     "typer >= 0.12",
     "tqdm >= 4.6",
 ]
+
+# For debug
+# [tool.uv.sources]
+# phyjax2d = { path = "../phyjax2d", editable = true }

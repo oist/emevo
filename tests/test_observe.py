@@ -194,7 +194,6 @@ def test_sensor_obs_with_foodlabels(key: chex.PRNGKey) -> None:
         3,
         state.physics,
     )
-    print(state.physics.static_circle.p.xy)
     chex.assert_shape(sensor_obs, (30, 5))
     # Food 0 is to the right/left
     chex.assert_trees_all_close(

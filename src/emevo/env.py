@@ -117,7 +117,7 @@ STATE = TypeVar("STATE", bound="StateProtocol")
 @chex.dataclass
 class TimeStep(Generic[OBS]):
     obs: OBS
-    encount: jax.Array
+    encount: jax.Array | list[jax.Array]
     info: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 

@@ -13,7 +13,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Position, Raycast, ShapeDict
+from phyjax2d import Circle, Color, Position, ShapeDict
 from phyjax2d import Space as Physics
 from phyjax2d import (
     SpaceBuilder,
@@ -113,6 +113,9 @@ class CFState(Generic[S]):
 
 class Obstacle(str, enum.Enum):
     NONE = "none"
+    CENTER = "center"
+    ONE_FOURTH = "one-fourth"
+    ONE_THIRD = "one-third"
     CENTER_HALF = "center-half"
     CENTER_TWO_THIRDS = "center-two-thirds"
 
@@ -124,6 +127,13 @@ class Obstacle(str, enum.Enum):
         # xmin, xmax, ymin, ymax
         if self == Obstacle.NONE:
             return []
+        # Vertical line that divides the room into two
+        elif self == Obstacle.CENTER:
+            return [(Vec2d(width / 2, 0.0), Vec2d(width / 2, height))]
+        elif self == Obstacle.ONE_FOURTH:
+            return [(Vec2d(width / 4, 0.0), Vec2d(width / 4, height))]
+        elif self == Obstacle.ONE_THIRD:
+            return [(Vec2d(width / 3, 0.0), Vec2d(width / 3, height))]
         elif self == Obstacle.CENTER_HALF:
             return [(Vec2d(width / 2, height / 2), Vec2d(width / 2, height))]
         elif self == Obstacle.CENTER_TWO_THIRDS:
@@ -162,7 +172,7 @@ def _get_num_or_loc_fn(
         raise ValueError(f"Invalid value in _get_num_or_loc_fn {arg}")
 
 
-def _make_physics(
+def _make_physics_impl(
     dt: float,
     coordinate: CircleCoordinate | SquareCoordinate,
     linear_damping: float,
@@ -224,12 +234,9 @@ def _observe_closest(
     p2: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
-    def cr(shape: Circle, state: State) -> Raycast:
-        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
-
-    rc = cr(shaped.circle, stated.circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.circle, stated.circle)
     to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = cr(shaped.static_circle, stated.static_circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.static_circle, stated.static_circle)
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
@@ -249,12 +256,9 @@ def _observe_closest_with_food_labels(
     p2: jax.Array,
     stated: StateDict,
 ) -> jax.Array:
-    def cr(shape: Circle, state: State) -> Raycast:
-        return circle_raycast(0.0, 1.0, p1, p2, shape, state)
-
-    rc = cr(shaped.circle, stated.circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.circle, stated.circle)
     to_c = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = cr(shaped.static_circle, stated.static_circle)
+    rc = circle_raycast(0.0, 1.0, p1, p2, shaped.static_circle, stated.static_circle)
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     foodlabel_onehot = jax.nn.one_hot(
         stated.static_circle.label,
@@ -294,21 +298,20 @@ def _nonzero(arr: jax.Array, n: int) -> jax.Array:
 
 
 def _get_sensors(
-    shaped: ShapeDict,
+    shape: Circle,
     n_sensors: int,
     sensor_range: tuple[float, float],
     sensor_length: float,
-    stated: StateDict,
+    state: State,
 ) -> tuple[jax.Array, jax.Array]:
-    assert shaped.circle is not None and stated.circle is not None
-    radius = shaped.circle.radius
+    radius = shape.radius
     p1 = jnp.stack((jnp.zeros_like(radius), radius), axis=1)  # (N, 2)
     p1 = jnp.repeat(p1, n_sensors, axis=0)  # (N x M, 2)
     p2 = p1 + jnp.array([0.0, sensor_length])  # (N x M, 2)
     sensor_rad = jnp.deg2rad(jnp.linspace(*sensor_range, n_sensors))
     sensor_p = Position(
-        angle=jax.vmap(lambda x: x + sensor_rad)(stated.circle.p.angle).ravel(),
-        xy=jnp.repeat(stated.circle.p.xy, n_sensors, axis=0),
+        angle=jax.vmap(lambda x: x + sensor_rad)(state.p.angle).ravel(),
+        xy=jnp.repeat(state.p.xy, n_sensors, axis=0),
     )
     p1 = sensor_p.transform(p1)
     p2 = sensor_p.transform(p2)
@@ -324,7 +327,13 @@ def get_sensor_obs(
     stated: StateDict,
 ) -> jax.Array:
     assert stated.circle is not None
-    p1, p2 = _get_sensors(shaped, n_sensors, sensor_range, sensor_length, stated)
+    p1, p2 = _get_sensors(
+        shaped.circle,
+        n_sensors,
+        sensor_range,
+        sensor_length,
+        stated.circle,
+    )
     if n_food_labels is None:
         return _vmap_obs_closest(shaped, p1, p2, stated)
     else:
@@ -431,11 +440,13 @@ def _make_food_energy_coef_array(
 
 _MaybeLocatingFn = LocatingFn | str | tuple[str, ...]
 _MaybeNumFn = FoodNumFn | str | tuple[str, ...]
+_SensorFn = Callable[[StateDict], jax.Array]
 
 
 class CircleForaging(Env):
     def __init__(
         self,
+        *,
         n_initial_agents: int = 6,
         n_max_agents: int = 100,
         n_max_foods: int = 40,
@@ -451,7 +462,7 @@ class CircleForaging(Env):
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
-        mouth_range: Literal["full", "front", "right"] = "front",
+        mouth_range: Literal["full", "front", "front-wide", "right"] = "front",
         neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
         n_tactile_bins: int = 6,
@@ -478,6 +489,7 @@ class CircleForaging(Env):
         max_place_attempts: int = 10,
         n_max_food_regen: int = 20,
         random_angle: bool = True,  # False when debugging/testing
+        _n_additional_objs: int = 0,  # Used by child classes (e.g., predator)
     ) -> None:
         # Coordinate and range
         if env_shape == "square":
@@ -522,6 +534,9 @@ class CircleForaging(Env):
             self._foraging_indices = tuple(range(n_tactile_bins))
         elif mouth_range == "front":
             self._foraging_indices = 0, n_tactile_bins - 1
+        elif mouth_range == "front-wide":
+            assert n_tactile_bins >= 4
+            self._foraging_indices = 0, 1, n_tactile_bins - 2, n_tactile_bins - 1
         elif mouth_range == "right":
             self._foraging_indices = (n_tactile_bins - 1,)
         else:
@@ -548,17 +563,12 @@ class CircleForaging(Env):
         else:
             obs_list = obstacles
 
-        self._physics = _make_physics(
+        self._physics = self._make_physics(
             dt=dt,
-            coordinate=self._coordinate,
             linear_damping=linear_damping,
             angular_damping=angular_damping,
             n_velocity_iter=n_velocity_iter,
             n_position_iter=n_position_iter,
-            n_max_agents=n_max_agents,
-            n_max_foods=n_max_foods,
-            agent_radius=agent_radius,
-            food_radius=food_radius,
             obstacles=obs_list,
         )
         self._agent_indices = jnp.arange(n_max_agents)
@@ -654,25 +664,17 @@ class CircleForaging(Env):
         else:
             raise ValueError(f"Invalid newborn_loc: {newborn_loc}")
         if isinstance(sensor_range, SensorRange):
-            sensor_range_tuple = SensorRange(sensor_range).as_tuple()
+            self._sensor_range_tuple = SensorRange(sensor_range).as_tuple()
         else:
-            sensor_range_tuple = sensor_range
+            self._sensor_range_tuple = sensor_range
+        self._sensor_length = sensor_length
+
+        self._sensor_obs = self._make_sensor_fn(observe_food_label)
 
         if observe_food_label:
             assert (
                 self._n_food_sources > 1
             ), "n_food_sources should be larager than 1 to include food label obs"
-
-            self._sensor_obs = jax.jit(
-                functools.partial(
-                    get_sensor_obs,
-                    shaped=self._physics.shaped,
-                    n_sensors=n_agent_sensors,
-                    sensor_range=sensor_range_tuple,
-                    sensor_length=sensor_length,
-                    n_food_labels=self._n_food_sources,
-                )
-            )
 
             self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
                 self._n_tactile_bins,
@@ -682,27 +684,16 @@ class CircleForaging(Env):
                 s2,
                 cmat,
             )
-            self._n_obj = N_OBJECTS + self._n_food_sources - 1
+            self._n_obj = N_OBJECTS + self._n_food_sources - 1 + _n_additional_objs
 
         else:
-            self._sensor_obs = jax.jit(
-                functools.partial(
-                    get_sensor_obs,
-                    shaped=self._physics.shaped,
-                    n_sensors=n_agent_sensors,
-                    sensor_range=sensor_range_tuple,
-                    sensor_length=sensor_length,
-                    n_food_labels=None,
-                )
-            )
-
             self._food_tactile = lambda _, s1, s2, cmat: get_tactile(
                 self._n_tactile_bins,
                 s1,
                 s2,
                 cmat,
             )
-            self._n_obj = N_OBJECTS
+            self._n_obj = N_OBJECTS + _n_additional_objs
 
         # Spaces
         self.act_space = BoxSpace(low=min_force, high=max_force, shape=(2,))
@@ -721,9 +712,9 @@ class CircleForaging(Env):
         self._get_sensors = jax.jit(
             functools.partial(
                 _get_sensors,
-                shaped=self._physics.shaped,
+                shape=self._physics.shaped.circle,
                 n_sensors=n_agent_sensors,
-                sensor_range=sensor_range_tuple,
+                sensor_range=self._sensor_range_tuple,
                 sensor_length=sensor_length,
             )
         )
@@ -795,15 +786,41 @@ class CircleForaging(Env):
         )
 
     def _get_selected_sensor(
-        self, stated: StateDict, index: int
+        self,
+        stated: StateDict,
+        index: int,
     ) -> tuple[jax.Array, jax.Array]:
-        p1, p2 = self._get_sensors(stated=stated)
+        p1, p2 = self._get_sensors(state=stated.circle)
         from_ = index * self._n_sensors
         to = (index + 1) * self._n_sensors
         zeros = jnp.ones_like(p1)
         p1 = zeros.at[from_:to].add(p1[from_:to])
         p2 = zeros.at[from_:to].add(p2[from_:to])
         return p1, p2
+
+    def _make_sensor_fn(self, observe_food_label: bool) -> _SensorFn:
+        if observe_food_label:
+            return jax.jit(
+                functools.partial(
+                    get_sensor_obs,
+                    shaped=self._physics.shaped,
+                    n_sensors=self._n_sensors,
+                    sensor_range=self._sensor_range_tuple,
+                    sensor_length=self._sensor_length,
+                    n_food_labels=self._n_food_sources,
+                )
+            )
+        else:
+            return jax.jit(
+                functools.partial(
+                    get_sensor_obs,
+                    shaped=self._physics.shaped,
+                    n_sensors=self._n_sensors,
+                    sensor_range=self._sensor_range_tuple,
+                    sensor_length=self._sensor_length,
+                    n_food_labels=None,
+                )
+            )
 
     def step(
         self,
@@ -867,7 +884,7 @@ class CircleForaging(Env):
         energy_delta = energy_gain - energy_consumption
         # Remove and regenerate foods
         key, food_key = jax.random.split(state.key)
-        eaten = jnp.sum(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
+        eaten = jnp.max(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
         stated, food_num, food_loc, n_regen = self._remove_and_regenerate_foods(
             food_key,
             eaten,  # (N_FOOD, N_LABEL)
@@ -961,7 +978,7 @@ class CircleForaging(Env):
             replaced_indices,
             parent_indices,
         )
-        n_children = jnp.sum(is_parent)
+        n_children = jnp.sum(is_replaced)
         new_state = replace(
             state,
             physics=physics,
@@ -997,7 +1014,8 @@ class CircleForaging(Env):
     def reset(self, key: chex.PRNGKey) -> tuple[CFState[Status], TimeStep[CFObs]]:
         physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
         N = self.n_max_agents
-        unique_id = init_uniqueid(self._n_initial_agents, N)
+        n_agents = jnp.sum(physics.circle.is_active)
+        unique_id = init_uniqueid(int(n_agents), N)
         status = init_status(N, self._init_energy)
         state = CFState(
             physics=physics,
@@ -1009,9 +1027,9 @@ class CircleForaging(Env):
             step=jnp.array(0, dtype=jnp.int32),
             unique_id=unique_id,
             status=status,
-            n_born_agents=jnp.array(self._n_initial_agents, dtype=jnp.int32),
+            n_born_agents=n_agents,
         )
-        sensor_obs = self._sensor_obs(stated=physics)
+        sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
         obs = CFObs(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
             collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),
@@ -1028,21 +1046,8 @@ class CircleForaging(Env):
         self,
         key: chex.PRNGKey,
     ) -> tuple[StateDict, LocatingState, list[LocatingState], list[FoodNumState]]:
-        # Set segment
         stated = self._physics.shaped.zeros_state()
         assert stated.circle is not None
-
-        # Set is_active
-        is_active_c = jnp.concatenate(
-            (
-                jnp.ones(self._n_initial_agents, dtype=bool),
-                jnp.zeros(self.n_max_agents - self._n_initial_agents, dtype=bool),
-            )
-        )
-        # Fill 0 for food
-        is_active_s = jnp.zeros(self._n_max_foods, dtype=bool)
-        stated = stated.nested_replace("circle.is_active", is_active_c)
-        stated = stated.nested_replace("static_circle.is_active", is_active_s)
         # Move all circle to the invisiable area
         stated = stated.nested_replace(
             "circle.p.xy",
@@ -1052,10 +1057,12 @@ class CircleForaging(Env):
             "static_circle.p.xy",
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
-        keys = jax.random.split(key, self._n_initial_agents + self._n_food_sources + 1)
-        agent_failed = 0
+
+        key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
+        n_agents = 0
         agentloc_state = self._initial_agentloc_state
-        for i, key in enumerate(keys[: self._n_initial_agents]):
+        is_active = []
+        for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,
                 key=key,
@@ -1068,26 +1075,39 @@ class CircleForaging(Env):
                     stated.circle.p.xy.at[i].set(xy),
                 )
                 agentloc_state = agentloc_state.increment()
-            else:
-                del xy
-                agent_failed += 1
+                n_agents += 1
+            is_active.append(ok)
 
-        if agent_failed > 0:
-            warnings.warn(f"Failed to place {agent_failed} agents!", stacklevel=1)
+        if n_agents < self._n_initial_agents:
+            diff = self._n_initial_agents - n_agents
+            warnings.warn(f"Failed to place {diff} agents!", stacklevel=1)
+
+        # Set is_active
+        is_active_c = jnp.concatenate(
+            (
+                jnp.array(is_active),
+                jnp.zeros(self.n_max_agents - n_agents, dtype=bool),
+            )
+        )
+        # Fill 0 for food
+        is_active_s = jnp.zeros(self._n_max_foods, dtype=bool)
+        stated = stated.nested_replace("circle.is_active", is_active_c)
+        stated = stated.nested_replace("static_circle.is_active", is_active_s)
 
         if self._random_angle:
-            angle = jax.random.uniform(key, shape=stated.circle.p.angle.shape)
+            key, angle_key = jax.random.split(key)
+            angle = jax.random.uniform(angle_key, shape=stated.circle.p.angle.shape)
             stated = stated.nested_replace("circle.p.angle", angle)
 
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, key in enumerate(keys[self._n_initial_agents + 1 :]):
+        for i, food_key_i in enumerate(jax.random.split(key, self._n_food_sources)):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],
                 n_max_placement=n_initial,
-                key=key,
+                key=food_key_i,
                 n_steps=i,
                 stated=stated,
             )
@@ -1166,6 +1186,29 @@ class CircleForaging(Env):
             food_num_states,
             food_loc_states,
             n_generated_foods,
+        )
+
+    def _make_physics(
+        self,
+        dt: float,
+        linear_damping: float,
+        angular_damping: float,
+        n_velocity_iter: int,
+        n_position_iter: int,
+        obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
+    ) -> Physics:
+        return _make_physics_impl(
+            dt=dt,
+            coordinate=self._coordinate,
+            linear_damping=linear_damping,
+            angular_damping=angular_damping,
+            n_velocity_iter=n_velocity_iter,
+            n_position_iter=n_position_iter,
+            n_max_agents=self.n_max_agents,
+            n_max_foods=self._n_max_foods,
+            agent_radius=self._agent_radius,
+            food_radius=self._food_radius,
+            obstacles=obstacles,
         )
 
     def visualizer(

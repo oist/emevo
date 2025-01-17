@@ -76,8 +76,7 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        energy = state_t.status.energy
-        rewards = reward_fn(timestep.info["n_ate_food"], actions, energy).reshape(-1, 1)
+        rewards = reward_fn(timestep.info["n_ate_food"], actions).reshape(-1, 1)
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -192,7 +191,6 @@ def run_evolution(
     *,
     key: jax.Array,
     env: Env,
-    n_initial_agents: int,
     adam: optax.GradientTransformation,
     gamma: float,
     gae_lambda: float,
@@ -210,6 +208,9 @@ def run_evolution(
     logger: Logger,
     save_interval: int,
     debug_vis: bool,
+    debug_vis_scale: float,
+    debug_print: bool,
+    headless: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -256,13 +257,18 @@ def run_evolution(
     obs = timestep.obs
 
     if debug_vis:
-        visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
+        visualizer = env.visualizer(
+            env_state,
+            figsize=(xmax * debug_vis_scale, ymax * debug_vis_scale),
+            backend="headless" if headless else "pyglet",
+        )
     else:
         visualizer = None
 
-    for i in range(n_initial_agents):
-        logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
-        logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
+    for i, is_active in enumerate(env_state.unique_id.is_active()):
+        if is_active:
+            logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
+            logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
@@ -292,6 +298,7 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
+        if debug_print:
             is_active = env_state.unique_id.is_active()
             popl = int(jnp.sum(is_active))
             avg_e = float(jnp.mean(env_state.status.energy[is_active]))
@@ -332,7 +339,6 @@ def run_evolution(
         is_new = jnp.zeros(env.n_max_agents, dtype=bool).at[log_birth.slots].set(True)
         if jnp.any(is_new):
             pponet, opt_state = replace_net(init_key, is_new, pponet, opt_state)
-
         # Mutation
         reward_fn = rfn.mutate_reward_fn(
             mutation_key,
@@ -398,6 +404,9 @@ def evolve(
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
+    debug_vis_scale: float = 2.0,
+    debug_print: bool = False,
+    headless: bool = False,
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -448,7 +457,6 @@ def evolve(
     run_evolution(
         key=key,
         env=env,
-        n_initial_agents=cfconfig.n_initial_agents,
         adam=optax.adam(adam_lr, eps=adam_eps),
         gamma=gamma,
         gae_lambda=gae_lambda,
@@ -466,6 +474,9 @@ def evolve(
         logger=logger,
         save_interval=save_interval,
         debug_vis=debug_vis,
+        debug_vis_scale=debug_vis_scale,
+        headless=headless,
+        debug_print=debug_vis or debug_print,
     )
 
 
@@ -499,7 +510,7 @@ def replay(
         backend=backend,
     )
     if videopath is not None:
-        visualizer = SaveVideoWrapper(visualizer, videopath, fps=60)
+        visualizer = SaveVideoWrapper(visualizer, videopath)
     for i in range(start, end_index):
         ph = phys_state.set_by_index(i, env_state.physics)
         # Disable rendering agents
@@ -579,7 +590,7 @@ def widget(
 @app.command()
 def vis_policy(
     physstate_path: list[Path],
-    policy_path: list[Path] = [],
+    policy_path: list[Path] | None = None,
     subtitle: list[str] | None = None,
     agent_index: int | None = None,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
@@ -609,6 +620,8 @@ def vis_policy(
     max_force = max(cfconfig.max_force, -cfconfig.min_force)
 
     names = []
+    if policy_path is None:
+        policy_path = []
     for policy_path_i, name in itertools.zip_longest(
         policy_path,
         [] if subtitle is None else subtitle,

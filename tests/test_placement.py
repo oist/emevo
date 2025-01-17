@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import pytest
 from phyjax2d import Space
 
-from emevo.environments.circle_foraging import _make_physics
+from emevo.environments.circle_foraging import _make_physics_impl as _make_physics
 from emevo.environments.env_utils import CircleCoordinate, Locating, place, place_multi
 
 N_MAX_AGENTS = 20
@@ -119,7 +119,6 @@ def test_place_foods_at_once(key) -> None:
     space, coordinate = get_space_and_coordinate()
     reprloc_fn, reprloc_state = Locating.UNIFORM(CircleCoordinate((100.0, 100.0), 95.0))
     stated = space.shaped.zeros_state()
-    print(stated.circle.is_active)
     xy, ok = place_multi(
         n_trial=10,
         n_max_placement=n,

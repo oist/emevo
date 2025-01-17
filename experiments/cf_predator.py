@@ -35,55 +35,52 @@ from emevo.exp_utils import (
     SavedProfile,
     is_cuda_ready,
 )
+from emevo.reward_extractor import SensorActFoodExtractor as RewardExtractor
 from emevo.rl import ppo_normal as ppo
-from emevo.spaces import BoxSpace
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241110-neurotoxin.toml"
-
-
-@serde
-@dataclasses.dataclass
-class CfConfigWithToxin(CfConfig):
-    toxin_t0: float = 5.0
-    toxin_alpha: float = 1.0
-    toxin_recover_rate: float = 0.01
-    toxin_delta: float = 10.0
-
-
-@dataclasses.dataclass
-class RewardExtractor:
-    act_space: BoxSpace
-    act_coef: float
-    _max_norm: jax.Array = dataclasses.field(init=False)
-
-    def __post_init__(self) -> None:
-        self._max_norm = jnp.sqrt(jnp.sum(self.act_space.high**2, axis=-1))
-
-    def normalize_action(self, action: jax.Array) -> jax.Array:
-        scaled = self.act_space.sigmoid_scale(action)
-        norm = jnp.sqrt(jnp.sum(scaled**2, axis=-1, keepdims=True))
-        return norm / self._max_norm
-
-    def extract(
-        self,
-        ate_food: jax.Array,
-        ate_toxin: jax.Array,
-        action: jax.Array,
-    ) -> jax.Array:
-        act_input = self.act_coef * self.normalize_action(action)
-        return jnp.concatenate(
-            (ate_food.astype(jnp.float32), ate_toxin.astype(jnp.float32), act_input),
-            axis=1,
-        )
+DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241212-predator.toml"
+SENSOR_NAMES = ["prey_sensor", "predator_sensor"]
+N_SENSOR_REWARDS = 2
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
     wd = w.shape[0]
-    rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(wd - 1)}
-    rd["action"] = rfn.slice_last(w, wd - 1)
+    n_food_rewards = wd - N_SENSOR_REWARDS - 1
+    rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(n_food_rewards)}
+    rd["action"] = rfn.slice_last(w, n_food_rewards)
+    for i, sensor_name in enumerate(SENSOR_NAMES):
+        rd[sensor_name] = rfn.slice_last(w, i + n_food_rewards + 1)
     return rd
+
+
+def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
+    # E.g., sensor with predator: (N_agents, N_sensors, N_obj)
+    used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
+    clipped_sensor_obs = jnp.clip(used_sensor_obs, min=0.0)
+    return jnp.mean(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
+
+
+@serde
+@dataclasses.dataclass
+class CfConfigWithPredator(CfConfig):
+    n_max_predators: int = 20
+    n_initial_predators: int = 10
+    predator_radius: float = 20.0
+    predator_sensor_length: int = 100
+    predator_init_energy: float = 20.0
+    predator_force_ec: float = 0.01 / 40.0
+    predator_basic_ec: float = 0.0
+    predator_digestive_rate: float = 0.9
+    predator_space_limit: bool = False
+    predator_eat_interval: int = 10
+    predator_mouth_range: str = "same"
+
+
+@dataclasses.dataclass
+class PredatorProfile(SavedProfile):
+    kind: int  # 0: prey 1: predator
 
 
 def exec_rollout(
@@ -94,9 +91,13 @@ def exec_rollout(
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
+    predator_hazard_fn: bd.HazardFunction,
+    predator_birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
 ) -> tuple[State, ppo.Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
+    n, m = env._n_max_preys, env._n_max_predators  # type: ignore
+
     def step_rollout(
         carried: tuple[State, Obs],
         key: jax.Array,
@@ -111,11 +112,11 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        rewards = reward_fn(
-            timestep.info["n_ate_food"],
-            jnp.expand_dims(timestep.info["n_ate_toxin"], axis=1),
-            actions,
-        ).reshape(-1, 1)
+        mean_sensor_obs = get_mean_sensor_obs(obs_t1.sensor)
+        rewards = jnp.expand_dims(
+            reward_fn(timestep.info["n_ate_food"], actions, mean_sensor_obs),
+            axis=1,
+        )
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -126,16 +127,33 @@ def exec_rollout(
             logstds=net_out.logstd,
         )
         # Birth and death
-        death_prob = hazard_fn(state_t1.status.age, state_t1.status.energy)
+        death_prob = jnp.concatenate(
+            (
+                hazard_fn(state_t1.status.age[:n], state_t1.status.energy[:n]),
+                predator_hazard_fn(state_t1.status.age[n:], state_t1.status.energy[n:]),
+            ),
+            axis=0,
+        )
         dead_nonzero = jax.random.bernoulli(hazard_key, p=death_prob)
-        dead = jnp.where(
-            # If the agent's energy is lower than 0, it should immediately die
+        dead_eaten = jnp.concatenate(
+            (timestep.info["eaten_preys"], jnp.zeros(m, dtype=bool))
+        )
+        # If the agent's energy is lower than 0, it should immediately die
+        dead = jnp.logical_or(
             state_t1.status.energy < 0.0,
-            jnp.ones_like(dead_nonzero),
-            dead_nonzero,
+            jnp.logical_or(dead_eaten, dead_nonzero),
         )
         state_t1d = env.deactivate(state_t1, dead)
-        birth_prob = birth_fn(state_t1d.status.age, state_t1d.status.energy)
+        birth_prob = jnp.concatenate(
+            (
+                birth_fn(state_t1d.status.age[:n], state_t1d.status.energy[:n]),
+                predator_birth_fn(
+                    state_t1d.status.age[n:],
+                    state_t1d.status.energy[n:],
+                ),
+            ),
+            axis=0,
+        )
         possible_parents = jnp.logical_and(
             jnp.logical_and(
                 jnp.logical_not(dead),
@@ -154,7 +172,12 @@ def exec_rollout(
             parents=parents,
             rewards=rewards.ravel(),
             unique_id=state_t1db.unique_id.unique_id,
-            additional_fields={"n_got_toxin": timestep.info["n_ate_toxin"]},
+            additional_fields={
+                "eaten_preys": dead_eaten,
+                "possible_parents": possible_parents,
+                SENSOR_NAMES[0]: mean_sensor_obs[:, 0],
+                SENSOR_NAMES[1]: mean_sensor_obs[:, 1],
+            },
         )
         foodlog = FoodLog(
             eaten=timestep.info["n_food_eaten"],
@@ -188,6 +211,8 @@ def epoch(
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
+    predator_hazard_fn: bd.HazardFunction,
+    predator_birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
     gamma: float,
@@ -209,6 +234,8 @@ def epoch(
         reward_fn,
         hazard_fn,
         birth_fn,
+        predator_hazard_fn,
+        predator_birth_fn,
         keys[0],
         n_rollout_steps,
     )
@@ -231,7 +258,6 @@ def run_evolution(
     *,
     key: jax.Array,
     env: Env,
-    n_initial_agents: int,
     adam: optax.GradientTransformation,
     gamma: float,
     gae_lambda: float,
@@ -243,12 +269,17 @@ def run_evolution(
     reward_fn: rfn.RewardFn,
     hazard_fn: bd.HazardFunction,
     birth_fn: bd.BirthFunction,
+    predator_hazard_fn: bd.HazardFunction,
+    predator_birth_fn: bd.BirthFunction,
     mutation: gops.Mutation,
     xmax: float,
     ymax: float,
     logger: Logger,
     save_interval: int,
     debug_vis: bool,
+    debug_vis_scale: float,
+    debug_print: bool,
+    headless: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -295,16 +326,30 @@ def run_evolution(
     obs = timestep.obs
 
     if debug_vis:
-        visualizer = env.visualizer(env_state, figsize=(xmax * 2, ymax * 2))
+        visualizer = env.visualizer(
+            env_state,
+            figsize=(xmax * debug_vis_scale, ymax * debug_vis_scale),
+            backend="headless" if headless else "pyglet",
+        )
     else:
         visualizer = None
 
-    for i in range(n_initial_agents):
-        logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
-        logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
+    # Initial agents
+    n_max_preys = env._n_max_preys  # type: ignore
+    for i, uid in enumerate(map(int, env_state.unique_id.unique_id)):
+        if uid > 0:
+            logger.reward_fn_dict[uid] = get_slice(reward_fn, i)  # type: ignore
+            logger.profile_dict[uid] = PredatorProfile(
+                birthtime=0,
+                parent=0,
+                unique_id=uid,
+                kind=int(i >= n_max_preys),
+            )
 
-    for i, key_i in enumerate(jax.random.split(key, n_total_steps // n_rollout_steps)):
-        epoch_key, init_key = jax.random.split(key_i)
+    all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
+    del key  # Don't reuse this key!
+    for i, key_i in enumerate(all_keys):
+        epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
         # Use `with jax.disable_jit():` here for debugging
         env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
@@ -315,6 +360,8 @@ def run_evolution(
             reward_fn,
             hazard_fn,
             birth_fn,
+            predator_hazard_fn,
+            predator_birth_fn,
             epoch_key,
             n_rollout_steps,
             gamma,
@@ -329,11 +376,20 @@ def run_evolution(
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
+
+        if debug_print:
+            energy = env_state.status.energy
             is_active = env_state.unique_id.is_active()
-            popl = int(jnp.sum(is_active))
-            avg_e = float(jnp.mean(env_state.status.energy[is_active]))
-            if popl > 0:
-                print(f"Population: {popl} Avg. Energy: {avg_e}")
+            n_max_prey = env._n_max_preys  # type: ignore
+            prey_popl = int(jnp.sum(is_active[:n_max_prey]))
+            predator_popl = int(jnp.sum(is_active[n_max_prey:]))
+            if prey_popl > 0:
+                avg_e = float(jnp.mean(energy[is_active.at[n_max_prey:].set(False)]))
+                print(f"Prey Popl: {prey_popl} Avg. Energy: {avg_e}")
+            if predator_popl > 0:
+                is_active_predators = is_active.at[:n_max_prey].set(False)
+                avg_e = float(jnp.mean(energy[is_active_predators]))
+                print(f"Predator Popl: {predator_popl} Avg. Energy: {avg_e}")
 
         # Extinct?
         n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
@@ -372,7 +428,7 @@ def run_evolution(
 
         # Mutation
         reward_fn = rfn.mutate_reward_fn(
-            key,
+            mutation_key,
             logger.reward_fn_dict,
             reward_fn,
             mutation,
@@ -381,13 +437,19 @@ def run_evolution(
             log_birth.slots,
         )
         # Update profile
-        for step, uid, parent in zip(
+        for step, uid, parent, slot in zip(
             log_birth.step,
             log_birth.log.unique_id,
             log_birth.log.parents,
+            log_birth.slots,
         ):
-            ui = uid.item()
-            logger.profile_dict[ui] = SavedProfile(step.item(), parent.item(), ui)
+            uid_int = uid.item()
+            logger.profile_dict[uid_int] = PredatorProfile(
+                birthtime=step.item(),
+                parent=parent.item(),
+                unique_id=uid_int,
+                kind=int(slot >= n_max_preys),
+            )
 
         # Push log and physics state
         logger.push_foodlog(foodlog)
@@ -422,19 +484,26 @@ def evolve(
     act_reward_coef: float = 0.01,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
-    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
-    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240326-cauthy-002.toml",
+    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
+    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
+    predator_bdconfig_path: Path = PROJECT_ROOT
+    / "config/bd/20241229-predator-d100.toml",
     min_age_for_save: int = 0,
     save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
     birth_override: str = "",
     hazard_override: str = "",
+    predator_birth_override: str = "",
+    predator_hazard_override: str = "",
     gops_params_override: str = "",
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
+    debug_vis_scale: float = 2.0,
+    debug_print: bool = False,
+    headless: bool = False,
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -442,32 +511,41 @@ def evolve(
 
     # Load config
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfigWithToxin, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
     with bdconfig_path.open("r") as f:
         bdconfig = toml.from_toml(BDConfig, f.read())
     with gopsconfig_path.open("r") as f:
         gopsconfig = toml.from_toml(GopsConfig, f.read())
+    with predator_bdconfig_path.open("r") as f:
+        predator_bdconfig = toml.from_toml(BDConfig, f.read())
 
     # Apply overrides
     cfconfig.apply_override(env_override)
     bdconfig.apply_birth_override(birth_override)
     bdconfig.apply_hazard_override(hazard_override)
+    predator_bdconfig.apply_birth_override(predator_birth_override)
+    predator_bdconfig.apply_hazard_override(predator_hazard_override)
     gopsconfig.apply_params_override(gops_params_override)
 
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
+    predator_birth_fn, predator_hazard_fn = predator_bdconfig.load_models()
     mutation = gopsconfig.load_model()
     # Make env
-    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
     )
+    if cfconfig.observe_food_label:
+        n_food_obs = cfconfig.n_food_sources
+    else:
+        n_food_obs = 1
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=cfconfig.n_food_sources + 1,
+        n_weights=1 + n_food_obs + N_SENSOR_REWARDS,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
@@ -485,7 +563,6 @@ def evolve(
     run_evolution(
         key=key,
         env=env,
-        n_initial_agents=cfconfig.n_initial_agents,
         adam=optax.adam(adam_lr, eps=adam_eps),
         gamma=gamma,
         gae_lambda=gae_lambda,
@@ -497,12 +574,17 @@ def evolve(
         reward_fn=reward_fn_instance,
         hazard_fn=hazard_fn,
         birth_fn=birth_fn,
+        predator_hazard_fn=predator_hazard_fn,
+        predator_birth_fn=predator_birth_fn,
         mutation=cast(gops.Mutation, mutation),
         xmax=cfconfig.xlim[1],
         ymax=cfconfig.ylim[1],
         logger=logger,
         save_interval=save_interval,
         debug_vis=debug_vis,
+        debug_vis_scale=debug_vis_scale,
+        headless=headless,
+        debug_print=debug_vis or debug_print,
     )
 
 
@@ -515,26 +597,31 @@ def replay(
     end: int | None = None,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     env_override: str = "",
+    scale: float = 1.0,
+    force_cpu: bool = False,
 ) -> None:
+    if force_cpu:
+        jax.config.update("jax_default_device", jax.devices("cpu")[0])
+
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
     # For speedup
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
     end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
         env_state,
-        figsize=(cfconfig.xlim[1] * 2, cfconfig.ylim[1] * 2),
+        figsize=(cfconfig.xlim[1] * scale, cfconfig.ylim[1] * scale),
         backend=backend,
     )
     if videopath is not None:
         visualizer = SaveVideoWrapper(visualizer, videopath)
     for i in range(start, end_index):
-        phys = phys_state.set_by_index(i, env_state.physics)
-        env_state = dataclasses.replace(env_state, physics=phys)
+        ph = phys_state.set_by_index(i, env_state.physics)
+        env_state = dataclasses.replace(env_state, physics=ph)
         visualizer.render(env_state.physics)
         visualizer.show()
     visualizer.close()
@@ -560,13 +647,13 @@ def widget(
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfigWithToxin, f.read())
+        cfconfig = toml.from_toml(CfConfig, f.read())
 
     # For speedup
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
         log_ds = None

@@ -1,6 +1,7 @@
 .PHONY: test lint
 
 CUDA_AVAILABLE := $(shell command -v nvcc >/dev/null 2>&1 && echo 1 || echo 0)
+PORT ?= 9998
 
 test:
 	uv run pytest
@@ -26,7 +27,7 @@ register:
 
 
 jupyter:
-	uv run jupyter lab --port=9998 --no-browser
+	uv run jupyter lab --port=$(PORT) --no-browser
 
 
 sync:
