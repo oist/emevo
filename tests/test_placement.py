@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import pytest
 from phyjax2d import Space
 
-from emevo.environments.circle_foraging import _make_physics
+from emevo.environments.circle_foraging import _make_physics_impl as _make_physics
 from emevo.environments.env_utils import CircleCoordinate, Locating, place, place_multi
 
 N_MAX_AGENTS = 20

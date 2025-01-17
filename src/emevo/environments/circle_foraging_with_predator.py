@@ -239,7 +239,7 @@ class CircleForagingWithPredator(CircleForaging):
             elif obs == "one-third":
                 xmin = self._xlim[0] + length / 3.0
             else:
-                assert False
+                raise AssertionError()
             xlim = xmin, self._xlim[1]
             self._predator_coordinate = SquareCoordinate(xlim, self._ylim)
         else:
@@ -278,9 +278,9 @@ class CircleForagingWithPredator(CircleForaging):
                 return place(
                     n_trial=self._max_place_attempts,
                     radius=self._agent_radius if is_prey else self._predator_radius,
-                    coordinate=self._coordinate
-                    if is_prey
-                    else self._predator_coordinate,
+                    coordinate=(
+                        self._coordinate if is_prey else self._predator_coordinate
+                    ),
                     loc_fn=self._agent_loc_fn,
                     shaped=self._physics.shaped if is_prey else shaped_nosc,
                     loc_state=state,
@@ -311,9 +311,9 @@ class CircleForagingWithPredator(CircleForaging):
                 return place(
                     n_trial=self._max_place_attempts,
                     radius=self._agent_radius if is_prey else self._predator_radius,
-                    coordinate=self._coordinate
-                    if is_prey
-                    else self._predator_coordinate,
+                    coordinate=(
+                        self._coordinate if is_prey else self._predator_coordinate
+                    ),
                     loc_fn=loc_fn,
                     shaped=self._physics.shaped if is_prey else shaped_nosc,
                     loc_state=state,

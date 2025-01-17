@@ -18,11 +18,9 @@ Self = Any
 
 
 class RewardFn(Protocol):
-    def serialise(self) -> dict[str, float | NDArray]:
-        ...
+    def serialise(self) -> dict[str, float | NDArray]: ...
 
-    def __call__(self, *args) -> jax.Array:
-        ...
+    def __call__(self, *args) -> jax.Array: ...
 
 
 RF = TypeVar("RF", bound=RewardFn)

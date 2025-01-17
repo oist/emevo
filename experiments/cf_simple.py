@@ -476,7 +476,7 @@ def evolve(
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
         headless=headless,
-        debug_print = debug_vis or debug_print,
+        debug_print=debug_vis or debug_print,
     )
 
 
@@ -590,7 +590,7 @@ def widget(
 @app.command()
 def vis_policy(
     physstate_path: list[Path],
-    policy_path: list[Path] = [],
+    policy_path: list[Path] | None = None,
     subtitle: list[str] | None = None,
     agent_index: int | None = None,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
@@ -620,6 +620,8 @@ def vis_policy(
     max_force = max(cfconfig.max_force, -cfconfig.min_force)
 
     names = []
+    if policy_path is None:
+        policy_path = []
     for policy_path_i, name in itertools.zip_longest(
         policy_path,
         [] if subtitle is None else subtitle,

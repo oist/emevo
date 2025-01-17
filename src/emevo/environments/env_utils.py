@@ -48,8 +48,7 @@ class FoodNumState:
 class FoodNumFn(Protocol):
     initial: int
 
-    def __call__(self, n_steps: int, state: FoodNumState) -> FoodNumState:
-        ...
+    def __call__(self, n_steps: int, state: FoodNumState) -> FoodNumState: ...
 
 
 @dataclasses.dataclass(frozen=True)
@@ -176,18 +175,15 @@ class FoodNum(str, enum.Enum):
 
 
 class Coordinate(Protocol):
-    def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        ...
+    def bbox(self) -> tuple[tuple[float, float], tuple[float, float]]: ...
 
     def contains_circle(
         self,
         center: jax.Array,
         radius: jax.Array | float,
-    ) -> jax.Array:
-        ...
+    ) -> jax.Array: ...
 
-    def uniform(self, key: chex.PRNGKey) -> jax.Array:
-        ...
+    def uniform(self, key: chex.PRNGKey) -> jax.Array: ...
 
 
 @dataclasses.dataclass
@@ -329,7 +325,7 @@ def loc_gaussian_mixture(
 
 
 def loc_uniform(coordinate_or_list: Coordinate | list[float]) -> LocatingFn:
-    if isinstance(coordinate_or_list, (list, tuple)):
+    if isinstance(coordinate_or_list, list | tuple):
         coordinate = SquareCoordinate(
             tuple(coordinate_or_list[:2]),  # type: ignore
             tuple(coordinate_or_list[2:]),  # type: ignore

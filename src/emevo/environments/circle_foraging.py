@@ -1102,12 +1102,12 @@ class CircleForaging(Env):
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, key in enumerate(jax.random.split(key, self._n_food_sources)):
+        for i, food_key_i in enumerate(jax.random.split(key, self._n_food_sources)):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],
                 n_max_placement=n_initial,
-                key=key,
+                key=food_key_i,
                 n_steps=i,
                 stated=stated,
             )
