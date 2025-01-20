@@ -76,10 +76,7 @@ class MglWidget(QOpenGLWidget):
             stated=self._get_stated(),
             sc_color_opt=env._food_color,
             sensor_color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
-            sensor_fn=lambda stated: self._env._get_selected_sensor(
-                stated,
-                self._selected_slot,
-            ),
+            sensor_fn=self._sensor_fn,
         )
         self._env = env
         self._get_colors = get_colors
@@ -104,6 +101,9 @@ class MglWidget(QOpenGLWidget):
         self._xy_max = jnp.expand_dims(jnp.array([x_range, y_range]), axis=0)
         self._selected_slot = 0
         self._selected_food_slot = 0
+
+    def _sensor_fn(self, stated: StateDict) -> tuple[jax.Array, jax.Array]:
+        return self._env._get_selected_sensor(stated, self._selected_slot)
 
     def _scale_position(self, position: QPointF) -> tuple[float, float]:
         return (

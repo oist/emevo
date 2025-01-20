@@ -1237,7 +1237,7 @@ class CircleForaging(Env):
                 self._get_sensors  # type: ignore
                 if sensor_index is None
                 else lambda stated: self._get_selected_sensor(
-                    stated,
+                    stated.circle,
                     self._sensor_index,
                 )
             ),

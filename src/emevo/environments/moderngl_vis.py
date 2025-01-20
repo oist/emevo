@@ -367,7 +367,7 @@ class MglRenderer:
 
             def collect_sensors(stated: StateDict) -> NDArray:
                 sensors = np.concatenate(
-                    sensor_fn(state=stated.circle),  # type: ignore
+                    sensor_fn(stated=stated),  # type: ignore
                     axis=1,
                 )
                 sensors = sensors.reshape(-1, 2).astype(jnp.float32)
@@ -496,7 +496,7 @@ class MglVisualizer:
         hoffsets: tuple[int, ...] = (),
         vsync: bool = False,
         backend: str = "pyglet",
-        sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
+        sensor_fn: Callable[[StateDict], tuple[jax.Array, jax.Array]] | None = None,
         sensor_width: float = 0.001,
         title: str = "EmEvo CircleForaging",
     ) -> None:
