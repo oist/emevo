@@ -76,6 +76,7 @@ class CfConfig:
     max_place_attempts: int = 10
     observe_food_label: bool = False
     mouth_range: str = "front"
+    n_tactile_bins: int = 6
 
     def apply_override(self, override: str) -> None:
         if 0 < len(override):

@@ -709,15 +709,18 @@ class CircleForaging(Env):
 
         # For visualization
         self._food_color = np.array(list(food_color))
-        self._get_sensors = jax.jit(
-            functools.partial(
-                _get_sensors,
+
+        @jax.jit
+        def get_sensors_for_vis(stated: StateDict) -> tuple[jax.Array, jax.Array]:
+            return _get_sensors(
+                state=stated.circle,
                 shape=self._physics.shaped.circle,
                 n_sensors=n_agent_sensors,
                 sensor_range=self._sensor_range_tuple,
                 sensor_length=sensor_length,
             )
-        )
+
+        self._get_sensors_for_vis = get_sensors_for_vis
 
         # Sensor index
         self._sensor_index = 0
@@ -790,7 +793,7 @@ class CircleForaging(Env):
         stated: StateDict,
         index: int,
     ) -> tuple[jax.Array, jax.Array]:
-        p1, p2 = self._get_sensors(state=stated.circle)
+        p1, p2 = self._get_sensors_for_vis(stated)
         from_ = index * self._n_sensors
         to = (index + 1) * self._n_sensors
         zeros = jnp.ones_like(p1)
@@ -873,7 +876,7 @@ class CircleForaging(Env):
             axis=1,
         )
         # Gather sensor obs
-        sensor_obs = self._sensor_obs(stated=stated)
+        sensor_obs = self._sensor_obs(stated=stated)  # type: ignore
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_consumption = (
@@ -1225,6 +1228,14 @@ class CircleForaging(Env):
         if sensor_index is not None:
             self._sensor_index = sensor_index
 
+        if sensor_index is None:
+            sensor_fn = self._get_sensors_for_vis
+
+        else:
+
+            def sensor_fn(stated: StateDict) -> tuple[jax.Array, jax.Array]:
+                return self._get_selected_sensor(stated, self._sensor_index)
+
         return moderngl_vis.MglVisualizer(
             x_range=self._x_range,
             y_range=self._y_range,
@@ -1233,13 +1244,6 @@ class CircleForaging(Env):
             food_color=self._food_color,
             figsize=figsize,
             backend=backend,
-            sensor_fn=(
-                self._get_sensors  # type: ignore
-                if sensor_index is None
-                else lambda stated: self._get_selected_sensor(
-                    stated.circle,
-                    self._sensor_index,
-                )
-            ),
+            sensor_fn=sensor_fn,
             **kwargs,
         )
