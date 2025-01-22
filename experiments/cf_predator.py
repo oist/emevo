@@ -376,12 +376,12 @@ def run_evolution(
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
 
+        is_active = env_state.unique_id.is_active()
+        n_max_prey = env._n_max_preys  # type: ignore
+        prey_popl = int(jnp.sum(is_active[:n_max_prey]))
+        predator_popl = int(jnp.sum(is_active[n_max_prey:]))
         if debug_print:
             energy = env_state.status.energy
-            is_active = env_state.unique_id.is_active()
-            n_max_prey = env._n_max_preys  # type: ignore
-            prey_popl = int(jnp.sum(is_active[:n_max_prey]))
-            predator_popl = int(jnp.sum(is_active[n_max_prey:]))
             if prey_popl > 0:
                 avg_e = float(jnp.mean(energy[is_active.at[n_max_prey:].set(False)]))
                 print(f"Prey Popl: {prey_popl} Avg. Energy: {avg_e}")
@@ -391,9 +391,12 @@ def run_evolution(
                 print(f"Predator Popl: {predator_popl} Avg. Energy: {avg_e}")
 
         # Extinct?
-        n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
-        if n_active == 0:
-            print(f"Extinct after {i + 1} epochs")
+        if prey_popl == 0:
+            print(f"Prey got extinct after {i + 1} epochs")
+            break
+
+        if predator_popl == 0:
+            print(f"Predator got extinct after {i + 1} epochs")
             break
 
         # Save dead agents
