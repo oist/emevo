@@ -200,6 +200,7 @@ class CircleForagingWithPredator(CircleForaging):
         predator_basic_ec: float = 0.0,
         predator_digestive_rate: float = 0.9,
         predator_eat_interval: int = 10,
+        predator_mouth_range: Literal["same", "narrow"] = "same",
         # Predators are limited to the right space
         predator_space_limit: bool = False,
         **kwargs,
@@ -216,6 +217,15 @@ class CircleForagingWithPredator(CircleForaging):
             n_max_predators >= n_initial_predators
         ), f"Too many initial predators: {n_initial_predators}"
         super().__init__(**kwargs, _n_additional_objs=1)
+
+        if predator_mouth_range == "same":
+            self._predator_foraging_indices = self._foraging_indices
+        elif predator_mouth_range == "narrow":
+            self._predator_foraging_indices = 0, self._n_tactile_bins - 1
+        else:
+            raise ValueError(
+                f"Unsupported predator mouth range: {predator_mouth_range}"
+            )
 
         if predator_space_limit:
             obs = kwargs["obstacles"]
@@ -593,7 +603,7 @@ class CircleForagingWithPredator(CircleForaging):
         )
         eaten_preys_per_predator = jnp.where(
             can_eat.reshape(self._n_max_predators, 1, 1, 1),
-            predator_prey_rawt[:, :, :, self._foraging_indices],
+            predator_prey_rawt[:, :, :, self._predator_foraging_indices],
             False,
         )
         return _TactileInfo(
