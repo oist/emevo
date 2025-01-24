@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 from collections.abc import Iterable, Sequence
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 from weakref import ReferenceType
 from weakref import ref as make_weakref
 
