@@ -272,6 +272,7 @@ def run_evolution(
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
+    log_active_before = None
     for i, key_i in enumerate(all_keys):
         epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
@@ -294,6 +295,18 @@ def run_evolution(
             n_optim_epochs,
             entropy_weight,
         )
+
+        if log_active_before is not None:
+            for step, slot, uid in zip(
+                log_active_before.step,
+                log_active_before.slots,
+                log_active_before.log.unique_id,
+            ):
+                index = step - i * n_rollout_steps
+                x, y = phys_state.circle_axy[index][slot][1:]
+                if x == 0.0 and y == 0.0:
+                    print("noooo")
+                    print(f"Step: {step} slot: {slot}, uid: {uid}")
 
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
@@ -360,7 +373,9 @@ def run_evolution(
 
         # Push log and physics state
         logger.push_foodlog(foodlog)
-        logger.push_log(log_with_step.filter_active())
+        log_active = log_with_step.filter_active()
+        logger.push_log(log_active)
+        log_active_before = log_active
         logger.push_physstate(phys_state)
 
     # Save logs before exiting
