@@ -200,15 +200,15 @@ class LogWithStep:
     slots: jax.Array
 
     def filter_active(self) -> Any:
-        is_active = self.log.unique_id > -1
+        is_active = self.log.unique_id > 0
         return jax.tree_util.tree_map(lambda arr: arr[is_active], self)
 
     def filter_birth(self) -> Any:
-        is_birth_event = self.log.parents > -1
+        is_birth_event = self.log.parents > 0
         return jax.tree_util.tree_map(lambda arr: arr[is_birth_event], self)
 
     def filter_death(self) -> Any:
-        is_death_event = self.log.dead > -1
+        is_death_event = self.log.dead > 0
         return jax.tree_util.tree_map(lambda arr: arr[is_death_event], self)
 
     def to_flat_dict(self) -> dict[str, jax.Array]:
