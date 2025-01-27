@@ -305,8 +305,7 @@ def run_evolution(
                 index = step - i * n_rollout_steps
                 x, y = phys_state.circle_axy[index][slot][1:]
                 if x == 0.0 and y == 0.0:
-                    print("noooo")
-                    print(f"Step: {step} slot: {slot}, uid: {uid}")
+                    print(f"[XY0] Step: {step} slot: {slot} uid: {uid}")
 
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
