@@ -144,7 +144,8 @@ class Obstacle(str, enum.Enum):
 
 class SensorRange(str, enum.Enum):
     NARROW = "narrow"
-    WIDE = "wide"
+    WIDE = "wide"  # 120 deg
+    WIDE_160D = "wide-160d"
     ALL = "all"
 
     def as_tuple(self) -> tuple[float, float]:
@@ -152,6 +153,8 @@ class SensorRange(str, enum.Enum):
             return -30.0, 30.0
         elif self == SensorRange.WIDE:
             return -60.0, 60.0
+        elif self == SensorRange.WIDE_160D:
+            return -80.0, 80.0
         else:
             return -180.0, 180.0
 
@@ -663,7 +666,7 @@ class CircleForaging(Env):
             )
         else:
             raise ValueError(f"Invalid newborn_loc: {newborn_loc}")
-        if isinstance(sensor_range, SensorRange):
+        if isinstance(sensor_range, SensorRange | str):
             self._sensor_range_tuple = SensorRange(sensor_range).as_tuple()
         else:
             self._sensor_range_tuple = sensor_range
