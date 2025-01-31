@@ -296,6 +296,11 @@ def run_evolution(
             entropy_weight,
         )
 
+        # Check NAN
+        if jnp.sum(jnp.isnan(phys_state.circle_input)) > 0:
+            print(f"NAN in action at step {i + 1}")
+            break
+
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
             visualizer.show()
