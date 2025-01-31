@@ -231,6 +231,7 @@ _XY_SAVE_DTYPE = np.float16
 
 @chex.dataclass
 class SavedPhysicsState:
+    circle_input: jax.Array
     circle_axy: jax.Array
     circle_is_active: jax.Array
     static_circle_axy: jax.Array
@@ -250,6 +251,7 @@ class SavedPhysicsState:
                 dtype=jnp.uint8,
             )
         return SavedPhysicsState(
+            circle_input=jnp.array(npzfile["circle_input"].astype(np.float32)),
             circle_axy=jnp.array(npzfile["circle_axy"].astype(np.float32)),
             circle_is_active=jnp.array(npzfile["circle_is_active"]),
             static_circle_axy=jnp.array(
@@ -291,6 +293,7 @@ def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
     )
     np.savez_compressed(
         path,
+        circle_input=concatenated.circle_input.astype(_XY_SAVE_DTYPE),
         circle_axy=concatenated.circle_axy.astype(_XY_SAVE_DTYPE),
         circle_is_active=concatenated.circle_is_active,
         static_circle_axy=concatenated.static_circle_axy.astype(_XY_SAVE_DTYPE),

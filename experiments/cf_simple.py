@@ -122,6 +122,7 @@ def exec_rollout(
         )
         phys = state_t.physics  # type: ignore
         phys_state = SavedPhysicsState(
+            circle_input=actions,
             circle_axy=phys.circle.p.into_axy(),
             static_circle_axy=phys.static_circle.p.into_axy(),
             circle_is_active=phys.circle.is_active,
