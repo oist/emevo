@@ -28,6 +28,7 @@ dependencies = [
     "pyarrow >= 9.0",
     "pyserde[toml] >= 0.14",
     "optax >= 0.1",
+    "treescope",
     "phyjax2d >= 0.1.6",
 ]
 dynamic = ["version"]
