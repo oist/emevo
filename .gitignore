@@ -11,6 +11,7 @@
 .virtual_documents/
 .ipynb_checkpoints/
 analysis-notebooks/
+local-notebooks/
 data/
 requirements/*.txt
 # This should be local
