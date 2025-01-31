@@ -688,5 +688,22 @@ def vis_policy(
             )
 
 
+@app.command()
+def nancheck(
+    policy_path: Path,
+    cfconfig_path: Path = DEFAULT_CFCONFIG,
+) -> None:
+    from emevo.analysis.evaluate import load_network
+
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+
+    cfconfig.n_initial_agents = 1
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    network = load_network(env, [policy_path])
+    print(network.torso[0])
+    print(network.torso[1])
+
+
 if __name__ == "__main__":
     app()
