@@ -159,7 +159,15 @@ def epoch(
     n_optim_epochs: int,
     entropy_weight: float,
 ) -> tuple[
-    State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, ppo.NormalPPONet
+    State,
+    Obs,
+    Log,
+    FoodLog,
+    SavedPhysicsState,
+    optax.OptState,
+    ppo.NormalPPONet,
+    jax.Array,
+    ppo.Batch,
 ]:
     keys = jax.random.split(prng_key, env.n_max_agents + 1)
     env_state, rollout, log, foodlog, phys_state, obs, next_value = exec_rollout(
@@ -185,7 +193,7 @@ def epoch(
         0.2,
         entropy_weight,
     )
-    return env_state, obs, log, foodlog, phys_state, opt_state, pponet
+    return env_state, obs, log, foodlog, phys_state, opt_state, pponet, batch
 
 
 def run_evolution(
@@ -274,10 +282,13 @@ def run_evolution(
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
     for i, key_i in enumerate(all_keys):
+        # if i == 7300:
+        #     logger.savestate_interval = 1
+        #     logger.min_age_for_save = 1
         epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
         # Use `with jax.disable_jit():` here for debugging
-        env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
+        env_state, obs, log, foodlog, phys_state, opt_state, pponet, batch = epoch(
             env_state,
             obs,
             env,
@@ -295,6 +306,18 @@ def run_evolution(
             n_optim_epochs,
             entropy_weight,
         )
+
+        # if i > 7300:
+        #     np_batch = jax.tree.map(np.array, batch)
+        #     np.savez_compressed(
+        #         logger.logdir / f"batch-{i}.npz",
+        #         observations=np_batch.observations,
+        #         actions=np_batch.actions,
+        #         rewards=np_batch.rewards,
+        #         advantages=np_batch.advantages,
+        #         value_targets=np_batch.value_targets,
+        #         log_action_probs=np_batch.log_action_probs,
+        #     )
 
         # Check NAN
         if jnp.sum(jnp.isnan(phys_state.circle_input)) > 0:

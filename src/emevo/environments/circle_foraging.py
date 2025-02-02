@@ -81,7 +81,7 @@ class CFObs(NamedTuple):
                 self.velocity,
                 jnp.expand_dims(self.angle, axis=1),
                 jnp.expand_dims(self.angular_velocity, axis=1),
-                jnp.expand_dims(self.energy, axis=1),
+                jnp.expand_dims(self.energy, axis=1) / 10.0,
             ),
             axis=1,
         )
