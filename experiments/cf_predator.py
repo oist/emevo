@@ -225,6 +225,8 @@ def epoch(
 ) -> tuple[
     State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, ppo.NormalPPONet
 ]:
+    is_updatable = state.unique_id.is_active()
+
     keys = jax.random.split(prng_key, env.n_max_agents + 1)
     env_state, rollout, log, foodlog, phys_state, obs, next_value = exec_rollout(
         state,
@@ -240,7 +242,7 @@ def epoch(
         n_rollout_steps,
     )
     batch = ppo.vmap_batch(rollout, next_value, gamma, gae_lambda)
-    opt_state, pponet = ppo.vmap_update(
+    opt_state, updated_network = ppo.vmap_update(
         batch,
         network,
         adam_update,
@@ -251,7 +253,9 @@ def epoch(
         0.2,
         entropy_weight,
     )
-    return env_state, obs, log, foodlog, phys_state, opt_state, pponet
+    # Filter the updates of inactive network
+    filtered_network = eqx_where(is_updatable, updated_network, network)
+    return env_state, obs, log, foodlog, phys_state, opt_state, filtered_network
 
 
 def run_evolution(
