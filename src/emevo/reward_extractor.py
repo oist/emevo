@@ -29,6 +29,7 @@ class ActFoodExtractor:
 class SensorActFoodExtractor:
     act_space: BoxSpace
     act_coef: float
+    sensor_coef: float
     _max_norm: jax.Array = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
@@ -46,7 +47,8 @@ class SensorActFoodExtractor:
         mean_sensor_obs: jax.Array,
     ) -> jax.Array:
         act_input = self.act_coef * self.normalize_action(action)
+        sensor_input = self.sensor_coef * mean_sensor_obs
         return jnp.concatenate(
-            (ate_food.astype(jnp.float32), act_input, mean_sensor_obs),
+            (ate_food.astype(jnp.float32), act_input, sensor_input),
             axis=1,
         )

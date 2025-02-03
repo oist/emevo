@@ -485,6 +485,7 @@ def evolve(
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.01,
+    sensor_reward_coef: float = 0.1,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
@@ -540,6 +541,7 @@ def evolve(
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
+        sensor_coef=sensor_reward_coef,
     )
     if cfconfig.observe_food_label:
         n_food_obs = cfconfig.n_food_sources
