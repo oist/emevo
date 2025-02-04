@@ -675,9 +675,9 @@ class CircleForaging(Env):
         self._sensor_obs = self._make_sensor_fn(observe_food_label)
 
         if observe_food_label:
-            assert (
-                self._n_food_sources > 1
-            ), "n_food_sources should be larager than 1 to include food label obs"
+            assert self._n_food_sources > 1, (
+                "n_food_sources should be larager than 1 to include food label obs"
+            )
 
             self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
                 self._n_tactile_bins,
