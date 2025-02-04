@@ -1,5 +1,5 @@
 n_initial_agents = 160
-n_max_agents = 520
+n_max_agents = 500
 n_max_foods = 600
 food_num_fn = ["linear", 40, 0.5, 600]
 xlim = [0.0, 1200.0]
@@ -30,7 +30,7 @@ n_physics_iter = 5
 max_place_attempts = 10
 n_max_food_regen = 10
 # Predator
-n_max_predators = 40
+n_max_predators = 50
 n_initial_predators = 10
 predator_radius = 14.0
 predator_sensor_length = 200
@@ -42,3 +42,4 @@ predator_eat_interval = 10
 # Mouth range
 n_tactile_bins = 9
 mouth_range = "front-wide"
+predator_mouth_range = "narrow"
