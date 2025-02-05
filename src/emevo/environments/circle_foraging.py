@@ -187,7 +187,7 @@ def _make_physics_impl(
     agent_radius: float,
     food_radius: float,
     obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
-) -> Physics:
+) -> SpaceBuilder:
     builder = SpaceBuilder(
         gravity=(0.0, 0.0),  # No gravity
         dt=dt,
@@ -228,7 +228,7 @@ def _make_physics_impl(
             color=FOOD_COLOR,
             is_static=True,
         )
-    return builder.build()
+    return builder
 
 
 def _observe_closest(
@@ -1203,7 +1203,7 @@ class CircleForaging(Env):
         n_position_iter: int,
         obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
     ) -> Physics:
-        return _make_physics_impl(
+        builder = _make_physics_impl(
             dt=dt,
             coordinate=self._coordinate,
             linear_damping=linear_damping,
@@ -1216,6 +1216,7 @@ class CircleForaging(Env):
             food_radius=self._food_radius,
             obstacles=obstacles,
         )
+        return builder.build()
 
     def visualizer(
         self,
