@@ -158,8 +158,8 @@ class CircleForagingWithObstacle(CircleForaging):
         )
         # TODO: Add obstacles
         a = Vec2d(0.0, self._obstacle_size)
-        b = a.rotated_degrees(240) + a
-        c = a.rotate_degrees(120) + b
+        b = Vec2d(self._obstacle_size * 0.5, 3**0.5)
+        c = Vec2d(0.0, 0.0)
         if self._obstacle_method == "random":
             for i in range(self._n_obstacles):
                 builder.add_polygon()
