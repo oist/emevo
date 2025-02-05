@@ -63,7 +63,6 @@ def test_loc_gm(key: chex.PRNGKey) -> None:
     chex.assert_shape(loc, (40, 2))
     x_mean = jnp.mean(loc[:, 0])
     y_mean = jnp.mean(loc[:, 1])
-    print(x_mean, y_mean)
     assert (x_mean - 7) ** 2 < 1.0 and (y_mean - 7) ** 2 < 1.0
 
 
