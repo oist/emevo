@@ -891,7 +891,11 @@ class CircleForagingWithPredator(CircleForaging):
 
         if self._random_angle:
             key, angle_key = jax.random.split(key)
-            angle = jax.random.uniform(angle_key, shape=stated.circle.p.angle.shape)
+            angle = jax.random.uniform(
+                angle_key,
+                shape=stated.circle.p.angle.shape,
+                maxval=2.0 * jnp.pi,
+            )
             stated = stated.nested_replace("circle.p.angle", angle)
 
         food_failed = 0
