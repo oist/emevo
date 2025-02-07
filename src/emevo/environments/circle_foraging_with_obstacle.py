@@ -3,54 +3,30 @@ from __future__ import annotations
 import functools
 import warnings
 from collections.abc import Iterable
-from dataclasses import replace
-from typing import Any, Literal, NamedTuple
+from typing import Any
 
 import chex
 import jax
 import jax.numpy as jnp
-import numpy as np
-from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Position, ShapeDict
+from phyjax2d import Color, ShapeDict
 from phyjax2d import Space as Physics
 from phyjax2d import (
-    SpaceBuilder,
-    State,
     StateDict,
     Vec2d,
     circle_raycast,
-    make_approx_circle,
-    make_square_segments,
     segment_raycast,
     thin_polygon_raycast,
 )
 
-from emevo.env import Status, TimeStep, UniqueID
 from emevo.environments.circle_foraging import (
-    AGENT_COLOR,
-    FOOD_COLOR,
-    MAX_ANGULAR_VELOCITY,
-    MAX_VELOCITY,
     NOWHERE,
-    CFObs,
-    CFState,
     CircleForaging,
     _first_n_true,
     _get_sensors,
     _make_physics_impl,
-    _nonzero,
     _SensorFn,
-    get_tactile,
-    nstep,
 )
-from emevo.environments.env_utils import (
-    CircleCoordinate,
-    FoodNumState,
-    LocatingState,
-    SquareCoordinate,
-    loc_gaussian,
-    place,
-)
+from emevo.environments.env_utils import FoodNumState, LocatingState
 
 Self = Any
 OBSTACLE_COLOR: Color = Color(2, 204, 254)
@@ -165,11 +141,11 @@ class CircleForagingWithObstacle(CircleForaging):
             food_radius=self._food_radius,
             obstacles=obstacles,
         )
-        # TODO: Add obstacles
-        a = Vec2d(0.0, self._obstacle_size)
-        b = Vec2d(self._obstacle_size * 0.5, 3**0.5)
-        c = Vec2d(0.0, 0.0)
-        center = Vec2d(self._obstacle_size * 0.5)
+        # Radius of the inner circle
+        r = (3**0.5) / 6 * self._obstacle_size
+        a = Vec2d(self._obstacle_size * 0.5, -r)
+        b = Vec2d(0.0, r * 2.0)
+        c = Vec2d(-self._obstacle_size * 0.5, -r)
         triangle = [a, b, c]
         for _ in range(self._n_obstacles):
             builder.add_polygon(
