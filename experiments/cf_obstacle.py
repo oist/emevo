@@ -40,14 +40,25 @@ from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20240823-uniform.toml"
+SENSOR_NAMES = ["prey_sensor", "predator_sensor"]
+N_SENSOR_REWARDS = 2
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
     wd = w.shape[0]
-    rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(wd - 1)}
-    rd["action"] = rfn.slice_last(w, wd - 1)
+    n_food_rewards = wd - N_SENSOR_REWARDS - 1
+    rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(n_food_rewards)}
+    rd["action"] = rfn.slice_last(w, n_food_rewards)
+    for i, sensor_name in enumerate(SENSOR_NAMES):
+        rd[sensor_name] = rfn.slice_last(w, i + n_food_rewards + 1)
     return rd
 
+
+def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
+    # E.g., sensor with predator: (N_agents, N_sensors, N_obj)
+    used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
+    clipped_sensor_obs = jnp.clip(used_sensor_obs, min=0.0)
+    return jnp.mean(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
 
 def exec_rollout(
     state: State,

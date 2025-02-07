@@ -3,11 +3,13 @@ from __future__ import annotations
 import functools
 import warnings
 from collections.abc import Iterable
+from dataclasses import replace
 from typing import Any
 
 import chex
 import jax
 import jax.numpy as jnp
+from jax.typing import ArrayLike
 from phyjax2d import Color, ShapeDict
 from phyjax2d import Space as Physics
 from phyjax2d import (
@@ -18,13 +20,18 @@ from phyjax2d import (
     thin_polygon_raycast,
 )
 
+from emevo.env import Status, TimeStep
 from emevo.environments.circle_foraging import (
     NOWHERE,
+    CFObs,
+    CFState,
     CircleForaging,
     _first_n_true,
     _get_sensors,
     _make_physics_impl,
     _SensorFn,
+    get_tactile,
+    nstep,
 )
 from emevo.environments.env_utils import FoodNumState, LocatingState
 
@@ -103,6 +110,127 @@ class CircleForagingWithObstacle(CircleForaging):
         self._obstacle_damage = obstacle_damage
         self._n_obstacles = n_obstacles
         self._obstacle_size = obstacle_size
+
+    def step(
+        self,
+        state: CFState[Status],
+        action: ArrayLike,
+    ) -> tuple[CFState[Status], TimeStep[CFObs]]:
+        # Add force
+        act = jax.vmap(self.act_space.clip)(jnp.array(action))
+        f1_raw = jax.lax.slice_in_dim(act, 0, 1, axis=-1)
+        f2_raw = jax.lax.slice_in_dim(act, 1, 2, axis=-1)
+        f1 = jnp.concatenate((jnp.zeros_like(f1_raw), f1_raw), axis=1)
+        f2 = jnp.concatenate((jnp.zeros_like(f2_raw), f2_raw), axis=1)
+        circle = state.physics.circle
+        circle = circle.apply_force_local(self._act_p1, f1)
+        circle = circle.apply_force_local(self._act_p2, f2)
+        stated = replace(state.physics, circle=circle)
+        # Step physics simulator
+        stated, solver, nstep_contacts = nstep(
+            self._n_physics_iter,
+            self._physics,
+            stated,
+            state.solver,
+        )
+        # Gather circle contacts
+        contacts = jnp.max(nstep_contacts, axis=0)
+        c2c = self._physics.get_contact_mat("circle", "circle", contacts)
+        c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
+        seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
+        tri2c = self._physics.get_contact_mat("triangle", "circle", contacts)
+        # Get tactile obs
+        food_tactile, ft_raw = self._food_tactile(
+            stated.static_circle.label,
+            stated.circle,
+            stated.static_circle,
+            c2sc,
+        )
+        ag_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            stated.circle,
+            stated.circle,
+            c2c,
+        )
+        wall_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            stated.circle,
+            stated.segment,
+            seg2c.transpose(),
+        )
+        obs_tactile, _ = get_tactile(
+            self._n_tactile_bins,
+            stated.circle,
+            stated.segment,
+            tri2c.transpose(),
+        )
+        collision = jnp.concatenate(
+            (ag_tactile > 0, food_tactile > 0, wall_tactile > 0, obs_tactile > 0),
+            axis=1,
+        )
+        # Gather sensor obs
+        sensor_obs = self._sensor_obs(stated=stated)  # type: ignore
+        # energy_delta = food - coef * |force| - obstacle_damage * obs_tactile
+        force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
+        energy_consumption = (
+            self._force_energy_consumption * force_norm + self._basic_energy_consumption
+        )
+        damage = (
+            jnp.max(obs_tactile.reshape(self.n_max_agents, -1), axis=-1)
+            * self._obstacle_damage
+        )
+        n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
+        energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
+        energy_delta = energy_gain - energy_consumption - damage
+        # Remove and regenerate foods
+        key, food_key = jax.random.split(state.key)
+        eaten = jnp.max(ft_raw[:, :, :, self._foraging_indices], axis=(0, 3)) > 0
+        stated, food_num, food_loc, n_regen = self._remove_and_regenerate_foods(
+            food_key,
+            eaten,  # (N_FOOD, N_LABEL)
+            stated,
+            state.step,
+            state.food_num,
+            state.food_loc,
+        )
+        status = state.status.update(
+            energy_delta=energy_delta,
+            capacity=self._energy_capacity,
+        )
+        # Construct obs
+        obs = CFObs(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
+            collision=collision,
+            angle=stated.circle.p.angle,
+            velocity=stated.circle.v.xy,
+            angular_velocity=stated.circle.v.angle,
+            energy=status.energy,
+        )
+        timestep = TimeStep(
+            encount=c2c,
+            obs=obs,
+            info={
+                "energy_gain": energy_gain,
+                "energy_consumption": energy_consumption,
+                "obstacle_damage": damage,
+                "n_food_regenerated": n_regen,
+                "n_food_eaten": jnp.sum(eaten, axis=0),  # (N_LABEL,)
+                "n_ate_food": n_ate,  # (N_AGENT, N_LABEL)
+            },
+        )
+        state = CFState(
+            physics=stated,
+            solver=solver,
+            food_num=food_num,
+            agent_loc=state.agent_loc,
+            food_loc=food_loc,
+            key=key,
+            step=state.step + 1,
+            unique_id=state.unique_id,
+            status=status.step(state.unique_id.is_active()),
+            n_born_agents=state.n_born_agents,
+        )
+        return state, timestep
 
     def _make_sensor_fn(self, observe_food_label: bool) -> _SensorFn:
         if observe_food_label:
