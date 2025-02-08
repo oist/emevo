@@ -96,20 +96,22 @@ class CircleForagingWithObstacle(CircleForaging):
         obstacle_size: float = 20.0,
         **kwargs,
     ) -> None:
+        self._obstacle_damage = obstacle_damage
+        self._n_obstacles = n_obstacles
+        self._obstacle_size = obstacle_size
         super().__init__(**kwargs, _n_additional_objs=1)
         xlim, ylim = self._coordinate.bbox()
         xlen, ylen = xlim[1] - xlim[0], ylim[1] - ylim[0]
         n_hol_blocks = xlen // obstacle_size
         n_vert_blocks = ylen // obstacle_size
         n_max_obstacles = n_hol_blocks * n_vert_blocks
-        assert n_max_obstacles <= n_obstacles, "Too many obstacles!"
+        assert (
+            n_obstacles <= n_max_obstacles
+        ), f"Too many obstacles! Max: {n_max_obstacles}, Current: {n_obstacles}"
         self._n_hol_blocks = n_hol_blocks
         self._n_vert_blocks = n_vert_blocks
         self._hol_block_size = xlen / n_hol_blocks
         self._vert_block_size = ylen / n_vert_blocks
-        self._obstacle_damage = obstacle_damage
-        self._n_obstacles = n_obstacles
-        self._obstacle_size = obstacle_size
 
     def step(
         self,
@@ -326,6 +328,7 @@ class CircleForagingWithObstacle(CircleForaging):
         n_agents = 0
         agentloc_state = self._initial_agentloc_state
         is_active = []
+        print(self._physics.shaped.triangle.points.shape)
         for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,

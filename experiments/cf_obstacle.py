@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import typer
-from serde import toml
+from serde import serde, toml
 
 from emevo import Env
 from emevo import birth_and_death as bd
@@ -34,13 +34,13 @@ from emevo.exp_utils import (
     SavedProfile,
     is_cuda_ready,
 )
-from emevo.reward_extractor import ActFoodExtractor as RewardExtractor
+from emevo.reward_extractor import SensorActFoodExtractor as RewardExtractor
 from emevo.rl import ppo_normal as ppo
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20240823-uniform.toml"
-SENSOR_NAMES = ["prey_sensor", "predator_sensor"]
+DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20250207-obstacle.toml"
+SENSOR_NAMES = ["agent_sensor", "obs_sensor"]
 N_SENSOR_REWARDS = 2
 
 
@@ -59,6 +59,15 @@ def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
     used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
     clipped_sensor_obs = jnp.clip(used_sensor_obs, min=0.0)
     return jnp.mean(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
+
+
+@serde
+@dataclasses.dataclass
+class CfConfigWithPredator(CfConfig):
+    n_obstacles: int = 4
+    obstacle_damage: float = 10.0
+    obstacle_size: float = 20.0
+
 
 def exec_rollout(
     state: State,
@@ -85,7 +94,11 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        rewards = reward_fn(timestep.info["n_ate_food"], actions).reshape(-1, 1)
+        mean_sensor_obs = get_mean_sensor_obs(obs_t1.sensor)
+        rewards = jnp.expand_dims(
+            reward_fn(timestep.info["n_ate_food"], actions, mean_sensor_obs),
+            axis=1,
+        )
         rollout = ppo.Rollout(
             observations=obs_t_array,
             actions=actions,
@@ -124,6 +137,9 @@ def exec_rollout(
             parents=parents,
             rewards=rewards.ravel(),
             unique_id=state_t1db.unique_id.unique_id,
+            additional_fields={
+                "obstacle_damage": timestep.info["obstacle_damage"],
+            },
         )
         foodlog = FoodLog(
             eaten=timestep.info["n_food_eaten"],
@@ -402,6 +418,7 @@ def evolve(
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.01,
+    sensor_reward_coef: float = 0.1,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
@@ -443,16 +460,22 @@ def evolve(
     birth_fn, hazard_fn = bdconfig.load_models()
     mutation = gopsconfig.load_model()
     # Make env
-    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v3", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
+
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
+        sensor_coef=sensor_reward_coef,
     )
+    if cfconfig.observe_food_label:
+        n_food_obs = cfconfig.n_food_sources
+    else:
+        n_food_obs = 1
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=1 + cfconfig.n_food_sources,
+        n_weights=1 + n_food_obs + N_SENSOR_REWARDS,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
