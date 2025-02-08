@@ -187,7 +187,7 @@ def _make_physics_impl(
     agent_radius: float,
     food_radius: float,
     obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
-) -> Physics:
+) -> SpaceBuilder:
     builder = SpaceBuilder(
         gravity=(0.0, 0.0),  # No gravity
         dt=dt,
@@ -228,7 +228,7 @@ def _make_physics_impl(
             color=FOOD_COLOR,
             is_static=True,
         )
-    return builder.build()
+    return builder
 
 
 def _observe_closest(
@@ -675,9 +675,9 @@ class CircleForaging(Env):
         self._sensor_obs = self._make_sensor_fn(observe_food_label)
 
         if observe_food_label:
-            assert (
-                self._n_food_sources > 1
-            ), "n_food_sources should be larager than 1 to include food label obs"
+            assert self._n_food_sources > 1, (
+                "n_food_sources should be larager than 1 to include food label obs"
+            )
 
             self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
                 self._n_tactile_bins,
@@ -1102,7 +1102,11 @@ class CircleForaging(Env):
 
         if self._random_angle:
             key, angle_key = jax.random.split(key)
-            angle = jax.random.uniform(angle_key, shape=stated.circle.p.angle.shape)
+            angle = jax.random.uniform(
+                angle_key,
+                shape=stated.circle.p.angle.shape,
+                maxval=2.0 * jnp.pi,
+            )
             stated = stated.nested_replace("circle.p.angle", angle)
 
         food_failed = 0
@@ -1203,7 +1207,7 @@ class CircleForaging(Env):
         n_position_iter: int,
         obstacles: Iterable[tuple[Vec2d, Vec2d]] = (),
     ) -> Physics:
-        return _make_physics_impl(
+        builder = _make_physics_impl(
             dt=dt,
             coordinate=self._coordinate,
             linear_damping=linear_damping,
@@ -1216,6 +1220,7 @@ class CircleForaging(Env):
             food_radius=self._food_radius,
             obstacles=obstacles,
         )
+        return builder.build()
 
     def visualizer(
         self,

@@ -59,8 +59,8 @@ def test_loc_gm(key: chex.PRNGKey) -> None:
         ((0.0, 0.0), (10.0, 10.0)),
         ((1.0, 1.0), (1.0, 1.0)),
     )
-    loc = jax.vmap(loc_gm, in_axes=(0, None, None))(jax.random.split(key, 20), 0, state)
-    chex.assert_shape(loc, (20, 2))
+    loc = jax.vmap(loc_gm, in_axes=(0, None, None))(jax.random.split(key, 40), 0, state)
+    chex.assert_shape(loc, (40, 2))
     x_mean = jnp.mean(loc[:, 0])
     y_mean = jnp.mean(loc[:, 1])
     assert (x_mean - 7) ** 2 < 1.0 and (y_mean - 7) ** 2 < 1.0

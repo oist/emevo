@@ -19,6 +19,7 @@ from phyjax2d import (
     StateDict,
     Vec2d,
     circle_raycast,
+    empty,
     make_approx_circle,
     make_square_segments,
     segment_raycast,
@@ -213,9 +214,9 @@ class CircleForagingWithPredator(CircleForaging):
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
         self._predator_eat_interval = predator_eat_interval
         assert self._n_max_preys > 0, f"Too many predators: {n_max_predators}"
-        assert (
-            n_max_predators >= n_initial_predators
-        ), f"Too many initial predators: {n_initial_predators}"
+        assert n_max_predators >= n_initial_predators, (
+            f"Too many initial predators: {n_initial_predators}"
+        )
         super().__init__(**kwargs, _n_additional_objs=1)
 
         if predator_mouth_range == "same":
@@ -255,7 +256,7 @@ class CircleForagingWithPredator(CircleForaging):
             .at[self._n_max_preys :]
             .set(predator_act_ratio)
         )
-        shaped_nosc = replace(self._physics.shaped, static_circle=None)
+        shaped_nosc = replace(self._physics.shaped, static_circle=empty(Circle)())
         self._init_predator = jax.jit(
             functools.partial(
                 place,
@@ -891,7 +892,11 @@ class CircleForagingWithPredator(CircleForaging):
 
         if self._random_angle:
             key, angle_key = jax.random.split(key)
-            angle = jax.random.uniform(angle_key, shape=stated.circle.p.angle.shape)
+            angle = jax.random.uniform(
+                angle_key,
+                shape=stated.circle.p.angle.shape,
+                maxval=2.0 * jnp.pi,
+            )
             stated = stated.nested_replace("circle.p.angle", angle)
 
         food_failed = 0

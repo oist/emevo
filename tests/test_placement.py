@@ -20,7 +20,7 @@ def key() -> chex.PRNGKey:
 
 def get_space_and_coordinate() -> tuple[Space, CircleCoordinate]:
     coordinate = CircleCoordinate((100.0, 100.0), 100.0)
-    space = _make_physics(
+    builder = _make_physics(
         0.1,
         coordinate,
         linear_damping=0.9,
@@ -32,7 +32,7 @@ def get_space_and_coordinate() -> tuple[Space, CircleCoordinate]:
         agent_radius=AGENT_RADIUS,
         food_radius=FOOD_RADIUS,
     )
-    return space, coordinate
+    return builder.build(), coordinate
 
 
 def test_place_agents(key) -> None:
