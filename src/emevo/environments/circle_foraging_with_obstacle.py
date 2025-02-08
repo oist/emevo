@@ -105,9 +105,9 @@ class CircleForagingWithObstacle(CircleForaging):
         n_hol_blocks = xlen // obstacle_size
         n_vert_blocks = ylen // obstacle_size
         n_max_obstacles = n_hol_blocks * n_vert_blocks
-        assert (
-            n_obstacles <= n_max_obstacles
-        ), f"Too many obstacles! Max: {n_max_obstacles}, Current: {n_obstacles}"
+        assert n_obstacles <= n_max_obstacles, (
+            f"Too many obstacles! Max: {n_max_obstacles}, Current: {n_obstacles}"
+        )
         self._n_hol_blocks = n_hol_blocks
         self._n_vert_blocks = n_vert_blocks
         self._hol_block_size = xlen / n_hol_blocks
@@ -140,7 +140,7 @@ class CircleForagingWithObstacle(CircleForaging):
         c2c = self._physics.get_contact_mat("circle", "circle", contacts)
         c2sc = self._physics.get_contact_mat("circle", "static_circle", contacts)
         seg2c = self._physics.get_contact_mat("segment", "circle", contacts)
-        tri2c = self._physics.get_contact_mat("triangle", "circle", contacts)
+        tri2c = self._physics.get_contact_mat("static_triangle", "circle", contacts)
         # Get tactile obs
         food_tactile, ft_raw = self._food_tactile(
             stated.static_circle.label,
@@ -316,11 +316,11 @@ class CircleForagingWithObstacle(CircleForaging):
         obs_x = obs_x_indices * self._hol_block_size + self._hol_block_size * 0.5
         obs_y = obs_y_indices * self._vert_block_size + self._vert_block_size * 0.5
         stated = stated.nested_replace(
-            "triangle.p.xy",
+            "static_triangle.p.xy",
             jnp.stack((obs_x, obs_y), axis=1),
         )
         stated = stated.nested_replace(
-            "triangle.p.angle",
+            "static_triangle.p.angle",
             jax.random.uniform(obstacle_angle_key, shape=(self._n_obstacles,)),
         )
         # Place agents
@@ -328,7 +328,7 @@ class CircleForagingWithObstacle(CircleForaging):
         n_agents = 0
         agentloc_state = self._initial_agentloc_state
         is_active = []
-        print(self._physics.shaped.triangle.points.shape)
+        print(self._physics.shaped.static_triangle.points.shape)
         for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,
