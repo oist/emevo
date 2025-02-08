@@ -35,4 +35,4 @@ mouth_range = "front-wide"
 # Obstacle
 n_obstacles = 20
 obstacle_damage = 20.0
-obstacle_size = 40
+obstacle_size = 40.0

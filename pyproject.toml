@@ -28,7 +28,7 @@ dependencies = [
     "pyarrow >= 9.0",
     "pyserde[toml] >= 0.14",
     "optax >= 0.1",
-    "phyjax2d >= 0.1.9",
+    "phyjax2d >= 0.2",
 ]
 dynamic = ["version"]
 

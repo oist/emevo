@@ -20,7 +20,7 @@ from phyjax2d import (
     thin_polygon_raycast,
 )
 
-from emevo.env import Status, TimeStep
+from emevo.env import Status, TimeStep, Visualizer
 from emevo.environments.circle_foraging import (
     NOWHERE,
     CFObs,
@@ -51,7 +51,13 @@ def _observe_closest(
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    rc = thin_polygon_raycast(1.0, p1, p2, shaped.triangle, stated.triangle)
+    rc = thin_polygon_raycast(
+        1.0,
+        p1,
+        p2,
+        shaped.static_triangle,
+        stated.static_triangle,
+    )
     to_tri = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     obs = jnp.concatenate(
         jax.tree_util.tree_map(
@@ -163,7 +169,7 @@ class CircleForagingWithObstacle(CircleForaging):
         obs_tactile, _ = get_tactile(
             self._n_tactile_bins,
             stated.circle,
-            stated.segment,
+            stated.static_triangle,
             tri2c.transpose(),
         )
         collision = jnp.concatenate(
@@ -328,7 +334,6 @@ class CircleForagingWithObstacle(CircleForaging):
         n_agents = 0
         agentloc_state = self._initial_agentloc_state
         is_active = []
-        print(self._physics.shaped.static_triangle.points.shape)
         for i, key in enumerate(agent_keys):
             xy, ok = self._init_agent(
                 loc_state=agentloc_state,
@@ -407,3 +412,37 @@ class CircleForagingWithObstacle(CircleForaging):
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
         return stated, agentloc_state, foodloc_states, foodnum_states
+
+    def visualizer(
+        self,
+        state: CFState[Status],
+        figsize: tuple[float, float] | None = None,
+        sensor_index: int | None = None,
+        backend: str = "pyglet",
+        **kwargs,
+    ) -> Visualizer[StateDict]:
+        """Create a visualizer for the environment"""
+        from phyjax2d import moderngl_vis
+
+        if sensor_index is not None:
+            self._sensor_index = sensor_index
+
+        if sensor_index is None:
+            sensor_fn = self._get_sensors_for_vis
+
+        else:
+
+            def sensor_fn(stated: StateDict) -> tuple[jax.Array, jax.Array]:
+                return self._get_selected_sensor(stated, self._sensor_index)
+
+        return moderngl_vis.MglVisualizer(
+            x_range=self._x_range,
+            y_range=self._y_range,
+            space=self._physics,
+            stated=state.physics,
+            sc_color=self._food_color,
+            figsize=figsize,
+            backend=backend,
+            sensor_fn=sensor_fn,
+            **kwargs,
+        )

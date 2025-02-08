@@ -63,7 +63,7 @@ def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
 
 @serde
 @dataclasses.dataclass
-class CfConfigWithPredator(CfConfig):
+class CfConfigWithObstacle(CfConfig):
     n_obstacles: int = 4
     obstacle_damage: float = 10.0
     obstacle_size: float = 20.0
@@ -283,6 +283,10 @@ def run_evolution(
 
     opt_state = initialize_opt_state(pponet)
     env_state, timestep = env.reset(reset_key)
+    np.savez(
+        logger.logdir / "obstacles.npz",
+        obstacle_axy=np.array(env_state.physics.static_triangle.p.into_axy()),
+    )
     obs = timestep.obs
 
     if debug_vis:
@@ -434,7 +438,7 @@ def evolve(
     log_interval: int = 1000,
     savestate_interval: int = 1000,
     debug_vis: bool = False,
-    debug_vis_scale: float = 2.0,
+    debug_vis_scale: float = 1.0,
     debug_print: bool = False,
     headless: bool = False,
     force_gpu: bool = True,
@@ -444,7 +448,7 @@ def evolve(
 
     # Load config
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithObstacle, f.read())
     with bdconfig_path.open("r") as f:
         bdconfig = toml.from_toml(BDConfig, f.read())
     with gopsconfig_path.open("r") as f:
@@ -528,17 +532,28 @@ def replay(
     scale: float = 1.0,
     force_cpu: bool = False,
 ) -> None:
+    from phyjax2d import Position
+
     if force_cpu:
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithObstacle, f.read())
     # For speedup
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v1", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v3", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
+    npzfile = np.load(physstate_path.parent / "obstacles.npz")
+    obstacle_axy = jnp.array(npzfile["obstacle_axy"])
+    env_state = dataclasses.replace(
+        env_state,
+        physics=env_state.physics.nested_replace(
+            "static_triangle.p",
+            Position.from_axy(obstacle_axy),
+        ),
+    )
     end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
         env_state,
@@ -550,7 +565,7 @@ def replay(
     for i in range(start, end_index):
         ph = phys_state.set_by_index(i, env_state.physics)
         # Disable rendering agents
-        ph = ph.nested_replace("circle.is_active", jnp.zeros_like(ph.circle.is_active))
+        # ph = ph.nested_replace("circle.is_active", jnp.zeros_like(ph.circle.is_active))
         env_state = dataclasses.replace(env_state, physics=ph)
         visualizer.render(env_state.physics)
         visualizer.show()
