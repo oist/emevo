@@ -42,7 +42,7 @@ analysis = [
 ]
 # Meta feature to install CUDA12 jax
 cuda12 = ["jax[cuda12]"]
-widget = ["PySide6 == 6.6.0"]
+widget = ["PySide6 >= 6.8"]
 video = ["av >= 14.0"]
 
 [project.readme]
