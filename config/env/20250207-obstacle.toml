@@ -33,6 +33,6 @@ n_max_food_regen = 10
 n_tactile_bins = 9
 mouth_range = "front-wide"
 # Obstacle
-n_obstacles = 20
-obstacle_damage = 20.0
+n_obstacles = 10
+obstacle_damage = 10.0
 obstacle_size = 40.0
