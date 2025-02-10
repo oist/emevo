@@ -85,6 +85,7 @@ def _observe_closest(
     state_prey: State,
     state_predator: State,
     ignore_first_seg: bool,
+    ignore_sc: bool,
 ) -> jax.Array:
     rc = circle_raycast(0.0, 1.0, p1, p2, circle_prey, state_prey)
     to_prey = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
@@ -92,6 +93,8 @@ def _observe_closest(
     to_predator = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     rc = circle_raycast(0.0, 1.0, p1, p2, shaped.static_circle, stated.static_circle)
     to_sc = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
+    if ignore_sc:
+        to_sc = jnp.ones_like(to_sc) * -1.0
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
     if ignore_first_seg:
@@ -107,7 +110,7 @@ def _observe_closest(
 
 _vmap_obs_closest = jax.vmap(
     _observe_closest,
-    in_axes=(None, None, None, 0, 0, None, None, None, None),
+    in_axes=(None, None, None, 0, 0, None, None, None, None, None),
 )
 
 
@@ -150,6 +153,7 @@ def get_sensor_obs(
         prey_state,
         predator_state,
         prey_ignore_first_seg,
+        False,
     )
     predator_obs = _vmap_obs_closest(
         shaped,
@@ -161,6 +165,7 @@ def get_sensor_obs(
         prey_state,
         predator_state,
         False,
+        True,  # Predators ignore foods
     )
     return jnp.concatenate((prey_obs, predator_obs), axis=0)
 
@@ -598,8 +603,15 @@ class CircleForagingWithPredator(CircleForaging):
             (prey_predator_tactile, predator_prey_tactile),
             axis=0,
         )
+        # No food tactile for predators
+        food_tactile_filtered = (food_tactile > 0).at[self._n_max_preys :].set(False)
         tactile = jnp.concatenate(
-            (self_tactile > 0, other_tactile > 0, food_tactile > 0, wall_tactile > 0),
+            (
+                self_tactile > 0,
+                other_tactile > 0,
+                food_tactile_filtered,
+                wall_tactile > 0,
+            ),
             axis=1,
         )
         eaten_preys_per_predator = jnp.where(
