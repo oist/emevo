@@ -4,21 +4,12 @@ import functools
 import warnings
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 import chex
 import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
-from phyjax2d import Color, ShapeDict
-from phyjax2d import Space as Physics
-from phyjax2d import (
-    StateDict,
-    Vec2d,
-    circle_raycast,
-    segment_raycast,
-    thin_polygon_raycast,
-)
 
 from emevo.env import Status, TimeStep, Visualizer
 from emevo.environments.circle_foraging import (
@@ -34,6 +25,15 @@ from emevo.environments.circle_foraging import (
     nstep,
 )
 from emevo.environments.env_utils import FoodNumState, LocatingState
+from emevo.phyjax2d import Color, ShapeDict
+from emevo.phyjax2d import Space as Physics
+from emevo.phyjax2d import (
+    StateDict,
+    Vec2d,
+    circle_raycast,
+    segment_raycast,
+    thin_polygon_raycast,
+)
 
 Self = Any
 OBSTACLE_COLOR: Color = Color(2, 204, 254)
@@ -423,7 +423,7 @@ class CircleForagingWithObstacle(CircleForaging):
         **kwargs,
     ) -> Visualizer[StateDict]:
         """Create a visualizer for the environment"""
-        from phyjax2d import moderngl_vis
+        from emevo.phyjax2d import moderngl_vis
 
         if sensor_index is not None:
             self._sensor_index = sensor_index

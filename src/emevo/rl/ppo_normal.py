@@ -167,8 +167,8 @@ def loss_function(
     policy_ratio = jnp.exp(log_prob - batch.log_action_probs)
     clipped_ratio = jnp.clip(
         policy_ratio,
-        min=1.0 - ppo_clip_eps,
-        max=1.0 + ppo_clip_eps,
+        a_min=1.0 - ppo_clip_eps,
+        a_max=1.0 + ppo_clip_eps,
     )
     clipped_objective = jnp.fmin(
         policy_ratio * batch.advantages,

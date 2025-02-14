@@ -13,22 +13,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Position, ShapeDict
-from phyjax2d import Space as Physics
-from phyjax2d import (
-    SpaceBuilder,
-    State,
-    StateDict,
-    Vec2d,
-    Velocity,
-    VelocitySolver,
-    circle_raycast,
-    get_relative_angle,
-    make_approx_circle,
-    make_square_segments,
-    segment_raycast,
-)
-from phyjax2d import step as physics_step
 
 from emevo.env import (
     Env,
@@ -53,6 +37,22 @@ from emevo.environments.env_utils import (
     place,
     place_multi,
 )
+from emevo.phyjax2d import Circle, Color, Position, ShapeDict
+from emevo.phyjax2d import Space as Physics
+from emevo.phyjax2d import (
+    SpaceBuilder,
+    State,
+    StateDict,
+    Vec2d,
+    Velocity,
+    VelocitySolver,
+    circle_raycast,
+    get_relative_angle,
+    make_approx_circle,
+    make_square_segments,
+    segment_raycast,
+)
+from emevo.phyjax2d import step as physics_step
 from emevo.spaces import BoxSpace, NamedTupleSpace
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)

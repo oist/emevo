@@ -142,7 +142,7 @@ class CircleForagingWithNeurotoxin(CircleForaging):
         )
         toxin = jnp.clip(
             status.toxin + n_ate_toxin * self._toxin_delta - self._toxin_recover_rate,
-            min=0.0,
+            a_min=0.0,
         )
         status = replace(status, toxin=toxin)
         # Construct obs

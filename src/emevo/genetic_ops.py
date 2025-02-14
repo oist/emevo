@@ -116,7 +116,7 @@ def _clip_minmax(
 ) -> jax.Array:
     if clip_min is None and clip_max is None:
         return x
-    return jnp.clip(x, min=clip_min, max=clip_max)
+    return jnp.clip(x, a_min=clip_min, a_max=clip_max)
 
 
 @dataclasses.dataclass(frozen=True)

@@ -15,7 +15,8 @@ import moderngl_window as mglw
 import numpy as np
 from moderngl_window.context import headless
 from numpy.typing import NDArray
-from emevo.phyjax2d import Circle, Segment, Space, State, StateDict
+
+from emevo.phyjax2d import Circle, Polygon, Position, Segment, Space, State, StateDict
 
 NOWHERE: float = -1000.0
 
@@ -108,6 +109,44 @@ void main() {
 }
 """
 
+_TRIANGLE_VERTEX_SHADER = """
+#version 330
+uniform mat4 proj;
+in vec2 in_position;
+in vec4 in_color;
+out vec4 v_color;
+void main() {
+    gl_Position = proj * vec4(in_position, 0.0, 1.0);
+    v_color = in_color;
+}
+"""
+
+
+_TRIANGLE_GEOMETRY_SHADER = """
+#version 330
+layout (triangles) in;
+layout (triangle_strip, max_vertices = 3) out;
+in vec4 v_color[3];
+out vec4 g_color;
+void main() {
+    for(int i = 0; i < gl_in.length(); i++) {
+        gl_Position = gl_in[i].gl_Position;
+        g_color = v_color[i];
+        EmitVertex();
+    }
+    EndPrimitive();
+}
+"""
+
+_TRIANGLE_FRAGMENT_SHADER = """
+#version 330
+in vec4 g_color;
+out vec4 f_color;
+void main() {
+    f_color = vec4(0.0, 0.0, 0.4, 1.0);
+}
+"""
+
 
 class Renderable:
     MODE: ClassVar[int]
@@ -168,7 +207,7 @@ class SegmentVA(Renderable):
     ) -> None:
         self._ctx = ctx
         self._length = segments.shape[0]
-        self._segments = ctx.buffer(reserve=len(segments) * 4 * 2 * 10)
+        self._segments = ctx.buffer(reserve=self._length * 4 * 2 * 10)
 
         self.vertex_array = ctx.vertex_array(
             program,
@@ -182,6 +221,39 @@ class SegmentVA(Renderable):
             self._length = length
             self._segments.orphan(length * 4 * 2)
         self._segments.write(segments)
+        return length > 0
+
+
+class TriangleVA(Renderable):
+    MODE = mgl.TRIANGLES
+
+    def __init__(
+        self,
+        ctx: mgl.Context,
+        program: mgl.Program,
+        vertices: NDArray,
+        colors: NDArray,
+    ) -> None:
+        self._ctx = ctx
+        self._length = vertices.shape[0]
+        self._vertices = ctx.buffer(reserve=self._length * 4 * 6 * 10)
+        self._colors = ctx.buffer(reserve=len(colors) * 4 * 12 * 10)
+
+        self.vertex_array = ctx.vertex_array(
+            program,
+            [
+                (self._vertices, "2f", "in_position"),
+                # (self._colors, "4f", "in_color"),
+            ],
+        )
+        self.update(vertices)
+
+    def update(self, vertices: NDArray) -> bool:
+        length = vertices.shape[0]
+        if self._length != length:
+            self._length = length
+            self._vertices.orphan(length * 4 * 3)
+        self._vertices.write(vertices)
         return length > 0
 
 
@@ -229,6 +301,24 @@ def _collect_circles(
     is_active = np.expand_dims(np.array(state.is_active), axis=1)
     colors = np.where(is_active, colors, np.ones_like(colors))
     return points, np.array(scales, dtype=np.float32), colors
+
+
+@jax.vmap
+def vmap_transform(p: Position, points: jax.Array) -> jax.Array:
+    return p.transform(points)
+
+
+def _collect_triangles(
+    triangle: Polygon,
+    state: State,
+) -> tuple[NDArray, NDArray]:
+    flag = np.array(state.is_active).reshape(-1, 1, 1)
+    points_t = vmap_transform(state.p, triangle.points)
+    points = np.where(flag, np.array(points_t), NOWHERE)
+    colors = np.array(triangle.rgba, dtype=np.float32) / 255.0
+    is_active = np.expand_dims(np.array(state.is_active), axis=1)
+    colors = np.where(is_active, colors, np.ones_like(colors))
+    return points.reshape(-1, 2), np.repeat(colors, 3, axis=0)
 
 
 def _collect_static_lines(segment: Segment, state: State) -> NDArray:
@@ -286,7 +376,7 @@ class MglRenderer:
         sc_color_opt: NDArray | None = None,
         sensor_color: NDArray | None = None,
         sensor_width: float = 0.001,
-        sensor_fn: Callable[[StateDict], tuple[jax.Array, jax.Array]] | None = None,
+        sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
     ) -> None:
         self._context = context
 
@@ -317,25 +407,31 @@ class MglRenderer:
             stated.circle,
             self._circle_scaling,
         )
-        self._circles = CircleVA(
-            ctx=context,
-            program=circle_program,
-            points=points,
-            scales=scales,
-            colors=colors,
-        )
+        if len(points) > 0:
+            self._circles = CircleVA(
+                ctx=context,
+                program=circle_program,
+                points=points,
+                scales=scales,
+                colors=colors,
+            )
+        else:
+            self._circles = None
         points, scales, _ = _collect_circles(
             space.shaped.static_circle,
             stated.static_circle,
             self._circle_scaling,
         )
-        self._static_circles = CircleVA(
-            ctx=context,
-            program=circle_program,
-            points=points,
-            scales=scales,
-            colors=_get_sc_color(self._sc_color, stated.static_circle),
-        )
+        if len(points) > 0:
+            self._static_circles = CircleVA(
+                ctx=context,
+                program=circle_program,
+                points=points,
+                scales=scales,
+                colors=_get_sc_color(self._sc_color, stated.static_circle),
+            )
+        else:
+            self._static_circles = None
         static_segment_program = self._make_gl_program(
             vertex_shader=_LINE_VERTEX_SHADER,
             geometry_shader=_LINE_GEOMETRY_SHADER,
@@ -345,11 +441,34 @@ class MglRenderer:
             w_rad=np.array([0.001], dtype=np.float32),
             l_rad=np.array([0.001], dtype=np.float32),
         )
-        self._static_lines = SegmentVA(
-            ctx=context,
-            program=static_segment_program,
-            segments=_collect_static_lines(space.shaped.segment, stated.segment),
+        points = _collect_static_lines(space.shaped.segment, stated.segment)
+        if len(points) > 0:
+            self._static_lines = SegmentVA(
+                ctx=context,
+                program=static_segment_program,
+                segments=points,
+            )
+        else:
+            self._static_lines = None
+        points, colors = _collect_triangles(
+            space.shaped.static_triangle,
+            stated.static_triangle,
         )
+        triangle_program = self._make_gl_program(
+            vertex_shader=_TRIANGLE_VERTEX_SHADER,
+            geometry_shader=_TRIANGLE_GEOMETRY_SHADER,
+            fragment_shader=_TRIANGLE_FRAGMENT_SHADER,
+        )
+        if len(points) > 0:
+            self._triangles = TriangleVA(
+                ctx=context,
+                program=triangle_program,
+                vertices=points,
+                colors=colors,
+            )
+        else:
+            self._triangles = None
+
         if sensor_fn is not None:
             segment_program = self._make_gl_program(
                 vertex_shader=_LINE_VERTEX_SHADER,
@@ -455,26 +574,36 @@ class MglRenderer:
             stated.circle,
             self._circle_scaling,
         )
-        circle_colors = self._get_colors(circle_colors_default, circle_colors)
-        if self._circles.update(circle_points, circle_scale, circle_colors):
-            self._circles.render()
-        sc_points, sc_scale, _ = _collect_circles(
-            self._space.shaped.static_circle,
-            stated.static_circle,
-            self._circle_scaling,
-        )
-        sc_colors = self._get_colors(
-            _get_sc_color(self._sc_color, stated.static_circle),
-            sc_colors,
-        )
-        if self._static_circles.update(sc_points, sc_scale, sc_colors):
-            self._static_circles.render()
+        if self._circles is not None:
+            circle_colors = self._get_colors(circle_colors_default, circle_colors)
+            if self._circles.update(circle_points, circle_scale, circle_colors):
+                self._circles.render()
+        if self._static_circles is not None:
+            sc_points, sc_scale, _ = _collect_circles(
+                self._space.shaped.static_circle,
+                stated.static_circle,
+                self._circle_scaling,
+            )
+            sc_colors = self._get_colors(
+                _get_sc_color(self._sc_color, stated.static_circle),
+                sc_colors,
+            )
+            if self._static_circles.update(sc_points, sc_scale, sc_colors):
+                self._static_circles.render()
+        if self._triangles is not None:
+            points, _ = _collect_triangles(
+                self._space.shaped.static_triangle,
+                stated.static_triangle,
+            )
+            if self._triangles.update(points):
+                self._triangles.render()
         if self._sensors is not None and self._collect_sensors is not None:
             if self._sensors.update(self._collect_sensors(stated)):
                 self._sensors.render()
         if self._heads.update(_collect_heads(self._space.shaped.circle, stated.circle)):
             self._heads.render()
-        self._static_lines.render()
+        if self._static_lines is not None:
+            self._static_lines.render()
 
 
 class MglVisualizer:
@@ -489,14 +618,14 @@ class MglVisualizer:
         y_range: float,
         space: Space,
         stated: StateDict,
-        food_color: NDArray,
+        sc_color: NDArray | None = None,
         sensor_color: NDArray | None = None,
         figsize: tuple[float, float] | None = None,
         voffsets: tuple[int, ...] = (),
         hoffsets: tuple[int, ...] = (),
         vsync: bool = False,
         backend: str = "pyglet",
-        sensor_fn: Callable[[StateDict], tuple[jax.Array, jax.Array]] | None = None,
+        sensor_fn: Callable[[StateDict], tuple[NDArray, NDArray]] | None = None,
         sensor_width: float = 0.001,
         title: str = "EmEvo CircleForaging",
     ) -> None:
@@ -523,7 +652,7 @@ class MglVisualizer:
             stated=stated,
             voffsets=voffsets,
             hoffsets=hoffsets,
-            sc_color_opt=food_color,
+            sc_color_opt=sc_color,
             sensor_color=sensor_color,
             sensor_width=sensor_width,
             sensor_fn=sensor_fn,

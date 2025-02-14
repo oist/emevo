@@ -23,12 +23,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import serde
 from numpy.typing import NDArray
-from phyjax2d import Position, StateDict
 
 from emevo import birth_and_death as bd
 from emevo import genetic_ops as gops
 from emevo.environments.circle_foraging import SensorRange
 from emevo.eqx_utils import get_slice
+from emevo.phyjax2d import Position, StateDict
 from emevo.reward_fn import RewardFn
 
 Self = Any

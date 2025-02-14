@@ -11,19 +11,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Position, ShapeDict
-from phyjax2d import Space as Physics
-from phyjax2d import (
-    SpaceBuilder,
-    State,
-    StateDict,
-    Vec2d,
-    circle_raycast,
-    empty,
-    make_approx_circle,
-    make_square_segments,
-    segment_raycast,
-)
 
 from emevo.env import Status, TimeStep, UniqueID
 from emevo.environments.circle_foraging import (
@@ -49,6 +36,19 @@ from emevo.environments.env_utils import (
     SquareCoordinate,
     loc_gaussian,
     place,
+)
+from emevo.phyjax2d import Circle, Color, Position, ShapeDict
+from emevo.phyjax2d import Space as Physics
+from emevo.phyjax2d import (
+    SpaceBuilder,
+    State,
+    StateDict,
+    Vec2d,
+    circle_raycast,
+    empty,
+    make_approx_circle,
+    make_square_segments,
+    segment_raycast,
 )
 
 Self = Any
