@@ -5,10 +5,9 @@ from __future__ import annotations
 import dataclasses
 import functools
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from typing import Any, Generic, Protocol, TypeVar
-from collections.abc import Callable
 
 import chex
 import jax
@@ -630,9 +629,7 @@ class ShapeDict:
 
     def concat(self) -> Shape:
         shapes = [
-            s.to_shape()
-            for s in self.values()
-            if s.batch_size() > 0  # type: ignore
+            s.to_shape() for s in self.values() if s.batch_size() > 0  # type: ignore
         ]
         return jax.tree_util.tree_map(
             lambda *args: jnp.concatenate(args, axis=0), *shapes
@@ -1213,8 +1210,8 @@ def correct_position(
     separation = jnp.dot(ga2_ga1, contact.normal) - contact.penetration
     c = jnp.clip(
         bias_factor * (separation + linear_slop),
-        min=-max_linear_correction,
-        max=0.0,
+        a_min=-max_linear_correction,
+        a_max=0.0,
     )
     kn1 = _effective_mass(helper.inv_mass1, helper.inv_moment1, r1, contact.normal)
     kn2 = _effective_mass(helper.inv_mass2, helper.inv_moment2, r2, contact.normal)
