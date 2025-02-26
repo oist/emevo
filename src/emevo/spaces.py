@@ -259,6 +259,13 @@ class NamedTupleSpace(Space[NamedTuple, tuple[jnp.dtype, ...]], Iterable):
         self.dtype = tuple(s.dtype for s in self.spaces)
         self.shape = tuple(space.shape for space in self.spaces)
 
+    def extend(self, new_cls: type[tuple], **new_kwargs: Space) -> Any:
+        return NamedTupleSpace(
+            new_cls,
+            **self.spaces._asdict(),
+            **new_kwargs,
+        )
+
     def clip(self, x: tuple) -> Any:
         clipped = [space.clip(value) for value, space in zip(x, self.spaces)]
         return self._cls(*clipped)
