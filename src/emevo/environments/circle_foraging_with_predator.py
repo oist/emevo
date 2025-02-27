@@ -1037,8 +1037,10 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
             capacity=self._energy_capacity,
         )
         # Smell
-        prey_nose_pos = state.circle.p.xy[]
-        predator_pos =
+        center = stated.circle.p.xy
+        nose = stated.circle.p.xy + jnp.array([[0.0, self._agent_radius]])
+        rotated_nose = stated.circle.p.rotate(nose)
+        prey_nose_pos = []
         # Construct obs
         obs = CFObsWithSmell(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
@@ -1091,8 +1093,9 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
         )
         return state, timestep
 
-    def reset(
-        self, key: chex.PRNGKey
+    def reset(  # type: ignore
+        self,
+        key: chex.PRNGKey,
     ) -> tuple[CFPredatorState, TimeStep[CFObsWithSmell]]:
         prey_energy = jnp.ones(self._n_max_preys, dtype=jnp.float32) * self._init_energy
         predator_energy = (
