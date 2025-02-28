@@ -27,7 +27,7 @@ class CFObsWithSmell(NamedTuple):
                 jnp.expand_dims(self.angle, axis=1),
                 jnp.expand_dims(self.angular_velocity, axis=1),
                 jnp.expand_dims(self.energy, axis=1),
-                jnp.expand_dims(self.smell, axis=1),
+                self.smell,  # Assume multiple smell sources
             ),
             axis=1,
         )
@@ -71,7 +71,8 @@ def _compute_smell_to_food(
     return smell_per_source
 
 
-_vmap_compute_smell = jax.vmap(_compute_smell, in_axes=(None, None, 0, 0))
+_vmap_compute_smell = jax.vmap(_compute_smell, in_axes=(None, None, None, 0, 0))
 _vmap_compute_smell2f = jax.vmap(
-    _compute_smell_to_food, in_axes=(None, None, None, 0, 0)
+    _compute_smell_to_food,
+    in_axes=(None, None, None, None, 0, 0),
 )

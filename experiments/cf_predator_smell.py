@@ -1,4 +1,4 @@
-"""Asexual reward evolution with Predators"""
+"""Asexual reward evolution with Predators and smell"""
 
 import dataclasses
 import json
@@ -40,7 +40,7 @@ from emevo.rl import ppo_normal as ppo
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241212-predator.toml"
+DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20250228-predator-smell.toml"
 SENSOR_NAMES = ["prey_sensor", "predator_sensor"]
 N_SENSOR_REWARDS = 2
 
@@ -64,7 +64,7 @@ def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
 
 @serde
 @dataclasses.dataclass
-class CfConfigWithPredator(CfConfig):
+class CfConfigWithPredatorAndSmell(CfConfig):
     n_max_predators: int = 20
     n_initial_predators: int = 10
     predator_radius: float = 20.0
@@ -76,6 +76,8 @@ class CfConfigWithPredator(CfConfig):
     predator_space_limit: bool = False
     predator_eat_interval: int = 10
     predator_mouth_range: str = "same"
+    smell_decay_factor: float = 0.1
+    smell_front_only: bool = False
 
 
 @dataclasses.dataclass
@@ -519,7 +521,7 @@ def evolve(
 
     # Load config
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredatorAndSmell, f.read())
     with bdconfig_path.open("r") as f:
         bdconfig = toml.from_toml(BDConfig, f.read())
     with gopsconfig_path.open("r") as f:
@@ -540,7 +542,7 @@ def evolve(
     predator_birth_fn, predator_hazard_fn = predator_bdconfig.load_models()
     mutation = gopsconfig.load_model()
     # Make env
-    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v4", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
@@ -613,12 +615,12 @@ def replay(
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredatorAndSmell, f.read())
     # For speedup
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v4", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
     end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
@@ -662,7 +664,7 @@ def widget(
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v4", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
         log_ds = None

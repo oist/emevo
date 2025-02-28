@@ -50,7 +50,7 @@ from emevo.environments.env_utils import (
     loc_gaussian,
     place,
 )
-from emevo.environments.smell import CFObsWithSmell
+from emevo.environments.smell import CFObsWithSmell, _vmap_compute_smell
 from emevo.spaces import BoxSpace
 
 Self = Any
@@ -954,8 +954,19 @@ class CircleForagingWithPredator(CircleForaging):
         return stated, agentloc_state, foodloc_states, foodnum_states
 
 
+def _mask_self(smell_arr: jax.Array) -> jax.Array:
+    identity_matrix = jnp.eye(smell_arr.shape[0])
+    return jnp.where(identity_matrix, 0.0, smell_arr)
+
+
 class CFPredatorWithSmell(CircleForagingWithPredator):
-    def __init__(self, *args, smell_decay_factor: float = 0.1, **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        smell_decay_factor: float = 0.1,
+        smell_front_only: bool = False,
+        **kwargs,
+    ) -> None:
         self.__init__(*args, **kwargs)
         old_obs_space = self.obs_space
         self.obs_space = old_obs_space.extend(  # type: ignore
@@ -963,9 +974,41 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
             smell=BoxSpace(low=0.0, high=1.0, shape=(2,)),
         )
         self._smell_decay_factor = smell_decay_factor
+        self._smell_front_only = smell_front_only
+        to_prey_nose = jnp.tile(
+            jnp.array([[0.0, self._agent_radius]]),
+            (self._n_max_preys, 1),
+        )
+        to_predator_nose = jnp.tile(
+            jnp.array([[0.0, self._predator_radius]]),
+            (self._n_max_predators, 1),
+        )
+        self._to_nose = jnp.concatenate(
+            (to_prey_nose, to_predator_nose),
+            axis=0,
+        )
 
-    def _smell(self):
-        pass
+    def _smell(self, circle: State) -> jax.Array:
+        center = circle.p.xy
+        nose = circle.p.xy + jnp.array([[0.0, self._agent_radius]])
+        rotated_nose = circle.p.rotate(nose)
+        smell = _vmap_compute_smell(  # N_preys, N_total
+            self._smell_decay_factor,
+            self._smell_front_only,
+            circle,
+            center,
+            rotated_nose,
+        )
+        masked_smell = _mask_self(smell)
+        to_prey = jnp.clip(  # N_total,
+            jnp.sum(masked_smell[:, : self._n_max_preys], axis=1, keepdims=True),
+            max=1.0,
+        )
+        to_predator = jnp.clip(
+            jnp.sum(masked_smell[:, self._n_max_preys :], axis=1, keepdims=True),
+            max=1.0,
+        )
+        return jnp.concatenate((to_prey, to_predator), axis=1)
 
     def step(  # type: ignore
         self,
@@ -1037,10 +1080,7 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
             capacity=self._energy_capacity,
         )
         # Smell
-        center = stated.circle.p.xy
-        nose = stated.circle.p.xy + jnp.array([[0.0, self._agent_radius]])
-        rotated_nose = stated.circle.p.rotate(nose)
-        prey_nose_pos = []
+        smell = self._smell(stated.circle)
         # Construct obs
         obs = CFObsWithSmell(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
@@ -1132,13 +1172,15 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
         )
         sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
         N = self.n_max_agents
-        obs = CFObs(
+        # Smell
+        obs = CFObsWithSmell(
             sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
             collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),
             angle=physics.circle.p.angle,
             velocity=physics.circle.v.xy,
             angular_velocity=physics.circle.v.angle,
             energy=state.status.energy,
+            smell=self._smell(physics.circle),
         )
         # They shouldn't encount now
         timestep = TimeStep(encount=jnp.zeros((N, N), dtype=bool), obs=obs)
