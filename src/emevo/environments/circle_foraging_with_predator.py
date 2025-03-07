@@ -967,7 +967,7 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
         smell_front_only: bool = False,
         **kwargs,
     ) -> None:
-        self.__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         old_obs_space = self.obs_space
         self.obs_space = old_obs_space.extend(  # type: ignore
             CFObsWithSmell,
