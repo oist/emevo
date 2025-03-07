@@ -154,3 +154,18 @@ def test_place_foods_at_once(key) -> None:
     )
     contact = space.check_contacts(stated)
     assert jnp.all(contact.penetration <= 0.0), stated.static_circle.p.xy
+
+
+def test_check_points_are_far_from_others() -> None:
+    """Old way to place foods"""
+    n = N_MAX_FOODS // 2
+    space, coordinate = get_space_and_coordinate()
+    stated = space.shaped.zeros_state()
+    xy1 = jnp.array([
+        [1.0, 1.0],
+        []
+    ])
+    stated = stated.nested_replace(
+        "static_circle.p.xy",
+        jnp.zeros(N_MAX_AGENTS, dtype=bool),
+    )

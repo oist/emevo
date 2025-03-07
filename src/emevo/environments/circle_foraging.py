@@ -486,6 +486,7 @@ class CircleForaging(Env):
         force_energy_consumption: float = 0.01 / 40.0,
         basic_energy_consumption: float = 0.0,
         energy_share_ratio: float = 0.4,
+        foods_min_dist: float = 0.0,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
@@ -514,6 +515,7 @@ class CircleForaging(Env):
         self._food_energy_coef = _make_food_energy_coef_array(food_energy_coef)
         self._fec_intervals = jnp.array(fec_intervals, dtype=jnp.int32)
         self._food_num_fns, self._initial_foodnum_states = [], []
+        self._foods_min_dist = foods_min_dist
         if n_food_sources > 1:
             assert isinstance(food_loc_fn, list | tuple)
             assert n_food_sources == len(food_loc_fn)
@@ -1121,6 +1123,10 @@ class CircleForaging(Env):
                 n_steps=i,
                 stated=stated,
             )
+            # if foods_min_dist is given, compute distances to 'other' foods and
+            # reject the posision if it's too close
+            if self._foods_min_dist > 0.0:
+                pass
             n = jnp.sum(ok)
             is_active = stated.static_circle.is_active
             place = jax.jit(_first_n_true)(jnp.logical_not(is_active), n)
