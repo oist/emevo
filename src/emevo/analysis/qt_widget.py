@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import re
 import sys
 import warnings
 from collections import deque
@@ -98,9 +99,13 @@ class BarChart(QtWidgets.QWidget):
             warnings.warn(f"Invalid value for barset: {value}", stacklevel=1)
         self.barsets[name] = barset
         self.series.append(barset)
-        if "_" in name:  # Shorten name
+        if "_" in name:
             us_ind = name.index("_")
-            barset.setLabel(f"{name[0]}_{name[us_ind + 1: us_ind + 4]}")
+            if re.search(".*_[0-9]+$", name):
+                us_ind = name.index("_")
+                barset.setLabel(f"{name[0]}_{name[us_ind + 1: us_ind + 4]}")
+            else:
+                barset.setLabel(f"{name[:us_ind]}_{name[us_ind + 1]}")
         return barset
 
     def _update_yrange(self, values: Iterable[float | list[float]]) -> None:
