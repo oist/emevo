@@ -1127,7 +1127,7 @@ class CircleForaging(Env):
             # if foods_min_dist is given, compute distances to 'other' foods and
             # reject the posision if it's too close
             if self._foods_min_dist > 0.0:
-                ok = ok | check_points_are_far_from_other_foods(
+                ok = ok & check_points_are_far_from_other_foods(
                     self._foods_min_dist,
                     i,
                     xy,
@@ -1194,7 +1194,7 @@ class CircleForaging(Env):
                 stated=sd,
             )
             if self._foods_min_dist > 0.0:
-                ok = ok | check_points_are_far_from_other_foods(
+                ok = ok & check_points_are_far_from_other_foods(
                     self._foods_min_dist,
                     i,
                     new_food_xy,
