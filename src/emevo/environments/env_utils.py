@@ -459,10 +459,10 @@ def place(
     return jnp.sum(mask * locations, axis=0), jnp.any(ok)
 
 
-@functools.partial(jax.vmap)
+@functools.partial(jax.vmap, in_axes=(0, None))
 def _dist_mat(a: jax.Array, b: jax.Array) -> jax.Array:
     """Distance matrix between a and b"""
-    return jnp.linalg.norm(a - jnp.expand_dims(b, axis=0), axis=-1)
+    return jnp.linalg.norm(jnp.expand_dims(a, axis=0) - b, axis=-1)
 
 
 def place_multi(
@@ -502,6 +502,6 @@ def check_points_are_far_from_other_foods(
     is_other = stated.static_circle.label != index
     is_active_other = jnp.logical_and(stated.static_circle.is_active, is_other)
     dm = _dist_mat(xy, stated.static_circle.p.xy)
-    masked_dm = dm.at[:, jnp.logical_not(is_active_other)].set(jnp.inf)
+    masked_dm = jnp.where(jnp.expand_dims(is_active_other, axis=0), dm, jnp.inf)
     min_dist_to_other = jnp.min(masked_dm, axis=-1)
     return min_dist_to_other < min_dist_to_other_foods
