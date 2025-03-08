@@ -4,7 +4,7 @@ import functools
 import warnings
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any
+from typing import Any, Callable
 
 import chex
 import jax
@@ -418,6 +418,7 @@ class CircleForagingWithObstacle(CircleForaging):
         state: CFState[Status],
         figsize: tuple[float, float] | None = None,
         sensor_index: int | None = None,
+        no_sensor: bool = False,
         backend: str = "pyglet",
         **kwargs,
     ) -> Visualizer[StateDict]:
@@ -429,7 +430,6 @@ class CircleForagingWithObstacle(CircleForaging):
 
         if sensor_index is None:
             sensor_fn = self._get_sensors_for_vis
-
         else:
 
             def sensor_fn(stated: StateDict) -> tuple[jax.Array, jax.Array]:
@@ -443,6 +443,6 @@ class CircleForagingWithObstacle(CircleForaging):
             sc_color=self._food_color,
             figsize=figsize,
             backend=backend,
-            sensor_fn=sensor_fn,
+            sensor_fn=None if no_sensor else sensor_fn,  # type: ignore
             **kwargs,
         )
