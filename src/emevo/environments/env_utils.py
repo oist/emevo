@@ -503,5 +503,4 @@ def check_points_are_far_from_other_foods(
     is_active_other = jnp.logical_and(stated.static_circle.is_active, is_other)
     dm = _dist_mat(xy, stated.static_circle.p.xy)
     masked_dm = jnp.where(jnp.expand_dims(is_active_other, axis=0), dm, jnp.inf)
-    min_dist_to_other = jnp.min(masked_dm, axis=-1)
-    return min_dist_to_other < min_dist_to_other_foods
+    return jnp.min(masked_dm, axis=-1) > min_dist_to_other_foods

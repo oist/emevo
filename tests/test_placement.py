@@ -165,7 +165,7 @@ def test_place_foods_at_once(key) -> None:
 
 
 def test_check_points_are_far_from_others() -> None:
-    space, coordinate = get_space_and_coordinate()
+    space, _ = get_space_and_coordinate()
     stated = space.shaped.zeros_state()
     xy = jnp.array(
         [
@@ -204,7 +204,7 @@ def test_check_points_are_far_from_others() -> None:
     )
     assert_array_almost_equal(
         np.array(overlap),
-        np.array([False, True, True, False, True, True]),
+        np.array([True, False, False, True, False, False]),
     )
     overlap = check_points_are_far_from_other_foods(
         14.0,
@@ -214,7 +214,7 @@ def test_check_points_are_far_from_others() -> None:
     )
     assert_array_almost_equal(
         np.array(overlap),
-        np.array([True, False, True, True, True, True]),
+        np.array([False, True, False, False, False, False]),
     )
     overlap = check_points_are_far_from_other_foods(
         14.0,
@@ -224,5 +224,5 @@ def test_check_points_are_far_from_others() -> None:
     )
     assert_array_almost_equal(
         np.array(overlap),
-        np.array([True, True, False, True, True, False]),
+        np.array([False, False, True, False, False, True]),
     )
