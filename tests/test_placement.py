@@ -1,11 +1,19 @@
 import chex
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
+from numpy.testing import assert_array_almost_equal
+from phyjax2d import Space
 
 from emevo.environments.circle_foraging import _make_physics_impl as _make_physics
-from emevo.environments.env_utils import CircleCoordinate, Locating, place, place_multi
-from emevo.phyjax2d import Space
+from emevo.environments.env_utils import (
+    CircleCoordinate,
+    Locating,
+    check_points_are_far_from_other_foods,
+    place,
+    place_multi,
+)
 
 N_MAX_AGENTS = 20
 N_MAX_FOODS = 10
@@ -154,3 +162,67 @@ def test_place_foods_at_once(key) -> None:
     )
     contact = space.check_contacts(stated)
     assert jnp.all(contact.penetration <= 0.0), stated.static_circle.p.xy
+
+
+def test_check_points_are_far_from_others() -> None:
+    space, _ = get_space_and_coordinate()
+    stated = space.shaped.zeros_state()
+    xy = jnp.array(
+        [
+            [12.0, 0.0],
+            [24.0, 0.0],
+            [36.0, 0.0],
+            [48.0, 0.0],
+            [12.0, 12.0],
+            [24.0, 12.0],
+            [36.0, 12.0],
+            [12.0, 24.0],
+            [24.0, 24.0],
+            [36.0, 24.0],
+        ]
+    )
+    label = jnp.array([0, 0, 0, 0, 1, 1, 1, 2, 2, 2])
+    is_active = jnp.ones(N_MAX_FOODS, dtype=bool)
+    stated = stated.nested_replace("static_circle.p.xy", xy)
+    stated = stated.nested_replace("static_circle.label", label)
+    stated = stated.nested_replace("static_circle.is_active", is_active)
+    xy = jnp.array(
+        [
+            [0.0, 0.0],
+            [0.0, 12.0],
+            [0.0, 24.0],
+            [12.0, -11.0],
+            [48.0, 12.0],
+            [12.0, 35.0],
+        ]
+    )
+    overlap = check_points_are_far_from_other_foods(
+        14.0,
+        0,
+        xy,
+        stated,
+    )
+    assert_array_almost_equal(
+        np.array(overlap),
+        np.array([True, False, False, True, False, False]),
+    )
+    overlap = check_points_are_far_from_other_foods(
+        14.0,
+        1,
+        xy,
+        stated,
+    )
+    assert_array_almost_equal(
+        np.array(overlap),
+        np.array([False, True, False, False, False, False]),
+    )
+    overlap = check_points_are_far_from_other_foods(
+        14.0,
+        2,
+        xy,
+        stated,
+    )
+    assert_array_almost_equal(
+        np.array(overlap),
+        np.array([False, False, True, False, False, True]),
+    )

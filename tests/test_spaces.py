@@ -65,3 +65,28 @@ def test_namedtuple(key: chex.PRNGKey) -> None:
     )
     flattened = nt.flatten()
     assert flattened.shape == (13,)
+
+    class ExtendedObs(NamedTuple):
+        sensor: jax.Array
+        speed: jax.Array
+        angle: jax.Array
+
+    space3 = BoxSpace(low=jnp.ones(1) * -3.14, high=jnp.ones(1) * 3.14)
+    nt_extended = nt.extend(ExtendedObs, angle=space3)
+
+    assert nt_extended.contains(
+        (
+            jnp.ones(10, dtype=jnp.float32) * 0.5,
+            jnp.ones(3, dtype=jnp.float32) * 0.8,
+            jnp.ones(1, dtype=jnp.float32) * 1.0,
+        ),
+    )
+    assert not nt_extended.contains(
+        (
+            jnp.ones(10, dtype=jnp.float32) * 0.5,
+            jnp.ones(3, dtype=jnp.float32) * 0.8,
+            jnp.ones(1, dtype=jnp.float32) * 3.15,
+        ),
+    )
+
+    assert nt_extended.flatten().shape == (14,)

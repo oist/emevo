@@ -32,6 +32,7 @@ from emevo.environments.env_utils import (
     LocatingFn,
     LocatingState,
     SquareCoordinate,
+    check_points_are_far_from_other_foods,
     first_to_nth_true,
     loc_gaussian,
     place,
@@ -486,6 +487,7 @@ class CircleForaging(Env):
         force_energy_consumption: float = 0.01 / 40.0,
         basic_energy_consumption: float = 0.0,
         energy_share_ratio: float = 0.4,
+        foods_min_dist: float = 0.0,
         n_velocity_iter: int = 6,
         n_position_iter: int = 2,
         n_physics_iter: int = 5,
@@ -514,6 +516,7 @@ class CircleForaging(Env):
         self._food_energy_coef = _make_food_energy_coef_array(food_energy_coef)
         self._fec_intervals = jnp.array(fec_intervals, dtype=jnp.int32)
         self._food_num_fns, self._initial_foodnum_states = [], []
+        self._foods_min_dist = foods_min_dist
         if n_food_sources > 1:
             assert isinstance(food_loc_fn, list | tuple)
             assert n_food_sources == len(food_loc_fn)
@@ -675,9 +678,9 @@ class CircleForaging(Env):
         self._sensor_obs = self._make_sensor_fn(observe_food_label)
 
         if observe_food_label:
-            assert self._n_food_sources > 1, (
-                "n_food_sources should be larager than 1 to include food label obs"
-            )
+            assert (
+                self._n_food_sources > 1
+            ), "n_food_sources should be larager than 1 to include food label obs"
 
             self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
                 self._n_tactile_bins,
@@ -1121,6 +1124,15 @@ class CircleForaging(Env):
                 n_steps=i,
                 stated=stated,
             )
+            # if foods_min_dist is given, compute distances to 'other' foods and
+            # reject the posision if it's too close
+            if self._foods_min_dist > 0.0:
+                ok = ok & check_points_are_far_from_other_foods(
+                    self._foods_min_dist,
+                    i,
+                    xy,
+                    stated,
+                )
             n = jnp.sum(ok)
             is_active = stated.static_circle.is_active
             place = jax.jit(_first_n_true)(jnp.logical_not(is_active), n)
@@ -1181,6 +1193,13 @@ class CircleForaging(Env):
                 n_steps=n_steps,
                 stated=sd,
             )
+            if self._foods_min_dist > 0.0:
+                ok = ok & check_points_are_far_from_other_foods(
+                    self._foods_min_dist,
+                    i,
+                    new_food_xy,
+                    sd,
+                )
             place = first_to_nth_true(jnp.logical_not(is_active), jnp.sum(ok))
             xy = _set_b2a(xy, place, new_food_xy, ok)
             is_active = jnp.logical_or(is_active, place)

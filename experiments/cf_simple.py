@@ -518,7 +518,7 @@ def replay(
     for i in range(start, end_index):
         ph = phys_state.set_by_index(i, env_state.physics)
         # Disable rendering agents
-        ph = ph.nested_replace("circle.is_active", jnp.zeros_like(ph.circle.is_active))
+        # ph = ph.nested_replace("circle.is_active", jnp.zeros_like(ph.circle.is_active))
         env_state = dataclasses.replace(env_state, physics=ph)
         visualizer.render(env_state.physics)
         visualizer.show()
