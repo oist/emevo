@@ -41,25 +41,18 @@ from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
 DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20250228-predator-smell.toml"
-SENSOR_NAMES = ["prey_sensor", "predator_sensor"]
-N_SENSOR_REWARDS = 2
+SMELL_NAMES = ["prey_smell", "predator_smell"]
+N_SMELL_REWARDS = 2
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
     wd = w.shape[0]
-    n_food_rewards = wd - N_SENSOR_REWARDS - 1
+    n_food_rewards = wd - N_SMELL_REWARDS - 1
     rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(n_food_rewards)}
     rd["action"] = rfn.slice_last(w, n_food_rewards)
-    for i, sensor_name in enumerate(SENSOR_NAMES):
-        rd[sensor_name] = rfn.slice_last(w, i + n_food_rewards + 1)
+    for i, smell_name in enumerate(SMELL_NAMES):
+        rd[smell_name] = rfn.slice_last(w, i + n_food_rewards + 1)
     return rd
-
-
-def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
-    # E.g., sensor with predator: (N_agents, N_sensors, N_obj)
-    used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
-    clipped_sensor_obs = jnp.clip(used_sensor_obs, min=0.0)
-    return jnp.mean(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
 
 
 @serde
@@ -114,9 +107,8 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        mean_sensor_obs = get_mean_sensor_obs(obs_t1.sensor)
         rewards = jnp.expand_dims(
-            reward_fn(timestep.info["n_ate_food"], actions, mean_sensor_obs),
+            reward_fn(timestep.info["n_ate_food"], actions, obs_t1.smell),
             axis=1,
         )
         rollout = ppo.Rollout(
@@ -177,8 +169,8 @@ def exec_rollout(
             additional_fields={
                 "eaten_preys": dead_eaten,
                 "possible_parents": possible_parents,
-                SENSOR_NAMES[0]: mean_sensor_obs[:, 0],
-                SENSOR_NAMES[1]: mean_sensor_obs[:, 1],
+                SMELL_NAMES[0]: obs_t1.smell[:, 0],
+                SMELL_NAMES[1]: obs_t1.smell[:, 1],
             },
         )
         foodlog = FoodLog(
@@ -491,7 +483,7 @@ def evolve(
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.01,
-    sensor_reward_coef: float = 0.1,
+    smell_reward_coef: float = 0.1,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
@@ -547,7 +539,7 @@ def evolve(
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
-        sensor_coef=sensor_reward_coef,
+        sensor_coef=smell_reward_coef,
     )
     if cfconfig.observe_food_label:
         n_food_obs = cfconfig.n_food_sources
@@ -556,7 +548,7 @@ def evolve(
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=1 + n_food_obs + N_SENSOR_REWARDS,
+        n_weights=1 + n_food_obs + N_SMELL_REWARDS,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
