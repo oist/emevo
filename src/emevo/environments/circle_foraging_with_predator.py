@@ -37,6 +37,7 @@ from emevo.environments.env_utils import (
     loc_gaussian,
     place,
 )
+from emevo.environments.smell import CFObsWithSmell, _vmap_compute_smell
 from emevo.phyjax2d import Circle, Color, Position, ShapeDict
 from emevo.phyjax2d import Space as Physics
 from emevo.phyjax2d import (
@@ -50,6 +51,7 @@ from emevo.phyjax2d import (
     make_square_segments,
     segment_raycast,
 )
+from emevo.spaces import BoxSpace
 
 Self = Any
 PREDATOR_COLOR: Color = Color(6, 214, 160)
@@ -219,9 +221,9 @@ class CircleForagingWithPredator(CircleForaging):
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
         self._predator_eat_interval = predator_eat_interval
         assert self._n_max_preys > 0, f"Too many predators: {n_max_predators}"
-        assert n_max_predators >= n_initial_predators, (
-            f"Too many initial predators: {n_initial_predators}"
-        )
+        assert (
+            n_max_predators >= n_initial_predators
+        ), f"Too many initial predators: {n_initial_predators}"
         super().__init__(**kwargs, _n_additional_objs=1)
 
         if predator_mouth_range == "same":
@@ -950,3 +952,236 @@ class CircleForagingWithPredator(CircleForaging):
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
         return stated, agentloc_state, foodloc_states, foodnum_states
+
+
+def _mask_self(smell_arr: jax.Array) -> jax.Array:
+    identity_matrix = jnp.eye(smell_arr.shape[0])
+    return jnp.where(identity_matrix, 0.0, smell_arr)
+
+
+class CFPredatorWithSmell(CircleForagingWithPredator):
+    def __init__(
+        self,
+        *args,
+        smell_decay_factor: float = 0.1,
+        smell_front_only: bool = False,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        old_obs_space = self.obs_space
+        self.obs_space = old_obs_space.extend(  # type: ignore
+            CFObsWithSmell,
+            smell=BoxSpace(low=0.0, high=1.0, shape=(2,)),
+        )
+        self._smell_decay_factor = smell_decay_factor
+        self._smell_front_only = smell_front_only
+        to_prey_nose = jnp.tile(
+            jnp.array([[0.0, self._agent_radius]]),
+            (self._n_max_preys, 1),
+        )
+        to_predator_nose = jnp.tile(
+            jnp.array([[0.0, self._predator_radius]]),
+            (self._n_max_predators, 1),
+        )
+        self._to_nose = jnp.concatenate(
+            (to_prey_nose, to_predator_nose),
+            axis=0,
+        )
+
+    def _smell(self, circle: State) -> jax.Array:
+        center = circle.p.xy
+        nose = circle.p.xy + jnp.array([[0.0, self._agent_radius]])
+        rotated_nose = circle.p.rotate(nose)
+        smell = _vmap_compute_smell(  # N_preys, N_total
+            self._smell_decay_factor,
+            self._smell_front_only,
+            circle,
+            center,
+            rotated_nose,
+        )
+        masked_smell = _mask_self(smell)
+        to_prey = jnp.clip(  # N_total,
+            jnp.sum(masked_smell[:, : self._n_max_preys], axis=1, keepdims=True),
+            max=1.0,
+        )
+        to_predator = jnp.clip(
+            jnp.sum(masked_smell[:, self._n_max_preys :], axis=1, keepdims=True),
+            max=1.0,
+        )
+        return jnp.concatenate((to_prey, to_predator), axis=1)
+
+    def step(  # type: ignore
+        self,
+        state: CFPredatorState,
+        action: ArrayLike,
+    ) -> tuple[CFPredatorState, TimeStep[CFObsWithSmell]]:
+        act = jax.vmap(self.act_space.clip)(jnp.array(action))
+        f1_raw = jax.lax.slice_in_dim(act, 0, 1, axis=-1) * self._act_ratio
+        f2_raw = jax.lax.slice_in_dim(act, 1, 2, axis=-1) * self._act_ratio
+        f1 = jnp.concatenate((jnp.zeros_like(f1_raw), f1_raw), axis=1)
+        f2 = jnp.concatenate((jnp.zeros_like(f2_raw), f2_raw), axis=1)
+        circle = state.physics.circle
+        circle = circle.apply_force_local(self._act_p1, f1)
+        circle = circle.apply_force_local(self._act_p2, f2)
+        stated = replace(state.physics, circle=circle)
+        # Step physics simulator
+        stated, solver, nstep_contacts = nstep(
+            self._n_physics_iter,
+            self._physics,
+            stated,
+            state.solver,
+        )
+        # Gather circle contacts
+        contacts = jnp.max(nstep_contacts, axis=0)
+        # Get tactile obs
+        tactile_info = self._collect_tactile(
+            contacts,
+            stated,
+            state.predator_eat_timer <= 0,
+        )
+        # Gather sensor obs
+        sensor_obs = self._sensor_obs(stated=stated)  # type: ignore
+        force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
+        # energy_delta = food - coef * |force| for prey
+        prey_energy_consumption = (
+            self._force_energy_consumption * force_norm[: self._n_max_preys]
+            + self._basic_energy_consumption
+        )
+        prey_energy_gain = jnp.sum(
+            tactile_info.n_ate_food * self._food_energy_coef, axis=1
+        )
+        prey_energy_delta = prey_energy_gain - prey_energy_consumption
+        # energy_delta = food - coef * |force| for predator
+        predator_energy_consumption = (
+            self._predator_force_ec * force_norm[self._n_max_preys :]
+            + self._predator_basic_ec
+        )
+        prey_energies = state.status.energy[: self._n_max_preys]
+        predator_energy_gain = self._predator_digestive_rate * jnp.matmul(
+            tactile_info.eaten_preys_per_predator,
+            prey_energies,
+        )
+        predator_energy_delta = predator_energy_gain - predator_energy_consumption
+        # Remove and regenerate foods
+        key, food_key = jax.random.split(state.key)
+        stated, food_num, food_loc, n_regen = self._remove_and_regenerate_foods(
+            food_key,
+            tactile_info.eaten_foods,  # (N_FOOD, N_LABEL)
+            stated,
+            state.step,
+            state.food_num,
+            state.food_loc,
+        )
+        status = state.status.update(
+            energy_delta=jnp.concatenate(
+                (prey_energy_delta, predator_energy_delta),
+                axis=0,
+            ),
+            capacity=self._energy_capacity,
+        )
+        # Smell
+        smell = self._smell(stated.circle)
+        # Construct obs
+        obs = CFObsWithSmell(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
+            collision=tactile_info.tactile,
+            angle=stated.circle.p.angle,
+            velocity=stated.circle.v.xy,
+            angular_velocity=stated.circle.v.angle,
+            energy=status.energy,
+            smell=smell,
+        )
+        timestep = TimeStep(
+            encount=[tactile_info.prey2prey, tactile_info.predator2predator],
+            obs=obs,
+            info={
+                "energy_gain": jnp.concatenate(
+                    (prey_energy_gain, predator_energy_gain),
+                    axis=0,
+                ),
+                "energy_consumption": jnp.concatenate(
+                    (prey_energy_consumption, predator_energy_consumption),
+                    axis=0,
+                ),
+                "n_food_regenerated": n_regen,
+                "n_food_eaten": jnp.sum(tactile_info.eaten_foods, axis=0),  # (N_LABEL,)
+                "n_ate_food": jnp.concatenate(
+                    (tactile_info.n_ate_food, tactile_info.n_ate_prey),
+                    axis=0,
+                ),
+                "eaten_preys": jnp.ravel(tactile_info.eaten_preys),
+            },
+        )
+        predator_eat_timer = jnp.where(
+            predator_energy_gain > 0,
+            self._predator_eat_interval,
+            state.predator_eat_timer - 1,
+        )
+        state = CFPredatorState(
+            physics=stated,
+            solver=solver,
+            food_num=food_num,
+            agent_loc=state.agent_loc,
+            food_loc=food_loc,
+            key=key,
+            step=state.step + 1,
+            unique_id=state.unique_id,
+            status=status.step(state.unique_id.is_active()),
+            n_born_agents=state.n_born_agents,
+            n_born_predators=state.n_born_predators,
+            predator_eat_timer=predator_eat_timer,
+        )
+        return state, timestep
+
+    def reset(  # type: ignore
+        self,
+        key: chex.PRNGKey,
+    ) -> tuple[CFPredatorState, TimeStep[CFObsWithSmell]]:
+        prey_energy = jnp.ones(self._n_max_preys, dtype=jnp.float32) * self._init_energy
+        predator_energy = (
+            jnp.ones(self._n_max_predators, dtype=jnp.float32)
+            * self._predator_init_energy
+        )
+        status = Status(
+            age=jnp.zeros(self.n_max_agents, dtype=jnp.int32),
+            energy=jnp.concatenate((prey_energy, predator_energy), axis=0),
+        )
+        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
+        is_active = physics.circle.is_active
+        n_preys = jnp.sum(is_active[: self._n_max_preys])
+        n_predators = jnp.sum(is_active[self._n_max_preys :])
+        unique_id = _init_uniqueid(
+            n_preys,
+            self._n_max_preys,
+            n_predators,
+            self._n_max_predators,
+        )
+        state = CFPredatorState(
+            physics=physics,
+            solver=self._physics.init_solver(),
+            agent_loc=agent_loc,
+            food_loc=food_loc,
+            food_num=food_num,
+            key=key,
+            step=jnp.array(0, dtype=jnp.int32),
+            unique_id=unique_id,
+            status=status,
+            n_born_agents=n_preys,
+            n_born_predators=n_predators,
+            predator_eat_timer=jnp.zeros(self._n_max_predators, dtype=jnp.int32),
+        )
+        sensor_obs = self._sensor_obs(stated=physics)  # type: ignore
+        N = self.n_max_agents
+        # Smell
+        obs = CFObsWithSmell(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
+            collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),
+            angle=physics.circle.p.angle,
+            velocity=physics.circle.v.xy,
+            angular_velocity=physics.circle.v.angle,
+            energy=state.status.energy,
+            smell=self._smell(physics.circle),
+        )
+        # They shouldn't encount now
+        timestep = TimeStep(encount=jnp.zeros((N, N), dtype=bool), obs=obs)
+        return state, timestep

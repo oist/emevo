@@ -1,4 +1,4 @@
-"""Asexual reward evolution with Predators"""
+"""Asexual reward evolution with Predators and smell"""
 
 import dataclasses
 import json
@@ -40,31 +40,24 @@ from emevo.rl import ppo_normal as ppo
 from emevo.visualizer import SaveVideoWrapper
 
 PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20241212-predator.toml"
-SENSOR_NAMES = ["prey_sensor", "predator_sensor"]
-N_SENSOR_REWARDS = 2
+DEFAULT_CFCONFIG = PROJECT_ROOT / "config/env/20250228-predator-smell.toml"
+SMELL_NAMES = ["prey_smell", "predator_smell"]
+N_SMELL_REWARDS = 2
 
 
 def serialize_weight(w: jax.Array) -> dict[str, jax.Array]:
     wd = w.shape[0]
-    n_food_rewards = wd - N_SENSOR_REWARDS - 1
+    n_food_rewards = wd - N_SMELL_REWARDS - 1
     rd = {f"food_{i + 1}": rfn.slice_last(w, i) for i in range(n_food_rewards)}
     rd["action"] = rfn.slice_last(w, n_food_rewards)
-    for i, sensor_name in enumerate(SENSOR_NAMES):
-        rd[sensor_name] = rfn.slice_last(w, i + n_food_rewards + 1)
+    for i, smell_name in enumerate(SMELL_NAMES):
+        rd[smell_name] = rfn.slice_last(w, i + n_food_rewards + 1)
     return rd
-
-
-def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
-    # E.g., sensor with predator: (N_agents, N_sensors, N_obj)
-    used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
-    clipped_sensor_obs = jnp.clip(used_sensor_obs, a_min=0.0)
-    return jnp.mean(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
 
 
 @serde
 @dataclasses.dataclass
-class CfConfigWithPredator(CfConfig):
+class CfConfigWithPredatorAndSmell(CfConfig):
     n_max_predators: int = 20
     n_initial_predators: int = 10
     predator_radius: float = 20.0
@@ -76,6 +69,8 @@ class CfConfigWithPredator(CfConfig):
     predator_space_limit: bool = False
     predator_eat_interval: int = 10
     predator_mouth_range: str = "same"
+    smell_decay_factor: float = 0.1
+    smell_front_only: bool = False
 
 
 @dataclasses.dataclass
@@ -112,9 +107,8 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        mean_sensor_obs = get_mean_sensor_obs(obs_t1.sensor)
         rewards = jnp.expand_dims(
-            reward_fn(timestep.info["n_ate_food"], actions, mean_sensor_obs),
+            reward_fn(timestep.info["n_ate_food"], actions, obs_t1.smell),
             axis=1,
         )
         rollout = ppo.Rollout(
@@ -175,8 +169,8 @@ def exec_rollout(
             additional_fields={
                 "eaten_preys": dead_eaten,
                 "possible_parents": possible_parents,
-                SENSOR_NAMES[0]: mean_sensor_obs[:, 0],
-                SENSOR_NAMES[1]: mean_sensor_obs[:, 1],
+                SMELL_NAMES[0]: obs_t1.smell[:, 0],
+                SMELL_NAMES[1]: obs_t1.smell[:, 1],
             },
         )
         foodlog = FoodLog(
@@ -489,7 +483,7 @@ def evolve(
     n_rollout_steps: int = 1024,
     n_total_steps: int = 1024 * 10000,
     act_reward_coef: float = 0.01,
-    sensor_reward_coef: float = 0.1,
+    smell_reward_coef: float = 0.1,
     entropy_weight: float = 0.001,
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
@@ -519,7 +513,7 @@ def evolve(
 
     # Load config
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredatorAndSmell, f.read())
     with bdconfig_path.open("r") as f:
         bdconfig = toml.from_toml(BDConfig, f.read())
     with gopsconfig_path.open("r") as f:
@@ -540,12 +534,12 @@ def evolve(
     predator_birth_fn, predator_hazard_fn = predator_bdconfig.load_models()
     mutation = gopsconfig.load_model()
     # Make env
-    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v4", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
     reward_extracor = RewardExtractor(
         act_space=env.act_space,  # type: ignore
         act_coef=act_reward_coef,
-        sensor_coef=sensor_reward_coef,
+        sensor_coef=smell_reward_coef,
     )
     if cfconfig.observe_food_label:
         n_food_obs = cfconfig.n_food_sources
@@ -554,7 +548,7 @@ def evolve(
     reward_fn_instance = rfn.LinearReward(
         key=reward_key,
         n_agents=cfconfig.n_max_agents,
-        n_weights=1 + n_food_obs + N_SENSOR_REWARDS,
+        n_weights=1 + n_food_obs + N_SMELL_REWARDS,
         std=gopsconfig.init_std,
         mean=gopsconfig.init_mean,
         extractor=reward_extracor.extract,
@@ -613,12 +607,12 @@ def replay(
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredatorAndSmell, f.read())
     # For speedup
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v4", **dataclasses.asdict(cfconfig))
     env_state, _ = env.reset(jax.random.PRNGKey(0))
     end_index = end if end is not None else phys_state.circle_axy.shape[0]
     visualizer = env.visualizer(
@@ -662,7 +656,7 @@ def widget(
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
-    env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
+    env = make("CircleForaging-v4", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
         log_ds = None

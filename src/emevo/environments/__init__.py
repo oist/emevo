@@ -26,3 +26,9 @@ register(
     "emevo.environments.circle_foraging_with_obstacle.CircleForagingWithObstacle",
     "Phyjax2d circle foraging environment with harmful obstacles",
 )
+
+register(
+    "CircleForaging-v4",
+    "emevo.environments.circle_foraging_with_predator.CFPredatorWithSmell",
+    "Phyjax2d circle foraging environment with predator",
+)
