@@ -1,6 +1,7 @@
 """Asexual reward evolution with Predators"""
 
 import dataclasses
+import datetime as dt
 import json
 from pathlib import Path
 from typing import cast
@@ -73,7 +74,6 @@ class CfConfigWithPredator(CfConfig):
     predator_force_ec: float = 0.01 / 40.0
     predator_basic_ec: float = 0.0
     predator_digestive_rate: float = 0.9
-    predator_space_limit: bool = False
     predator_eat_interval: int = 10
     predator_mouth_range: str = "same"
 
@@ -284,6 +284,7 @@ def run_evolution(
     debug_vis_scale: float,
     debug_print: bool,
     headless: bool,
+    measure_time: bool = False,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -350,6 +351,8 @@ def run_evolution(
                 kind=int(i >= n_max_preys),
             )
 
+    prev_time = dt.datetime.now()
+
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
     for i, key_i in enumerate(all_keys):
@@ -376,6 +379,10 @@ def run_evolution(
             n_optim_epochs,
             entropy_weight,
         )
+        if measure_time:
+            now = dt.datetime.now()
+            print(now - prev_time)
+            prev_time = now
 
         if visualizer is not None:
             visualizer.render(env_state.physics)  # type: ignore
@@ -512,6 +519,7 @@ def evolve(
     debug_vis_scale: float = 2.0,
     debug_print: bool = False,
     headless: bool = False,
+    measure_time: bool = False,
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -593,6 +601,7 @@ def evolve(
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
         headless=headless,
+        measure_time=measure_time,
         debug_print=debug_vis or debug_print,
     )
 

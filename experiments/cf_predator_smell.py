@@ -66,7 +66,6 @@ class CfConfigWithPredatorAndSmell(CfConfig):
     predator_force_ec: float = 0.01 / 40.0
     predator_basic_ec: float = 0.0
     predator_digestive_rate: float = 0.9
-    predator_space_limit: bool = False
     predator_eat_interval: int = 10
     predator_mouth_range: str = "same"
     smell_decay_factor: float = 0.1

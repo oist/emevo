@@ -11,7 +11,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Position, ShapeDict
+from phyjax2d import (
+    Circle,
+    Color,
+    Position,
+    ShapeDict,
+)
 from phyjax2d import Space as Physics
 from phyjax2d import (
     SpaceBuilder,
@@ -46,7 +51,6 @@ from emevo.environments.env_utils import (
     CircleCoordinate,
     FoodNumState,
     LocatingState,
-    SquareCoordinate,
     loc_gaussian,
     place,
 )
@@ -86,7 +90,6 @@ def _observe_closest(
     stated: StateDict,
     state_prey: State,
     state_predator: State,
-    ignore_first_seg: bool,
     ignore_sc: bool,
 ) -> jax.Array:
     rc = circle_raycast(0.0, 1.0, p1, p2, circle_prey, state_prey)
@@ -99,8 +102,6 @@ def _observe_closest(
         to_sc = jnp.ones_like(to_sc) * -1.0
     rc = segment_raycast(1.0, p1, p2, shaped.segment, stated.segment)
     to_seg = jnp.where(rc.hit, 1.0 - rc.fraction, -1.0)
-    if ignore_first_seg:
-        to_seg = to_seg.at[0].set(-1.0)
     obs = jnp.concatenate(
         jax.tree_util.tree_map(
             lambda arr: jnp.max(arr, keepdims=True),
@@ -112,7 +113,7 @@ def _observe_closest(
 
 _vmap_obs_closest = jax.vmap(
     _observe_closest,
-    in_axes=(None, None, None, 0, 0, None, None, None, None, None),
+    in_axes=(None, None, None, 0, 0, None, None, None, None),
 )
 
 
@@ -124,7 +125,6 @@ def get_sensor_obs(
     sensor_length: float,
     predator_sensor_length: float,
     stated: StateDict,
-    prey_ignore_first_seg: bool,
 ) -> jax.Array:
     assert stated.circle is not None
     # Split shape and stated
@@ -154,7 +154,6 @@ def get_sensor_obs(
         stated,
         prey_state,
         predator_state,
-        prey_ignore_first_seg,
         False,
     )
     predator_obs = _vmap_obs_closest(
@@ -166,7 +165,6 @@ def get_sensor_obs(
         stated,
         prey_state,
         predator_state,
-        False,
         True,  # Predators ignore foods
     )
     return jnp.concatenate((prey_obs, predator_obs), axis=0)
@@ -209,15 +207,12 @@ class CircleForagingWithPredator(CircleForaging):
         predator_digestive_rate: float = 0.9,
         predator_eat_interval: int = 10,
         predator_mouth_range: Literal["same", "narrow"] = "same",
-        # Predators are limited to the right space
-        predator_space_limit: bool = False,
         **kwargs,
     ) -> None:
         self._n_max_predators = n_max_predators
         self._n_initial_predators = n_initial_predators
         self._predator_radius = predator_radius
         self._predator_sensor_length = predator_sensor_length
-        self._predator_space_limit = predator_space_limit
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
         self._predator_eat_interval = predator_eat_interval
         assert self._n_max_preys > 0, f"Too many predators: {n_max_predators}"
@@ -235,24 +230,7 @@ class CircleForagingWithPredator(CircleForaging):
                 f"Unsupported predator mouth range: {predator_mouth_range}"
             )
 
-        if predator_space_limit:
-            obs = kwargs["obstacles"]
-            assert kwargs["env_shape"] == "square"
-            assert obs in ["center", "one-fourth", "one-third"]
-            length = self._xlim[1] - self._xlim[0]
-            if obs == "center":
-                xmin = self._xlim[0] + length * 0.5
-            elif obs == "one-fourth":
-                xmin = self._xlim[0] + length * 0.25
-            elif obs == "one-third":
-                xmin = self._xlim[0] + length / 3.0
-            else:
-                raise AssertionError()
-            xlim = xmin, self._xlim[1]
-            self._predator_coordinate = SquareCoordinate(xlim, self._ylim)
-        else:
-            self._predator_coordinate = self._coordinate
-
+        self._predator_coordinate = self._coordinate
         self._predator_init_energy = predator_init_energy
         self._predator_force_ec = predator_force_ec
         self._predator_basic_ec = predator_basic_ec
@@ -350,7 +328,6 @@ class CircleForagingWithPredator(CircleForaging):
                     predator_sensor_length=self._predator_sensor_length,
                     sensor_range=self._sensor_range_tuple,
                     sensor_length=self._sensor_length,
-                    prey_ignore_first_seg=self._predator_space_limit,
                 )
             )
 
@@ -387,7 +364,7 @@ class CircleForagingWithPredator(CircleForaging):
             )
         builder.add_chain_segments(chain_points=walls, friction=0.2, elasticity=0.4)
 
-        # Agents
+        # Preys
         for _ in range(self._n_max_preys):
             builder.add_circle(
                 radius=self._agent_radius,
@@ -403,6 +380,7 @@ class CircleForagingWithPredator(CircleForaging):
                 friction=0.2,
                 elasticity=0.4,
                 density=0.1,
+                ignore=["static_circle"],
                 color=PREDATOR_COLOR,
             )
         # Foods
@@ -414,21 +392,7 @@ class CircleForagingWithPredator(CircleForaging):
                 color=FOOD_COLOR,
                 is_static=True,
             )
-        space = builder.build()
-        space.set_ignore_flags_by_indices(
-            "circle",
-            "static_circle",
-            slice(self._n_max_preys, self.n_max_agents),
-            slice(0, self._n_max_foods),
-        )
-        if self._predator_space_limit:
-            space.set_ignore_flags_by_indices(
-                "segment",
-                "circle",
-                slice(0, 1),  # First segment
-                slice(0, self._n_max_preys),
-            )
-        return space
+        return builder.build()
 
     def step(  # type: ignore
         self,
@@ -563,7 +527,7 @@ class CircleForagingWithPredator(CircleForaging):
         prey_state, predator_state = stated.circle.split(self._n_max_preys)
         food_tactile, ft_raw = self._food_tactile(
             stated.static_circle.label,
-            stated.circle,
+            prey_state,
             stated.static_circle,
             c2sc,
         )
@@ -605,13 +569,19 @@ class CircleForagingWithPredator(CircleForaging):
             (prey_predator_tactile, predator_prey_tactile),
             axis=0,
         )
-        # No food tactile for predators
-        food_tactile_filtered = (food_tactile > 0).at[self._n_max_preys :].set(False)
+        # Extend zero vector to food tactile
+        food_tactile_extended = jnp.concatenate(
+            (
+                food_tactile > 0,
+                jnp.zeros((self._n_max_predators, 1, self._n_tactile_bins), dtype=bool),
+            )
+        )
+        # (food_tactile > 0).at[self._n_max_preys :].set(False)
         tactile = jnp.concatenate(
             (
                 self_tactile > 0,
                 other_tactile > 0,
-                food_tactile_filtered,
+                food_tactile_extended,
                 wall_tactile > 0,
             ),
             axis=1,
