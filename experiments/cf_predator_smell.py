@@ -692,6 +692,7 @@ def widget(
         profile_and_rewards=profile_and_rewards,
         cm_fixed_minmax=cm_fixed_minmax_dict,
         scale=scale,
+        show_prey_pred_info=True,
     )
 
 

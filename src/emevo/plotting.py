@@ -38,7 +38,6 @@ class CBarRenderer:
 
     def render(self, norm: Normalize, cm: Colormap, title: str = "Value") -> None:
         """Render cbar, but don't update figure"""
-        self._ax.clear()
         mappable = ScalarMappable(norm=norm, cmap=cm)
         self._fig.colorbar(mappable, cax=self._ax, orientation="horizontal")
         self._ax.set_title(title)
