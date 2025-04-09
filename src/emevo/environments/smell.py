@@ -45,7 +45,7 @@ def _compute_smell(
     smell = jnp.exp(-decay_factor * dist)
     if front:
         c2n = nose - center
-        c2n_normal = c2n / jnp.clip(jnp.linalg.norm(c2n), min=1e-6)
+        c2n_normal = c2n / jnp.clip(jnp.linalg.norm(c2n), a_min=1e-6)
         c2p = state.p.xy - center.reshape(1, 2)
         sep = jax.vmap(jnp.dot, in_axes=(0, None))(c2p, c2n_normal)
         is_front_and_active = jnp.logical_and(

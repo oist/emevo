@@ -10,13 +10,13 @@ import moderngl
 import numpy as np
 from numpy.typing import NDArray
 from phyjax2d import Circle, State, StateDict, Vec2d
+from phyjax2d.moderngl_vis import MglRenderer
 from PySide6 import QtWidgets
 from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColorSpace, QGuiApplication, QMouseEvent, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from emevo.environments.circle_foraging import CircleForaging
-from emevo.environments.moderngl_vis import MglRenderer
 from emevo.exp_utils import SavedPhysicsState
 
 

@@ -8,6 +8,7 @@ import sys
 import warnings
 from collections import deque
 from collections.abc import Iterable
+from typing import Callable
 
 import matplotlib as mpl
 import matplotlib.colors as mc
@@ -143,6 +144,16 @@ class CBarState(str, enum.Enum):
     FOOD_REWARD = "food-reward"
     ACTION_REWARD = "action-reward"
     FOOD_REWARD2 = "food-reward2"  # Poison or poor foods
+    PREY_REWARD = "prey-reward"
+    PREDATOR_REWARD = "predator-reward"
+
+
+def _get_reward_value(rew_dict: dict[str, float], *candidate_keys: str) -> float:
+    for key in candidate_keys:
+        if key in rew_dict:
+            return rew_dict[key]
+    warnings.warn(f"Unsupported keys: {candidate_keys}", stacklevel=1)
+    return 0.0
 
 
 class CFEnvReplayWidget(QtWidgets.QWidget):
@@ -162,6 +173,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         log_ds: ds.Dataset | None = None,
         profile_and_rewards: pa.Table | None = None,
         cm_fixed_minmax: dict[str, tuple[float, float]] | None = None,
+        show_prey_pred_info: bool = False,
         scale: float = 2.0,
     ) -> None:
         super().__init__()
@@ -204,17 +216,20 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         export_button = QtWidgets.QPushButton("📤")
         export_button.clicked.connect(self.exportData)
         # Colorbar
-        radiobutton_1 = QtWidgets.QRadioButton("Energy")
-        radiobutton_2 = QtWidgets.QRadioButton("Num. Children")
-        radiobutton_3 = QtWidgets.QRadioButton("Food Reward")
-        radiobutton_4 = QtWidgets.QRadioButton("Action Reward")
-        radiobutton_5 = QtWidgets.QRadioButton("Another Food Reward")
-        radiobutton_1.setChecked(True)
-        radiobutton_1.toggled.connect(self.cbarEnergy)
-        radiobutton_2.toggled.connect(self.cbarNChildren)
-        radiobutton_3.toggled.connect(self.cbarFood)
-        radiobutton_4.toggled.connect(self.cbarAction)
-        radiobutton_5.toggled.connect(self.cbarFood2)
+        # Common
+        rb1 = self._make_cbar("Energy", CBarState.ENERGY, True)
+        rb2 = self._make_cbar("Num. Children", CBarState.N_CHILDREN)
+        rb3 = self._make_cbar("Food Reward", CBarState.FOOD_REWARD)
+        rb4 = self._make_cbar("Action Reward", CBarState.ACTION_REWARD)
+        radio_buttons = [rb1, rb2, rb3, rb4]
+        # One or two more buttons for poisons or prey/predator rewards
+        if show_prey_pred_info:
+            rb5 = self._make_cbar("Prey Reward", CBarState.PREY_REWARD)
+            rb6 = self._make_cbar("Prey Reward", CBarState.PREDATOR_REWARD)
+            radio_buttons += [rb5, rb6]
+        else:
+            rb5 = self._make_cbar("2nd Food Reward", CBarState.FOOD_REWARD2)
+            radio_buttons.append(rb5)
         self._cbar_state = CBarState.ENERGY
         self._cbar_renderer = CBarRenderer(int(xlim * 2), int(ylim * 0.4))
         self._showing_energy = True
@@ -239,11 +254,9 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         left_control.addWidget(self._slider_label)
         left_control.addWidget(self._slider)
         cbar_selector = QtWidgets.QGridLayout()
-        cbar_selector.addWidget(radiobutton_1, 0, 0)
-        cbar_selector.addWidget(radiobutton_2, 1, 0)
-        cbar_selector.addWidget(radiobutton_3, 0, 1)
-        cbar_selector.addWidget(radiobutton_4, 1, 1)
-        cbar_selector.addWidget(radiobutton_5, 2, 1)
+        if len(radio_buttons) <= 6:
+            for rb, row, col in zip(radio_buttons, [0, 1, 2, 0, 1, 2], [0, 0, 0, 1, 1, 1]):
+                cbar_selector.addWidget(rb, row, col)
         control = QtWidgets.QHBoxLayout()
         control.addLayout(left_control)
         control.addLayout(cbar_selector)
@@ -365,13 +378,27 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             cm = self._food_cm
             value = np.zeros(self._n_max_agents)
             for slot, uid in zip(log["slots"], log["unique_id"]):
-                rew = self._get_rewards(uid)
-                if "food_2" in rew:
-                    rew_food = rew["food_2"]
-                else:
-                    warnings.warn("Unsupported reward", stacklevel=1)
-                    rew_food = 0.0
-                value[slot] = rew_food
+                value[slot] = _get_reward_value(self._get_rewards(uid), "food_2")
+        elif self._cbar_state is CBarState.PREY_REWARD:
+            title = "Prey Reward"
+            cm = self._food_cm
+            value = np.zeros(self._n_max_agents)
+            for slot, uid in zip(log["slots"], log["unique_id"]):
+                value[slot] = _get_reward_value(
+                    self._get_rewards(uid),
+                    "prey_sensor",
+                    "prey_smell",
+                )
+        elif self._cbar_state is CBarState.PREDATOR_REWARD:
+            title = "Predator Reward"
+            cm = self._food_cm
+            value = np.zeros(self._n_max_agents)
+            for slot, uid in zip(log["slots"], log["unique_id"]):
+                value[slot] = _get_reward_value(
+                    self._get_rewards(uid),
+                    "predator_sensor",
+                    "predator_smell",
+                )
         else:
             warnings.warn(f"Invalid cbar state {self._cbar_state}", stacklevel=1)
             return np.zeros((self._n_max_agents, 4))
@@ -412,35 +439,23 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                 )
                 return
 
-    @Slot(bool)
-    def cbarEnergy(self, checked: bool) -> None:
-        if checked:
-            self._cbar_state = CBarState.ENERGY
-            self._cbar_changed = True
+    def _make_cbar(
+        self,
+        name: str,
+        state: CBarState,
+        checked: bool = False,
+    ) -> QtWidgets.QRadioButton:
+        radiobutton = QtWidgets.QRadioButton(name)
+        radiobutton.setChecked(checked)
 
-    @Slot(bool)
-    def cbarNChildren(self, checked: bool) -> None:
-        if checked:
-            self._cbar_state = CBarState.N_CHILDREN
-            self._cbar_changed = True
+        @Slot(bool)
+        def cbar_slot(checked: bool) -> None:
+            if checked:
+                self._cbar_state = state
+                self._cbar_changed = True
 
-    @Slot(bool)
-    def cbarFood(self, checked: bool) -> None:
-        if checked:
-            self._cbar_state = CBarState.FOOD_REWARD
-            self._cbar_changed = True
-
-    @Slot(bool)
-    def cbarAction(self, checked: bool) -> None:
-        if checked:
-            self._cbar_state = CBarState.ACTION_REWARD
-            self._cbar_changed = True
-
-    @Slot(bool)
-    def cbarFood2(self, checked: bool) -> None:
-        if checked:
-            self._cbar_state = CBarState.FOOD_REWARD2
-            self._cbar_changed = True
+        radiobutton.toggled.connect(cbar_slot)
+        return radiobutton
 
     @Slot()
     def exportData(self) -> None:
