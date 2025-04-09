@@ -214,6 +214,10 @@ def run_evolution(
     debug_vis: bool,
     debug_vis_scale: float,
     debug_print: bool,
+    debug_vis_xoffset: float = 0.0,
+    debug_vis_yoffset: float = 0.0,
+    debug_vis_partial_range_x: float | None = None,
+    debug_vis_partial_range_y: float | None = None,
     headless: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -261,11 +265,24 @@ def run_evolution(
     obs = timestep.obs
 
     if debug_vis:
+        if debug_vis_partial_range_x is None:
+            figx = xmax * debug_vis_scale
+        else:
+            figx = debug_vis_partial_range_x * debug_vis_scale
+
+        if debug_vis_partial_range_y is None:
+            figy = ymax * debug_vis_scale
+        else:
+            figy = debug_vis_partial_range_y * debug_vis_scale
+
         visualizer = env.visualizer(
             env_state,
-            figsize=(xmax * debug_vis_scale, ymax * debug_vis_scale),
+            figsize=(figx, figy),
             backend="headless" if headless else "pyglet",
+            partial_range_x=debug_vis_partial_range_x,
+            partial_range_y=debug_vis_partial_range_y,
         )
+
     else:
         visualizer = None
 
@@ -276,6 +293,7 @@ def run_evolution(
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
     del key  # Don't reuse this key!
+    po = np.array([[-debug_vis_xoffset, -debug_vis_yoffset]])
     for i, key_i in enumerate(all_keys):
         epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
@@ -300,7 +318,7 @@ def run_evolution(
         )
 
         if visualizer is not None:
-            visualizer.render(env_state.physics)  # type: ignore
+            visualizer.render(env_state.physics, point_offset=po * i * n_rollout_steps)  # type: ignore
             visualizer.show()
         if debug_print:
             is_active = env_state.unique_id.is_active()
@@ -409,6 +427,10 @@ def evolve(
     savestate_interval: int = 1000,
     debug_vis: bool = False,
     debug_vis_scale: float = 2.0,
+    debug_vis_xoffset: float = 0.0,
+    debug_vis_yoffset: float = 0.0,
+    debug_vis_partial_range_x: float | None = None,
+    debug_vis_partial_range_y: float | None = None,
     debug_print: bool = False,
     headless: bool = False,
     force_gpu: bool = True,
@@ -479,6 +501,10 @@ def evolve(
         save_interval=save_interval,
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
+        debug_vis_xoffset=debug_vis_xoffset,
+        debug_vis_yoffset=debug_vis_yoffset,
+        debug_vis_partial_range_x=debug_vis_partial_range_x,
+        debug_vis_partial_range_y=debug_vis_partial_range_y,
         headless=headless,
         debug_print=debug_vis or debug_print,
     )

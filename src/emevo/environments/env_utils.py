@@ -262,10 +262,12 @@ class Locating(str, enum.Enum):
     """Methods to determine the location of new foods or agents"""
 
     GAUSSIAN = "gaussian"
+    GAUSSIAN_LINEAR = "gaussian-linear"
     GAUSSIAN_MIXTURE = "gaussian-mixture"
     PERIODIC = "periodic"
     CHOICE = "choice"
     SCHEDULED = "scheduled"
+    LINEAR = "linear"
     SWITCHING = "switching"
     UNIFORM = "uniform"
 
@@ -275,15 +277,17 @@ class Locating(str, enum.Enum):
             n_produced=jnp.array(0, dtype=jnp.int32),
         )
         if self is Locating.GAUSSIAN:
-            return loc_gaussian(*args, **kwargs), state
+            return LocGaussian(*args, **kwargs), state
+        elif self is Locating.GAUSSIAN_LINEAR:
+            return LocGaussianLinear(*args, **kwargs), state
         elif self is Locating.GAUSSIAN_MIXTURE:
-            return loc_gaussian_mixture(*args, **kwargs), state
+            return LocGaussianMixture(*args, **kwargs), state
         elif self is Locating.PERIODIC:
             return LocPeriodic(*args, **kwargs), state
         elif self is Locating.CHOICE:
             return LocChoice(*args, **kwargs), state
         elif self is Locating.UNIFORM:
-            return loc_uniform(*args, **kwargs), state
+            return LocUniform(*args, **kwargs), state
         elif self is Locating.SCHEDULED:
             return LocScheduled(*args, **kwargs), state
         elif self is Locating.SWITCHING:
@@ -292,52 +296,87 @@ class Locating(str, enum.Enum):
             raise AssertionError("Unreachable")
 
 
-def loc_gaussian(mean: ArrayLike, stddev: ArrayLike) -> LocatingFn:
-    mean_a = jnp.array(mean)
-    std_a = jnp.array(stddev)
-    shape = mean_a.shape
+class LocGaussian:
+    def __init__(self, mean: ArrayLike, stddev: ArrayLike) -> None:
+        self.mean = jnp.array(mean)
+        self.stddev = jnp.array(stddev)
+        self.shape = self.mean.shape
 
-    def sample(key: chex.PRNGKey, _n_steps: int, _state: LocatingState) -> jax.Array:
+    def __call__(
+        self, key: chex.PRNGKey, _n_steps: int, _state: LocatingState
+    ) -> jax.Array:
         del _n_steps, _state
-        return jax.random.normal(key, shape=shape) * std_a + mean_a
-
-    return sample
+        return jax.random.normal(key, shape=self.shape) * self.stddev + self.mean
 
 
-def loc_gaussian_mixture(
-    probs: ArrayLike,
-    mean_arr: ArrayLike,
-    stddev_arr: ArrayLike,
-) -> LocatingFn:
-    mean_a = jnp.array(mean_arr)
-    stddev_a = jnp.array(stddev_arr)
-    probs_a = jnp.array(probs)
-    n = probs_a.shape[0]
+class LocGaussianLinear:
+    def __init__(
+        self,
+        mean: ArrayLike,
+        stddev: ArrayLike,
+        modulation: ArrayLike,
+        clip: ArrayLike,
+    ) -> None:
+        self.mean = jnp.array(mean)
+        self.stddev = jnp.array(stddev)
+        self.modulation = jnp.array(modulation)
+        self.clip = jnp.array(clip)
+        self.shape = self.mean.shape
 
-    def sample(key: chex.PRNGKey, _n_steps: int, _state: LocatingState) -> jax.Array:
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        n_steps: int,
+        _state: LocatingState,
+    ) -> jax.Array:
+        del _state
+        mean = jnp.clip(self.mean + self.modulation * n_steps, min=0.0, max=self.clip)
+        return jax.random.normal(key, shape=self.shape) * self.stddev + mean
+
+
+class LocGaussianMixture:
+    def __init__(
+        self,
+        probs: ArrayLike,
+        mean_arr: ArrayLike,
+        stddev_arr: ArrayLike,
+    ) -> None:
+        self.mean = jnp.array(mean_arr)
+        self.stddev = jnp.array(stddev_arr)
+        self.probs = jnp.array(probs)
+        self.n = self.probs.shape[0]
+
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        _n_steps: int,
+        _state: LocatingState,
+    ) -> jax.Array:
         del _n_steps, _state
         k1, k2 = jax.random.split(key)
-        i = jax.random.choice(k1, n, p=probs_a)
-        mi, si = mean_a[i], stddev_a[i]
-        return jax.random.normal(k2, shape=mean_a.shape[1:]) * si + mi
-
-    return sample
+        i = jax.random.choice(k1, self.n, p=self.probs)
+        mi, si = self.mean[i], self.stddev[i]
+        return jax.random.normal(k2, shape=self.mean.shape[1:]) * si + mi
 
 
-def loc_uniform(coordinate_or_list: Coordinate | list[float]) -> LocatingFn:
-    if isinstance(coordinate_or_list, list | tuple):
-        coordinate = SquareCoordinate(
-            tuple(coordinate_or_list[:2]),  # type: ignore
-            tuple(coordinate_or_list[2:]),  # type: ignore
-        )
-    else:
-        coordinate = coordinate_or_list
+class LocUniform:
+    def __init__(self, coordinate_or_list: Coordinate | list[float]) -> None:
+        if isinstance(coordinate_or_list, list | tuple):
+            self.coordinate = SquareCoordinate(
+                tuple(coordinate_or_list[:2]),  # type: ignore
+                tuple(coordinate_or_list[2:]),  # type: ignore
+            )
+        else:
+            self.coordinate = coordinate_or_list
 
-    def sample(key: chex.PRNGKey, _n_steps: int, _state: LocatingState) -> jax.Array:
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        _n_steps: int,
+        _state: LocatingState,
+    ) -> jax.Array:
         del _n_steps, _state
-        return coordinate.uniform(key)
-
-    return sample
+        return self.coordinate.uniform(key)
 
 
 class LocPeriodic:
@@ -369,16 +408,17 @@ class LocChoice:
         return jax.random.choice(key, self._locations)
 
 
+def _collect_loc_fn(fn_or_args: tuple[str, ...] | LocatingFn) -> LocatingFn:
+    if callable(fn_or_args):
+        return fn_or_args
+    else:
+        name, *init_args = fn_or_args
+        fn, _ = Locating(name)(*init_args)
+        return fn
+
+
 def _collect_loc_fns(fns: Iterable[tuple[str, ...] | LocatingFn]) -> list[LocatingFn]:
-    locfn_list = []
-    for fn_or_args in fns:
-        if callable(fn_or_args):
-            locfn_list.append(fn_or_args)
-        else:
-            name, *init_args = fn_or_args
-            fn, _ = Locating(name)(*init_args)
-            locfn_list.append(fn)
-    return locfn_list
+    return [_collect_loc_fn(fn_or_args) for fn_or_args in fns]
 
 
 class LocSwitching:

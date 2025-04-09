@@ -50,7 +50,7 @@ from emevo.environments.env_utils import (
     SquareCoordinate,
     check_points_are_far_from_other_foods,
     first_to_nth_true,
-    loc_gaussian,
+    LocGaussian,
     place,
     place_multi,
 )
@@ -646,7 +646,7 @@ class CircleForaging(Env):
                 key: chex.PRNGKey,
                 agent_loc: jax.Array,
             ) -> tuple[jax.Array, jax.Array]:
-                loc_fn = loc_gaussian(
+                loc_fn = LocGaussian(
                     agent_loc,
                     jnp.ones_like(agent_loc) * neighbor_stddev,
                 )
@@ -1085,7 +1085,7 @@ class CircleForaging(Env):
                 )
                 agentloc_state = agentloc_state.increment()
                 n_agents += 1
-            is_active.append(ok)
+                is_active.append(ok)
 
         if n_agents < self._n_initial_agents:
             diff = self._n_initial_agents - n_agents
@@ -1248,10 +1248,12 @@ class CircleForaging(Env):
         sensor_index: int | None = None,
         no_sensor: bool = False,
         backend: str = "pyglet",
+        partial_range_x: float | None = None,
+        partial_range_y: float | None = None,
         **kwargs,
     ) -> Visualizer[StateDict]:
         """Create a visualizer for the environment"""
-        from emevo.environments import moderngl_vis
+        from phyjax2d import moderngl_vis
 
         if sensor_index is not None:
             self._sensor_index = sensor_index
@@ -1263,12 +1265,22 @@ class CircleForaging(Env):
             def sensor_fn(stated: StateDict) -> tuple[jax.Array, jax.Array]:
                 return self._get_selected_sensor(stated, self._sensor_index)
 
+        if partial_range_x is None:
+            x_range = self._x_range
+        else:
+            x_range = partial_range_x
+
+        if partial_range_y is None:
+            y_range = self._y_range
+        else:
+            y_range = partial_range_y
+
         return moderngl_vis.MglVisualizer(
-            x_range=self._x_range,
-            y_range=self._y_range,
+            x_range=x_range,
+            y_range=y_range,
             space=self._physics,
             stated=state.physics,
-            food_color=self._food_color,
+            sc_color=self._food_color,
             figsize=figsize,
             backend=backend,
             sensor_fn=None if no_sensor else sensor_fn,  # type: ignore

@@ -51,7 +51,7 @@ from emevo.environments.env_utils import (
     CircleCoordinate,
     FoodNumState,
     LocatingState,
-    loc_gaussian,
+    LocGaussian,
     place,
 )
 from emevo.environments.smell import CFObsWithSmell, _vmap_compute_smell
@@ -289,7 +289,7 @@ class CircleForagingWithPredator(CircleForaging):
                 key: chex.PRNGKey,
                 agent_loc: jax.Array,
             ) -> tuple[jax.Array, jax.Array]:
-                loc_fn = loc_gaussian(
+                loc_fn = LocGaussian(
                     agent_loc,
                     jnp.ones_like(agent_loc) * kwargs["neighbor_stddev"],
                 )
