@@ -31,10 +31,10 @@ from emevo.environments.env_utils import (
     Locating,
     LocatingFn,
     LocatingState,
+    LocGaussian,
     SquareCoordinate,
     check_points_are_far_from_other_foods,
     first_to_nth_true,
-    LocGaussian,
     place,
     place_multi,
 )
@@ -171,7 +171,7 @@ def _get_num_or_loc_fn(
         return enum_type(arg)(*default_args[arg])
     elif isinstance(arg, tuple) or isinstance(arg, list):
         name, *args = arg
-        return enum_type(name)(*args)
+        return enum_type(name)(*default_args[name], *args)
     else:
         raise ValueError(f"Invalid value in _get_num_or_loc_fn {arg}")
 
@@ -775,6 +775,7 @@ class CircleForaging(Env):
                     ),
                 ),
                 "uniform": (self._coordinate,),
+                "uniform-linear": (self._coordinate,),
             },
         )
 
