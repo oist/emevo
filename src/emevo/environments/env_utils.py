@@ -334,7 +334,9 @@ class LocGaussianLinear:
         _state: LocatingState,
     ) -> jax.Array:
         del _state
-        mean = jnp.clip(self.mean + self.modulation * n_steps, a_min=0.0, a_max=self.clip)
+        mean = jnp.clip(
+            self.mean + self.modulation * n_steps, a_min=0.0, a_max=self.clip
+        )
         return jax.random.normal(key, shape=self.shape) * self.stddev + mean
 
 
@@ -363,7 +365,7 @@ class LocUniformLinear:
     ) -> jax.Array:
         del _state
         sampled = self.coordinate.uniform(key)
-        return jnp.clip(sampled + self.modulation * n_steps, min=0.0, max=self.clip)
+        return jnp.clip(sampled + self.modulation * n_steps, a_min=0.0, a_max=self.clip)
 
 
 class LocGaussianMixture:
