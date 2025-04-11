@@ -77,6 +77,7 @@ class CfConfig:
     observe_food_label: bool = False
     mouth_range: str = "front"
     n_tactile_bins: int = 6
+    tactile_shift: float = 0.0
     foods_min_dist: float = 0.0
 
     def apply_override(self, override: str) -> None:

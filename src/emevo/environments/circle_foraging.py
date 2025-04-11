@@ -13,7 +13,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.typing import ArrayLike
-from phyjax2d import Circle, Color, Position, ShapeDict
+from phyjax2d import (
+    Circle,
+    Color,
+    Position,
+    ShapeDict,
+)
 from phyjax2d import Space as Physics
 from phyjax2d import (
     SpaceBuilder,
@@ -47,10 +52,10 @@ from emevo.environments.env_utils import (
     Locating,
     LocatingFn,
     LocatingState,
+    LocGaussian,
     SquareCoordinate,
     check_points_are_far_from_other_foods,
     first_to_nth_true,
-    LocGaussian,
     place,
     place_multi,
 )
@@ -356,11 +361,14 @@ def get_tactile(
     s1: State,
     s2: State,
     collision_mat: jax.Array,
+    shift: float = 0.0,
 ) -> tuple[jax.Array, jax.Array]:
     n, m = collision_mat.shape
     rel_angle = get_relative_angle(s1, s2)  # [0, 2π]  (N, M)
     weights = (jnp.pi * 2 / n_bins) * jnp.arange(n_bins + 1)  # [0, ..., 2π]
-    in_range = _search_bin(rel_angle.ravel(), weights).reshape(n, m, n_bins)
+    # If shift > 0, shift angles
+    angle_shifted = (rel_angle.ravel() + shift) % (jnp.pi * 2)
+    in_range = _search_bin(angle_shifted, weights).reshape(n, m, n_bins)
     tactile_raw = in_range * jnp.expand_dims(collision_mat, axis=2)  # (N, M, B)
     tactile = jnp.sum(tactile_raw, axis=1, keepdims=True)  # (N, 1, B)
     return tactile, jnp.expand_dims(tactile_raw, axis=2)  # (N, M, 1, B)
@@ -373,11 +381,14 @@ def _food_tactile_with_labels(
     s1: State,
     s2: State,
     collision_mat: jax.Array,
+    shift: float = 0.0,
 ) -> tuple[jax.Array, jax.Array]:
     n, m = collision_mat.shape
     rel_angle = get_relative_angle(s1, s2)  # [0, 2π]
     weights = (jnp.pi * 2 / n_bins) * jnp.arange(n_bins + 1)  # [0, ..., 2π]
-    in_range = _search_bin(rel_angle.ravel(), weights).reshape(n, m, n_bins)
+    # If shift > 0, shift angles
+    angle_shifted = (rel_angle.ravel() + shift) % (jnp.pi * 2)
+    in_range = _search_bin(angle_shifted, weights).reshape(n, m, n_bins)
     in_range_masked = in_range * jnp.expand_dims(collision_mat, axis=2)
     onehot = jax.nn.one_hot(food_labels, n_food_sources, dtype=bool)
     expanded_onehot = onehot.reshape(1, *onehot.shape, 1)  # (1, M, L, 1)
@@ -446,6 +457,15 @@ _MaybeLocatingFn = LocatingFn | str | tuple[str, ...]
 _MaybeNumFn = FoodNumFn | str | tuple[str, ...]
 _SensorFn = Callable[[StateDict], jax.Array]
 
+_MOUTH_RANGE = Literal[
+    "full",
+    "front",
+    "front-wide",
+    "front-shifted",
+    "front-shifted-wide",
+    "right",
+]
+
 
 class CircleForaging(Env):
     def __init__(
@@ -466,10 +486,11 @@ class CircleForaging(Env):
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
-        mouth_range: Literal["full", "front", "front-wide", "right"] = "front",
+        mouth_range: _MOUTH_RANGE = "front",
         neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
         n_tactile_bins: int = 6,
+        tactile_shift: float = 0.0,
         sensor_length: float = 100.0,
         sensor_range: tuple[float, float] | SensorRange = SensorRange.WIDE,
         agent_radius: float = 10.0,
@@ -539,10 +560,28 @@ class CircleForaging(Env):
         if mouth_range == "full":
             self._foraging_indices = tuple(range(n_tactile_bins))
         elif mouth_range == "front":
+            # Left and right \ /
             self._foraging_indices = 0, n_tactile_bins - 1
         elif mouth_range == "front-wide":
+            # Leftx2 and rightx2 \\ //
             assert n_tactile_bins >= 4
             self._foraging_indices = 0, 1, n_tactile_bins - 2, n_tactile_bins - 1
+        elif mouth_range == "front-shifted":
+            # Left, center, and right \ | /
+            # This should be used with shifted > 0 because there's no center by default
+            assert n_tactile_bins >= 3
+            self._foraging_indices = 0, n_tactile_bins - 2, n_tactile_bins - 1
+        elif mouth_range == "front-shifted-wide":
+            # Left x 2, center, and right \\ | //
+            # This should be used with shifted > 0
+            assert n_tactile_bins >= 5
+            self._foraging_indices = (
+                0,
+                1,
+                n_tactile_bins - 3,
+                n_tactile_bins - 2,
+                n_tactile_bins - 1,
+            )
         elif mouth_range == "right":
             self._foraging_indices = (n_tactile_bins - 1,)
         else:
@@ -583,6 +622,8 @@ class CircleForaging(Env):
         # Obs
         self._n_sensors = n_agent_sensors
         self._n_tactile_bins = n_tactile_bins
+        self._tactile_shift = (tactile_shift / 360.0) * 2.0 * jnp.pi
+        del tactile_shift
         # Some cached constants
         act_p1 = Vec2d(0, agent_radius).rotated(np.pi * 0.75)
         act_p2 = Vec2d(0, agent_radius).rotated(-np.pi * 0.75)
@@ -678,9 +719,9 @@ class CircleForaging(Env):
         self._sensor_obs = self._make_sensor_fn(observe_food_label)
 
         if observe_food_label:
-            assert (
-                self._n_food_sources > 1
-            ), "n_food_sources should be larager than 1 to include food label obs"
+            assert self._n_food_sources > 1, (
+                "n_food_sources should be larager than 1 to include food label obs"
+            )
 
             self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
                 self._n_tactile_bins,
@@ -689,6 +730,7 @@ class CircleForaging(Env):
                 s1,
                 s2,
                 cmat,
+                shift=self._tactile_shift,
             )
             self._n_obj = N_OBJECTS + self._n_food_sources - 1 + _n_additional_objs
 
@@ -698,6 +740,7 @@ class CircleForaging(Env):
                 s1,
                 s2,
                 cmat,
+                shift=self._tactile_shift,
             )
             self._n_obj = N_OBJECTS + _n_additional_objs
 
@@ -870,12 +913,14 @@ class CircleForaging(Env):
             stated.circle,
             stated.circle,
             c2c,
+            shift=self._tactile_shift,
         )
         wall_tactile, _ = get_tactile(
             self._n_tactile_bins,
             stated.circle,
             stated.segment,
             seg2c.transpose(),
+            shift=self._tactile_shift,
         )
         collision = jnp.concatenate(
             (ag_tactile > 0, food_tactile > 0, wall_tactile > 0),

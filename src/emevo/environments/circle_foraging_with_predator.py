@@ -536,30 +536,35 @@ class CircleForagingWithPredator(CircleForaging):
             stated.circle,
             stated.segment,
             seg2c.transpose(),
+            shift=self._tactile_shift,
         )
         prey_prey_tactile, _ = get_tactile(
             self._n_tactile_bins,
             prey_state,
             prey_state,
             c2c[: self._n_max_preys, : self._n_max_preys],
+            shift=self._tactile_shift,
         )
         prey_predator_tactile, _ = get_tactile(
             self._n_tactile_bins,
             prey_state,
             predator_state,
             c2c[: self._n_max_preys, self._n_max_preys :],
+            shift=self._tactile_shift,
         )
         predator_prey_tactile, predator_prey_rawt = get_tactile(
             self._n_tactile_bins,
             predator_state,
             prey_state,
             c2c[self._n_max_preys :, : self._n_max_preys],
+            shift=self._tactile_shift,
         )
         predator_predator_tactile, _ = get_tactile(
             self._n_tactile_bins,
             predator_state,
             predator_state,
             c2c[self._n_max_preys :, self._n_max_preys :],
+            shift=self._tactile_shift,
         )
         self_tactile = jnp.concatenate(
             (prey_prey_tactile, predator_predator_tactile),
