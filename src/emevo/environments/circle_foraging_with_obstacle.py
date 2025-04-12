@@ -159,18 +159,21 @@ class CircleForagingWithObstacle(CircleForaging):
             stated.circle,
             stated.circle,
             c2c,
+            shift=self._tactile_shift,
         )
         wall_tactile, _ = get_tactile(
             self._n_tactile_bins,
             stated.circle,
             stated.segment,
             seg2c.transpose(),
+            shift=self._tactile_shift,
         )
         obs_tactile, _ = get_tactile(
             self._n_tactile_bins,
             stated.circle,
             stated.static_triangle,
             tri2c.transpose(),
+            shift=self._tactile_shift,
         )
         collision = jnp.concatenate(
             (ag_tactile > 0, food_tactile > 0, wall_tactile > 0, obs_tactile > 0),
@@ -412,37 +415,3 @@ class CircleForagingWithObstacle(CircleForaging):
             warnings.warn(f"Failed to place {food_failed} foods!", stacklevel=1)
 
         return stated, agentloc_state, foodloc_states, foodnum_states
-
-    def visualizer(
-        self,
-        state: CFState[Status],
-        figsize: tuple[float, float] | None = None,
-        sensor_index: int | None = None,
-        no_sensor: bool = False,
-        backend: str = "pyglet",
-        **kwargs,
-    ) -> Visualizer[StateDict]:
-        """Create a visualizer for the environment"""
-        from emevo.phyjax2d import moderngl_vis
-
-        if sensor_index is not None:
-            self._sensor_index = sensor_index
-
-        if sensor_index is None:
-            sensor_fn = self._get_sensors_for_vis
-        else:
-
-            def sensor_fn(stated: StateDict) -> tuple[jax.Array, jax.Array]:
-                return self._get_selected_sensor(stated, self._sensor_index)
-
-        return moderngl_vis.MglVisualizer(
-            x_range=self._x_range,
-            y_range=self._y_range,
-            space=self._physics,
-            stated=state.physics,
-            sc_color=self._food_color,
-            figsize=figsize,
-            backend=backend,
-            sensor_fn=None if no_sensor else sensor_fn,  # type: ignore
-            **kwargs,
-        )

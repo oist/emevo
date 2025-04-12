@@ -270,6 +270,7 @@ class Locating(str, enum.Enum):
     SCHEDULED = "scheduled"
     LINEAR = "linear"
     SWITCHING = "switching"
+    TIME_SWITCHING = "time-switching"
     UNIFORM = "uniform"
     UNIFORM_LINEAR = "uniform-linear"
 
@@ -296,6 +297,8 @@ class Locating(str, enum.Enum):
             return LocScheduled(*args, **kwargs), state
         elif self is Locating.SWITCHING:
             return LocSwitching(*args, **kwargs), state
+        elif self is Locating.TIME_SWITCHING:
+            return LocTimeSwitching(*args, **kwargs), state
         else:
             raise AssertionError("Unreachable")
 
@@ -474,6 +477,28 @@ class LocSwitching:
         state: LocatingState,
     ) -> jax.Array:
         index = (state.n_produced // self._interval) % self._n
+        return jax.lax.switch(index, self._locfn_list, key, n_steps, state)
+
+
+class LocTimeSwitching:
+    """Similar to LocSwitching, but switch by time"""
+
+    def __init__(
+        self,
+        interval: int,
+        *loc_fns: tuple[str, ...] | LocatingFn,
+    ) -> None:
+        self._locfn_list = _collect_loc_fns(loc_fns)
+        self._interval = interval
+        self._n = len(self._locfn_list)
+
+    def __call__(
+        self,
+        key: chex.PRNGKey,
+        n_steps: int,
+        state: LocatingState,
+    ) -> jax.Array:
+        index = (n_steps // self._interval) % self._n
         return jax.lax.switch(index, self._locfn_list, key, n_steps, state)
 
 
