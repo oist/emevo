@@ -169,6 +169,7 @@ def _get_num_or_loc_fn(
     arg: str | tuple | list | Callable[..., Any],
     enum_type: Callable[..., Callable[..., Any]],
     default_args: dict[str, tuple[Any, ...]],
+    placement_args: dict[str, tuple[Any, ...]] | None = None,
 ) -> Any:
     if callable(arg):
         return arg
@@ -176,7 +177,11 @@ def _get_num_or_loc_fn(
         return enum_type(arg)(*default_args[arg])
     elif isinstance(arg, tuple) or isinstance(arg, list):
         name, *args = arg
-        return enum_type(name)(*args)
+        if placement_args is None:
+            first_args = ()
+        else:
+            first_args = placement_args[name]
+        return enum_type(name)(*first_args, *args)
     else:
         raise ValueError(f"Invalid value in _get_num_or_loc_fn {arg}")
 
@@ -818,6 +823,9 @@ class CircleForaging(Env):
                     ),
                 ),
                 "uniform": (self._coordinate,),
+            },
+            {
+                "uniform-linear": (self._coordinate,),
             },
         )
 
