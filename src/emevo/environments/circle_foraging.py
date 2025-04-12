@@ -152,6 +152,7 @@ class SensorRange(str, enum.Enum):
     NARROW = "narrow"
     WIDE = "wide"  # 120 deg
     WIDE_160D = "wide-160d"
+    WIDE_180D = "wide-180d"
     ALL = "all"
 
     def as_tuple(self) -> tuple[float, float]:
@@ -161,6 +162,8 @@ class SensorRange(str, enum.Enum):
             return -60.0, 60.0
         elif self == SensorRange.WIDE_160D:
             return -80.0, 80.0
+        elif self == SensorRange.WIDE_180D:
+            return -90.0, 90.0
         else:
             return -180.0, 180.0
 

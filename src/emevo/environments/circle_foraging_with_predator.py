@@ -224,7 +224,16 @@ class CircleForagingWithPredator(CircleForaging):
         if predator_mouth_range == "same":
             self._predator_foraging_indices = self._foraging_indices
         elif predator_mouth_range == "narrow":
-            self._predator_foraging_indices = 0, self._n_tactile_bins - 1
+            if len(self._foraging_indices) == 4:
+                self._predator_foraging_indices = 0, self._n_tactile_bins - 1
+            elif len(self._foraging_indices) == 5:
+                self._predator_foraging_indices = (
+                    0,
+                    self._n_tactile_bins - 2,
+                    self._n_tactile_bins - 1,
+                )
+            else:
+                raise ValueError("Unsupported predator mouth configuration")
         else:
             raise ValueError(
                 f"Unsupported predator mouth range: {predator_mouth_range}"
