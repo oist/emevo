@@ -177,7 +177,7 @@ def _get_num_or_loc_fn(
         return enum_type(arg)(*default_args[arg])
     elif isinstance(arg, tuple) or isinstance(arg, list):
         name, *args = arg
-        if placement_args is None:
+        if placement_args is None or name not in placement_args:
             first_args = ()
         else:
             first_args = placement_args[name]
