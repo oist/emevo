@@ -1,0 +1,45 @@
+n_initial_agents = 160
+n_max_agents = 500
+n_max_foods = 600
+food_num_fn = ["linear", 40, 0.5, 600]
+xlim = [0.0, 1200.0]
+ylim = [0.0, 600.0]
+food_loc_fn = "uniform"
+agent_loc_fn = "uniform"
+env_shape = "square"
+neighbor_stddev = 100.0
+n_agent_sensors = 32
+sensor_length = 200.0
+sensor_range = "wide"
+agent_radius = 10.0
+food_radius = 4.0
+foodloc_interval = 1000
+dt = 0.1
+linear_damping = 0.8
+angular_damping = 0.6
+max_force = 80.0
+min_force = -20.0
+init_energy = 100.0
+energy_capacity = 1000.0
+force_energy_consumption = 1e-6
+basic_energy_consumption = 5e-5
+energy_share_ratio = 0.4
+n_velocity_iter = 6
+n_position_iter = 2
+n_physics_iter = 5
+max_place_attempts = 10
+n_max_food_regen = 10
+# Predator
+n_max_predators = 50
+n_initial_predators = 10
+predator_radius = 14.0
+predator_sensor_length = 200
+predator_init_energy = 100.0
+predator_force_ec = 5e-5
+predator_basic_ec = 4e-3
+predator_digestive_rate = 0.6
+predator_eat_interval = 10
+# Mouth range
+n_tactile_bins = 18
+mouth_range = [0, 1, 2, 15, 16, 17]  # 20 * 6 = 120
+predator_mouth_range = [0, 1, 16, 17]  # 20 * 4 = 8
