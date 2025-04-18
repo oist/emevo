@@ -469,8 +469,6 @@ _MOUTH_RANGE = Literal[
     "full",
     "front",
     "front-wide",
-    "front-shifted",
-    "front-shifted-wide",
     "right",
 ]
 
@@ -494,7 +492,7 @@ class CircleForaging(Env):
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
-        mouth_range: _MOUTH_RANGE = "front",
+        mouth_range: _MOUTH_RANGE | list[int] = "front",
         neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
         n_tactile_bins: int = 6,
@@ -574,26 +572,10 @@ class CircleForaging(Env):
             # Leftx2 and rightx2 \\ //
             assert n_tactile_bins >= 4
             self._foraging_indices = 0, 1, n_tactile_bins - 2, n_tactile_bins - 1
-        elif mouth_range == "front-shifted":
-            # Left, center, and right \ | /
-            # This should be used with shifted > 0 because there's no center by default
-            assert n_tactile_bins >= 3
-            self._foraging_indices = 0, n_tactile_bins - 2, n_tactile_bins - 1
-        elif mouth_range == "front-shifted-wide":
-            # Left x 2, center, and right \\ | //
-            # This should be used with shifted > 0
-            assert n_tactile_bins >= 5
-            self._foraging_indices = (
-                0,
-                1,
-                n_tactile_bins - 3,
-                n_tactile_bins - 2,
-                n_tactile_bins - 1,
-            )
         elif mouth_range == "right":
             self._foraging_indices = (n_tactile_bins - 1,)
         else:
-            raise ValueError(f"Unsupported mouth_range {mouth_range}")
+            self._foraging_indices = tuple(mouth_range)
         # Energy
         self._force_energy_consumption = force_energy_consumption
         self._basic_energy_consumption = basic_energy_consumption

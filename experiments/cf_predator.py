@@ -81,7 +81,7 @@ class CfConfigWithPredator(CfConfig):
     predator_basic_ec: float = 0.0
     predator_digestive_rate: float = 0.9
     predator_eat_interval: int = 10
-    predator_mouth_range: str = "same"
+    predator_mouth_range: str | list[int] = "same"
 
 
 @dataclasses.dataclass

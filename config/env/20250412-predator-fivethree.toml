@@ -42,5 +42,5 @@ predator_eat_interval = 10
 # Mouth range
 n_tactile_bins = 10
 tactile_shift = 18.0 # (360 / 10) / 2
-mouth_range = "front-shifted-wide"  # 36 * 5 = 180
-predator_mouth_range = "narrow"  # 36 * 3 = 108
+mouth_range = [0, 1, 7, 8, 9]  # 36 * 5 = 180
+predator_mouth_range = [0, 8, 9]  # 36 * 3 = 108

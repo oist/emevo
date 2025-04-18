@@ -75,7 +75,7 @@ class CfConfig:
     n_physics_iter: int = 5
     max_place_attempts: int = 10
     observe_food_label: bool = False
-    mouth_range: str = "front"
+    mouth_range: str | list[int] = "front"
     n_tactile_bins: int = 6
     tactile_shift: float = 0.0
     foods_min_dist: float = 0.0
