@@ -61,6 +61,12 @@ def get_mean_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
     return jnp.mean(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
 
 
+def get_closest_sensor_obs(sensor_obs: jax.Array) -> jax.Array:
+    used_sensor_obs = sensor_obs[:, :, :N_SENSOR_REWARDS]
+    clipped_sensor_obs = jnp.clip(used_sensor_obs, min=0.0)
+    return jnp.max(clipped_sensor_obs, axis=1)  # (N_agents, N_obj)
+
+
 @serde
 @dataclasses.dataclass
 class CfConfigWithObstacle(CfConfig):
@@ -79,6 +85,7 @@ def exec_rollout(
     birth_fn: bd.BirthFunction,
     prng_key: jax.Array,
     n_rollout_steps: int,
+    sensor_agg_type: str = "mean",
 ) -> tuple[State, ppo.Rollout, Log, FoodLog, SavedPhysicsState, Obs, jax.Array]:
     def step_rollout(
         carried: tuple[State, Obs],
@@ -94,9 +101,12 @@ def exec_rollout(
             env.act_space.sigmoid_scale(actions),  # type: ignore
         )
         obs_t1 = timestep.obs
-        mean_sensor_obs = get_mean_sensor_obs(obs_t1.sensor)
+        if sensor_agg_type == "mean":
+            agg_sensor_obs = get_mean_sensor_obs(obs_t1.sensor)
+        else:
+            agg_sensor_obs = get_closest_sensor_obs(obs_t1.sensor)
         rewards = jnp.expand_dims(
-            reward_fn(timestep.info["n_ate_food"], actions, mean_sensor_obs),
+            reward_fn(timestep.info["n_ate_food"], actions, agg_sensor_obs),
             axis=1,
         )
         rollout = ppo.Rollout(
@@ -182,6 +192,7 @@ def epoch(
     minibatch_size: int,
     n_optim_epochs: int,
     entropy_weight: float,
+    sensor_agg_type: str = "mean",
 ) -> tuple[
     State, Obs, Log, FoodLog, SavedPhysicsState, optax.OptState, ppo.NormalPPONet
 ]:
@@ -198,6 +209,7 @@ def epoch(
         birth_fn,
         keys[0],
         n_rollout_steps,
+        sensor_agg_type=sensor_agg_type,
     )
     batch = ppo.vmap_batch(rollout, next_value, gamma, gae_lambda)
     opt_state, updated_network = ppo.vmap_update(
@@ -240,6 +252,7 @@ def run_evolution(
     debug_vis_scale: float,
     debug_print: bool,
     headless: bool,
+    sensor_agg_type: str = "mean",
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
@@ -326,6 +339,7 @@ def run_evolution(
             minibatch_size,
             n_optim_epochs,
             entropy_weight,
+            sensor_agg_type=sensor_agg_type,
         )
 
         if visualizer is not None:
@@ -441,6 +455,7 @@ def evolve(
     debug_vis_scale: float = 1.0,
     debug_print: bool = False,
     headless: bool = False,
+    sensor_agg_type: str = "max",
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -517,6 +532,7 @@ def evolve(
         debug_vis_scale=debug_vis_scale,
         headless=headless,
         debug_print=debug_vis or debug_print,
+        sensor_agg_type=sensor_agg_type,
     )
 
 

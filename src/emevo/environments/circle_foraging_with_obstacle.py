@@ -4,7 +4,7 @@ import functools
 import warnings
 from collections.abc import Iterable
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 import chex
 import jax
@@ -20,7 +20,7 @@ from phyjax2d import (
     thin_polygon_raycast,
 )
 
-from emevo.env import Status, TimeStep, Visualizer
+from emevo.env import Status, TimeStep
 from emevo.environments.circle_foraging import (
     NOWHERE,
     CFObs,
