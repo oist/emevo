@@ -1,7 +1,7 @@
 n_initial_agents = 150
 n_max_agents = 450
 n_max_foods = 600
-food_num_fn = ["linear", 40, 0.3, 600]
+food_num_fn = ["linear", 40, 0.4, 600]
 xlim = [0.0, 1200.0]
 ylim = [0.0, 600.0]
 food_loc_fn = "uniform"
