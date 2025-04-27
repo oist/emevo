@@ -681,7 +681,7 @@ def widget(
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
 
     # For speedup
     cfconfig.n_initial_agents = 1
@@ -724,6 +724,7 @@ def widget(
         profile_and_rewards=profile_and_rewards,
         cm_fixed_minmax=cm_fixed_minmax_dict,
         scale=scale,
+        show_prey_pred_info=True,
     )
 
 
