@@ -116,9 +116,7 @@ class MglWidget(QOpenGLWidget):
         if self._dragged_state is not None:
             return self._dragged_state
         else:
-            sd = self._phys_state.set_by_index(self._index, self._env_state.physics)
-            print(sd.circle.is_active[:450].sum(), sd.circle.is_active[450:].sum())
-            return sd
+            return self._phys_state.set_by_index(self._index, self._env_state.physics)
 
     def _set_default_viewport(self) -> None:
         self._ctx.viewport = 0, 0, *self._figsize
