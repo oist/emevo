@@ -63,8 +63,9 @@ from emevo.spaces import BoxSpace, NamedTupleSpace
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
-AGENT_COLOR: Color = Color(2, 204, 254)
-FOOD_COLOR: Color = Color(254, 2, 162)
+AGENT_COLOR: Color = Color(11, 95, 174)
+FOOD_COLOR: Color = Color(27, 121, 35)
+HEAD_COLOR: Color = Color(167, 37, 193)
 NOWHERE: float = 0.0
 N_OBJECTS: int = 3
 
@@ -1319,6 +1320,7 @@ class CircleForaging(Env):
             space=self._physics,
             stated=state.physics,
             sc_color=self._food_color,
+            head_color=np.array(HEAD_COLOR) / 255.0,
             figsize=figsize,
             backend=backend,
             sensor_fn=None if no_sensor else sensor_fn,  # type: ignore

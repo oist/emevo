@@ -58,7 +58,7 @@ from emevo.environments.smell import CFObsWithSmell, _vmap_compute_smell
 from emevo.spaces import BoxSpace
 
 Self = Any
-PREDATOR_COLOR: Color = Color(6, 214, 160)
+PREDATOR_COLOR: Color = Color(135, 19, 21)
 
 
 def _init_uniqueid(
@@ -381,6 +381,7 @@ class CircleForagingWithPredator(CircleForaging):
                 ignore=["static_circle"],
                 color=PREDATOR_COLOR,
             )
+        print(self._n_max_preys, self._n_max_predators)
         # Foods
         for _ in range(self._n_max_foods):
             builder.add_circle(
