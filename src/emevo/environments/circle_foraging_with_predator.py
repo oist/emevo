@@ -381,7 +381,6 @@ class CircleForagingWithPredator(CircleForaging):
                 ignore=["static_circle"],
                 color=PREDATOR_COLOR,
             )
-        print(self._n_max_preys, self._n_max_predators)
         # Foods
         for _ in range(self._n_max_foods):
             builder.add_circle(
