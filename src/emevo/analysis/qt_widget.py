@@ -215,6 +215,8 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         play_button.clicked.connect(self._mgl_widget.play)
         export_button = QtWidgets.QPushButton("📤")
         export_button.clicked.connect(self.exportData)
+        # Original color checkbox
+        self._orig_color_checkbox = QtWidgets.QCheckBox("Original Color")
         # Colorbar
         # Common
         rb1 = self._make_cbar("Energy", CBarState.ENERGY, True)
@@ -225,7 +227,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         # One or two more buttons for poisons or prey/predator rewards
         if show_prey_pred_info:
             rb5 = self._make_cbar("Prey Reward", CBarState.PREY_REWARD)
-            rb6 = self._make_cbar("Prey Reward", CBarState.PREDATOR_REWARD)
+            rb6 = self._make_cbar("Predator Reward", CBarState.PREDATOR_REWARD)
             radio_buttons += [rb5, rb6]
         else:
             rb5 = self._make_cbar("2nd Food Reward", CBarState.FOOD_REWARD2)
@@ -250,13 +252,13 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         buttons.addWidget(pause_button)
         buttons.addWidget(play_button)
         buttons.addWidget(export_button)
+        buttons.addWidget(self._orig_color_checkbox)
         left_control.addLayout(buttons)
         left_control.addWidget(self._slider_label)
         left_control.addWidget(self._slider)
         cbar_selector = QtWidgets.QGridLayout()
-        if len(radio_buttons) <= 6:
-            for rb, row, col in zip(radio_buttons, [0, 1, 2, 0, 1, 2], [0, 0, 0, 1, 1, 1]):
-                cbar_selector.addWidget(rb, row, col)
+        for rb, row, col in zip(radio_buttons, [0, 1, 2, 0, 1, 2], [0, 0, 0, 1, 1, 1]):
+            cbar_selector.addWidget(rb, row, col)
         control = QtWidgets.QHBoxLayout()
         control.addLayout(left_control)
         control.addLayout(cbar_selector)
@@ -333,7 +335,9 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             ]
         return self._log_cached[log_key][step % N_MAX_SCAN]
 
-    def _get_colors(self, step_index: int) -> NDArray:
+    def _get_colors(self, step_index: int) -> NDArray | None:
+        if self._orig_color_checkbox.isChecked():
+            return None
         assert self._log_ds is not None
         log = self._get_log(self._step_offset + step_index)
         slots = np.array(log["slots"])
@@ -449,12 +453,12 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         radiobutton.setChecked(checked)
 
         @Slot(bool)
-        def cbar_slot(checked: bool) -> None:
+        def cbarSlot(checked: bool) -> None:
             if checked:
                 self._cbar_state = state
                 self._cbar_changed = True
 
-        radiobutton.toggled.connect(cbar_slot)
+        radiobutton.toggled.connect(cbarSlot)
         return radiobutton
 
     @Slot()

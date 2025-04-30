@@ -10,7 +10,7 @@ env_shape = "square"
 neighbor_stddev = 100.0
 n_agent_sensors = 32
 sensor_length = 200.0
-sensor_range = "wide-160d"
+sensor_range = "wide"
 agent_radius = 10.0
 food_radius = 4.0
 foodloc_interval = 1000
@@ -33,6 +33,6 @@ n_max_food_regen = 10
 n_tactile_bins = 18
 mouth_range = [0, 1, 2, 15, 16, 17]  # 20 * 6 = 120
 # Obstacle
-n_obstacles = 20
+n_obstacles = 15
 obstacle_damage = 100.0
-obstacle_size = 40.0
+obstacle_size = 30.0

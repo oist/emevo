@@ -58,7 +58,7 @@ from emevo.environments.smell import CFObsWithSmell, _vmap_compute_smell
 from emevo.spaces import BoxSpace
 
 Self = Any
-PREDATOR_COLOR: Color = Color(6, 214, 160)
+PREDATOR_COLOR: Color = Color(135, 19, 21)
 
 
 def _init_uniqueid(

@@ -16,7 +16,7 @@ from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColorSpace, QGuiApplication, QMouseEvent, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
-from emevo.environments.circle_foraging import CircleForaging
+from emevo.environments.circle_foraging import CircleForaging, HEAD_COLOR
 from emevo.exp_utils import SavedPhysicsState
 
 
@@ -52,7 +52,7 @@ class MglWidget(QOpenGLWidget):
         start: int = 0,
         slider_offset: int = 0,
         end: int | None = None,
-        get_colors: Callable[[int], NDArray] | None = None,
+        get_colors: Callable[[int], NDArray | None] | None = None,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         # Set default format
@@ -75,6 +75,7 @@ class MglWidget(QOpenGLWidget):
             space=env._physics,
             stated=self._get_stated(),
             sc_color_opt=env._food_color,
+            head_color_opt=np.array(HEAD_COLOR) / 255.0,
             sensor_color=np.array([0.0, 0.0, 0.0, 0.2], dtype=np.float32),
             sensor_fn=self._sensor_fn,
         )
