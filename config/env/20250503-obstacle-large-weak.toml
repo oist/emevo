@@ -34,5 +34,5 @@ n_tactile_bins = 18
 mouth_range = [0, 1, 2, 15, 16, 17]  # 20 * 6 = 120
 # Obstacle
 n_obstacles = 20
-obstacle_damage = 100.0
-obstacle_size = 30.0
+obstacle_damage = 1.0
+obstacle_size = 40.0
