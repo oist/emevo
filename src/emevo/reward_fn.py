@@ -364,13 +364,19 @@ def mutate_reward_fn(
     parents: jax.Array,
     unique_id: jax.Array,
     slots: jax.Array,
+    # Used for stopping evolution of predators
+    skip_threshold: int = 1000000,
 ) -> RF:
     n = parents.shape[0]
     dynamic_net, static_net = eqx.partition(old, eqx.is_array)
     keys = jax.random.split(key, n)
     for key, parent, uid, slot in zip(keys, parents, unique_id, slots):
         parent_reward_fn = reward_fn_dict[parent.item()]
-        mutated_dnet = mutation(key, eqx.partition(parent_reward_fn, eqx.is_array)[0])
+        dyn_parent_reward_fn = eqx.partition(parent_reward_fn, eqx.is_array)[0]
+        if slot < skip_threshold:
+            mutated_dnet = mutation(key, dyn_parent_reward_fn)
+        else:
+            mutated_dnet = dyn_parent_reward_fn
         reward_fn_dict[uid.item()] = eqx.combine(mutated_dnet, static_net)
         dynamic_net = jax.tree_util.tree_map(
             lambda orig, mutated: orig.at[slot.item()].set(mutated),
