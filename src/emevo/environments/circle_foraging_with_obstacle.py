@@ -10,7 +10,10 @@ import chex
 import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
-from phyjax2d import Color, ShapeDict
+from phyjax2d import (
+    Color,
+    ShapeDict,
+)
 from phyjax2d import Space as Physics
 from phyjax2d import (
     StateDict,
@@ -100,6 +103,7 @@ class CircleForagingWithObstacle(CircleForaging):
         obstacle_damage: float = 10.0,
         n_obstacles: int = 4,
         obstacle_size: float = 20.0,
+        obstacle_schedule: list[tuple[int, int]] | None = None,
         **kwargs,
     ) -> None:
         self._obstacle_damage = obstacle_damage
@@ -118,6 +122,22 @@ class CircleForagingWithObstacle(CircleForaging):
         self._n_vert_blocks = n_vert_blocks
         self._hol_block_size = xlen / n_hol_blocks
         self._vert_block_size = ylen / n_vert_blocks
+        self._obstacle_schedule = obstacle_schedule
+
+    def _activate_obstacles(self, step: jax.Array) -> jax.Array:
+        if self._obstacle_schedule is None or len(self._obstacle_schedule) == 0:
+            return jnp.ones(self._n_obstacles) * self._obstacle_damage
+        # This for loop should be fairly small
+        # So OK to be unrolled
+        for threshold, n_damage_array in self._obstacle_schedule:
+            if step > threshold:
+                return jnp.concatenate(
+                    (
+                        jnp.ones(n_damage_array) * self._obstacle_damage,
+                        jnp.zeros(self._n_obstacles - n_damage_array),
+                    ),
+                )
+        return jnp.ones(self._n_obstacles) * self._obstacle_damage
 
     def step(
         self,
@@ -168,7 +188,7 @@ class CircleForagingWithObstacle(CircleForaging):
             seg2c.transpose(),
             shift=self._tactile_shift,
         )
-        obs_tactile, _ = get_tactile(
+        obs_tactile, obs_tactile_raw = get_tactile(
             self._n_tactile_bins,
             stated.circle,
             stated.static_triangle,
@@ -186,10 +206,8 @@ class CircleForagingWithObstacle(CircleForaging):
         energy_consumption = (
             self._force_energy_consumption * force_norm + self._basic_energy_consumption
         )
-        damage = (
-            jnp.max(obs_tactile.reshape(self.n_max_agents, -1), axis=-1)
-            * self._obstacle_damage
-        )
+        damage_array = self._activate_obstacles(state.step)
+        damage = jnp.einsum("abcd,b->a", obs_tactile_raw, damage_array)
         n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
         energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
         energy_delta = energy_gain - energy_consumption - damage
@@ -320,6 +338,7 @@ class CircleForagingWithObstacle(CircleForaging):
             shape=(self._n_obstacles,),
             replace=False,
         )
+        print(block_indices.shape)
         obs_x_indices = block_indices % self._n_hol_blocks
         obs_y_indices = block_indices // self._n_hol_blocks
         obs_x = obs_x_indices * self._hol_block_size + self._hol_block_size * 0.5

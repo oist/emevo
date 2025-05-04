@@ -73,6 +73,7 @@ class CfConfigWithObstacle(CfConfig):
     n_obstacles: int = 4
     obstacle_damage: float = 10.0
     obstacle_size: float = 20.0
+    obstacle_schedule: list[tuple[int, int]] = dataclasses.field(default_factory=list)
 
 
 def exec_rollout(
