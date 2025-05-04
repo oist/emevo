@@ -122,22 +122,34 @@ class CircleForagingWithObstacle(CircleForaging):
         self._n_vert_blocks = n_vert_blocks
         self._hol_block_size = xlen / n_hol_blocks
         self._vert_block_size = ylen / n_vert_blocks
-        self._obstacle_schedule = obstacle_schedule
-
-    def _activate_obstacles(self, step: jax.Array) -> jax.Array:
-        if self._obstacle_schedule is None or len(self._obstacle_schedule) == 0:
-            return jnp.ones(self._n_obstacles) * self._obstacle_damage
-        # This for loop should be fairly small
-        # So OK to be unrolled
-        for threshold, n_damage_array in self._obstacle_schedule:
-            if step > threshold:
-                return jnp.concatenate(
+        if obstacle_schedule is None:
+            # Use quite large value here so that index == 0
+            self._obstacle_schedule = jnp.array([2**30])
+            self._obstacle_damage_cand = [
+                jnp.ones(self._n_obstacles) * self._obstacle_damage
+            ]
+        else:
+            self._obstacle_schedule = jnp.array(
+                [threshold for threshold, _ in obstacle_schedule] + [2**30]
+            )
+            obstacle_damage_cand = []
+            for _, n_damage_array in obstacle_schedule:
+                cand = jnp.concatenate(
                     (
                         jnp.ones(n_damage_array) * self._obstacle_damage,
                         jnp.zeros(self._n_obstacles - n_damage_array),
                     ),
                 )
-        return jnp.ones(self._n_obstacles) * self._obstacle_damage
+                obstacle_damage_cand.append(cand)
+            # Sentinel
+            obstacle_damage_cand.append(
+                jnp.ones(self._n_obstacles) * self._obstacle_damage
+            )
+            self._obstacle_damage_cand = jnp.stack(obstacle_damage_cand)
+
+    def _activate_obstacles(self, step: jax.Array) -> jax.Array:
+        index = jnp.searchsorted(self._obstacle_schedule, step)
+        return self._obstacle_damage_cand[index]
 
     def step(
         self,
@@ -338,7 +350,6 @@ class CircleForagingWithObstacle(CircleForaging):
             shape=(self._n_obstacles,),
             replace=False,
         )
-        print(block_indices.shape)
         obs_x_indices = block_indices % self._n_hol_blocks
         obs_y_indices = block_indices // self._n_hol_blocks
         obs_x = obs_x_indices * self._hol_block_size + self._hol_block_size * 0.5
