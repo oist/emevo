@@ -1,4 +1,4 @@
-""" Genetics operations for pytree"""
+"""Genetics operations for pytree"""
 
 from __future__ import annotations
 

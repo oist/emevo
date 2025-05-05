@@ -115,9 +115,9 @@ class CircleForagingWithObstacle(CircleForaging):
         n_hol_blocks = xlen // obstacle_size
         n_vert_blocks = ylen // obstacle_size
         n_max_obstacles = n_hol_blocks * n_vert_blocks
-        assert n_obstacles <= n_max_obstacles, (
-            f"Too many obstacles! Max: {n_max_obstacles}, Current: {n_obstacles}"
-        )
+        assert (
+            n_obstacles <= n_max_obstacles
+        ), f"Too many obstacles! Max: {n_max_obstacles}, Current: {n_obstacles}"
         self._n_hol_blocks = n_hol_blocks
         self._n_vert_blocks = n_vert_blocks
         self._hol_block_size = xlen / n_hol_blocks

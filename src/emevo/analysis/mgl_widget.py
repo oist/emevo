@@ -16,7 +16,7 @@ from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColorSpace, QGuiApplication, QMouseEvent, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
-from emevo.environments.circle_foraging import CircleForaging, HEAD_COLOR
+from emevo.environments.circle_foraging import HEAD_COLOR, CircleForaging
 from emevo.exp_utils import SavedPhysicsState
 
 
