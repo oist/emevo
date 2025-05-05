@@ -8,13 +8,13 @@ test:
 
 lint:
 	uvx ruff check
-	uvx black src/emevo tests --check
-	uvx isort src/emevo tests --check
+	uvx black src/emevo tests scripts --check
+	uvx isort src/emevo tests scripts --check
 
 
 format:
-	uvx black src/emevo tests
-	uvx isort src/emevo tests
+	uvx black src/emevo tests scripts
+	uvx isort src/emevo tests scripts
 
 
 publish:
