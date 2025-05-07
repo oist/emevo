@@ -117,8 +117,6 @@ def classify_agent_states(
         n_seeing_pred_list.append(prey_seeing)
         n_seeing_pred_back_list.append(prey_seeing_back)
         eaten_list.append(eaten)
-        if uid > 100:
-            break
     df = pl.from_dict(
         {
             "unique_id": uid_list,
