@@ -175,6 +175,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         cm_fixed_minmax: dict[str, tuple[float, float]] | None = None,
         show_prey_pred_info: bool = False,
         scale: float = 2.0,
+        **kwargs,
     ) -> None:
         super().__init__()
 
@@ -190,6 +191,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
             end=end,
             slider_offset=step_offset,
             get_colors=None if log_ds is None else self._get_colors,
+            **kwargs,
         )
         self._n_max_agents = env.n_max_agents
         # cache

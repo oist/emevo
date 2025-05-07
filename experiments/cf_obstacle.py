@@ -1,6 +1,7 @@
 """Asexual reward evolution with Circle Foraging"""
 
 import dataclasses
+import json
 from pathlib import Path
 from typing import cast
 
@@ -11,6 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import typer
+from phyjax2d import Position
 from serde import serde, toml
 
 from emevo import Env
@@ -549,8 +551,6 @@ def replay(
     scale: float = 1.0,
     force_cpu: bool = False,
 ) -> None:
-    from phyjax2d import Position
-
     if force_cpu:
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
@@ -587,6 +587,85 @@ def replay(
         visualizer.render(env_state.physics)
         visualizer.show()
     visualizer.close()
+
+
+@app.command()
+def widget(
+    physstate_path: Path,
+    start: int = 0,
+    end: int | None = None,
+    cfconfig_path: Path = DEFAULT_CFCONFIG,
+    log_path: Path | None = None,
+    self_terminate: bool = False,
+    profile_and_rewards_path: Path | None = None,
+    cm_fixed_minmax: str = "",
+    env_override: str = "",
+    scale: float = 2.0,
+    force_cpu: bool = False,
+) -> None:
+    from emevo.analysis.qt_widget import CFEnvReplayWidget, start_widget
+
+    if force_cpu:
+        jax.config.update("jax_default_device", jax.devices("cpu")[0])
+
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfigWithObstacle, f.read())
+
+    # For speedup
+    cfconfig.n_initial_agents = 1
+    cfconfig.apply_override(env_override)
+    phys_state = SavedPhysicsState.load(physstate_path)
+    env = make("CircleForaging-v3", **dataclasses.asdict(cfconfig))
+    npzfile = np.load(physstate_path.parent / "obstacles.npz")
+    obstacle_axy = jnp.array(npzfile["obstacle_axy"])
+
+    def initialize_env_state(state):
+        return dataclasses.replace(
+            state,
+            physics=state.physics.nested_replace(
+                "static_triangle.p",
+                Position.from_axy(obstacle_axy),
+            ),
+        )
+
+    end = phys_state.circle_axy.shape[0] if end is None else end
+    if log_path is None:
+        log_ds = None
+        step_offset = 0
+    else:
+        import pyarrow.dataset as ds
+
+        log_ds = ds.dataset(log_path)
+        step_offset = log_ds.scanner(columns=["step"]).head(1)["step"][0].as_py()
+
+    if profile_and_rewards_path is None:
+        profile_and_rewards = None
+    else:
+        import pyarrow.parquet as pq
+
+        profile_and_rewards = pq.read_table(profile_and_rewards_path)
+
+    if len(cm_fixed_minmax) > 0:
+        cm_fixed_minmax_dict = json.loads(cm_fixed_minmax)
+    else:
+        cm_fixed_minmax_dict = {}
+
+    start_widget(
+        CFEnvReplayWidget,
+        xlim=int(cfconfig.xlim[1]),
+        ylim=int(cfconfig.ylim[1]),
+        env=env,
+        saved_physics=phys_state,
+        start=start,
+        end=end,
+        log_ds=log_ds,
+        step_offset=step_offset,
+        self_terminate=self_terminate,
+        profile_and_rewards=profile_and_rewards,
+        cm_fixed_minmax=cm_fixed_minmax_dict,
+        scale=scale,
+        initialize_env_state=initialize_env_state,
+    )
 
 
 if __name__ == "__main__":
