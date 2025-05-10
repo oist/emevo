@@ -16,7 +16,7 @@ from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColorSpace, QGuiApplication, QMouseEvent, QSurfaceFormat
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
-from emevo.environments.circle_foraging import HEAD_COLOR, CircleForaging
+from emevo.environments.circle_foraging import HEAD_COLOR, CircleForaging, CFState
 from emevo.exp_utils import SavedPhysicsState
 
 
@@ -54,12 +54,17 @@ class MglWidget(QOpenGLWidget):
         end: int | None = None,
         get_colors: Callable[[int], NDArray | None] | None = None,
         parent: QtWidgets.QWidget | None = None,
+        initialize_env_state: Callable[[CFState], CFState] | None = None,
     ) -> None:
         # Set default format
         QSurfaceFormat.setDefaultFormat(_mgl_qsurface_fmt())
         super().__init__(parent)
         # init renderer
-        self._env_state, _ = env.reset(jax.random.PRNGKey(0))
+        env_state, _ = env.reset(jax.random.PRNGKey(0))
+        if initialize_env_state is None:
+            self._env_state = env_state
+        else:
+            self._env_state = initialize_env_state(env_state)
         self._figsize = int(figsize[0]), int(figsize[1])
         x_range, y_range = env._x_range, env._y_range
         self._scaling = x_range / figsize[0], y_range / figsize[1]
