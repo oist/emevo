@@ -22,6 +22,7 @@ from emevo.plotting import (
 
 def plot_bd_models(
     config: Path = Path("config/bd/20230530-a035-e020.toml"),
+    another_config: Path | None = None,
     age_max: int = 200000,
     energy_max: float = 40,
     hazard_max: float = 2e-4,
@@ -50,6 +51,14 @@ def plot_bd_models(
         bd_config = toml.from_toml(BDConfig, f.read())
 
     birth_model, hazard_model = bd_config.load_models()
+
+    if another_config is not None:
+        with another_config.open("r") as f:
+            another_bd_config = toml.from_toml(BDConfig, f.read())
+            another_birth_model, another_hazard_model = another_bd_config.load_models()
+    else:
+        another_birth_model, another_hazard_model = None, None
+
     if yes or typer.confirm("Plot hazard model?"):
         if horizontal:
             fig = plt.figure(figsize=(10, 6))
@@ -86,7 +95,7 @@ def plot_bd_models(
         plt.show()
 
     if yes or typer.confirm("Plot birth model?"):
-        fig = plt.figure(figsize=(5, 5))
+        fig = plt.figure(figsize=(8, 4))
         if birth2d:
             ax = fig.add_subplot(111)
         else:
@@ -99,8 +108,11 @@ def plot_bd_models(
             vis_birth_2d(
                 ax,
                 birth_fn=birth_model,
+                another_birth_fn=another_birth_model,
                 energy_max=energy_max,
                 initial=True,
+                label="Prey",
+                another_label="Predator",
             )
         else:
             vis_birth(
