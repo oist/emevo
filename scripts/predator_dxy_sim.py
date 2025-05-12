@@ -8,8 +8,6 @@ from numpy.typing import NDArray
 
 from emevo.analysis.log_plotting import load_log
 
-N_MAX_PREYS = 450
-
 
 @dataclasses.dataclass
 class AgentState:
@@ -45,41 +43,55 @@ def load(logd: Path) -> tuple[AgentState, pl.DataFrame]:
     return agent_state, stepdf
 
 
+def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray) -> NDArray:
+    norm = np.sum(np.square(a - b), axis=-1)  # (N, M)
+    return np.mean(norm * mask)  # (1,)
+
+
 def compute_dxy_sim(
     agent_state: AgentState,
-    stepdf: pl.DataFrame
+    stepdf: pl.DataFrame,
+    n_max_preys: int,
 ) -> pl.DataFrame:
     def dxy_sim(start: int, end: int, slot: int) -> tuple[NDArray, NDArray]:
-        # 1. Distance
-        # 2. Angle
-        # 3. IsActive
         xy_selected = agent_state.xy[start:end, slot]
-        prey_xy = agent_state.xy[start:end, N_MAX_PREYS:]
-        predator_xy = agent_state.xy[start:end, N_MAX_PREYS:]
-        dxy_self = xy_selected[1:] - xy_selected[:-1]
-        dxy_prey = prey_xy[1:] - prey_xy[:-1]
-        dxy_predator = predator_xy[1:] - predator_xy[:-1]
+        prey_xy = agent_state.xy[start:end, :n_max_preys]
+        predator_xy = agent_state.xy[start:end, n_max_preys:]
+        # dxy
+        dxy_self = xy_selected[1:] - xy_selected[:-1]  # (N - 1, 2)
+        dxy_self_expanded = np.expand_dims(dxy_self, axis=1)
+        dxy_prey = prey_xy[1:] - prey_xy[:-1]  # (N - 1, M1, 2)
+        dxy_predator = predator_xy[1:] - predator_xy[:-1]  # (N - 1, M2, 2)
+        # mask
+        prey_mask = np.logical_and(
+            agent_state.is_active[start + 1 : end, :n_max_preys],
+            agent_state.is_active[start : end - 1, :n_max_preys],
+        )
+        predator_mask = np.logical_and(
+            agent_state.is_active[start + 1 : end, n_max_preys:],
+            agent_state.is_active[start : end - 1, n_max_preys:],
+        )
+        to_prey = mean_masked_norm(dxy_self_expanded, dxy_prey, prey_mask)
+        to_predator = mean_masked_norm(dxy_self_expanded, dxy_predator, predator_mask)
+        return to_prey, to_predator
 
     uid_list = []
-    n_seeing_pred_list = []
-    n_seeing_pred_back_list = []
-    eaten_list = []
+    prey_list = []
+    predator_list = []
     for uid, slot, start, end in stepdf.iter_rows():
-        if slot >= N_MAX_PREYS:  # It's predator
+        if slot >= n_max_preys:  # It's predator
             continue
         if end - start < 2:
             continue
-        prey_seeing, prey_seeing_back, eaten = avg_num_prey_seeing(start, end, slot)
+        to_prey, to_predator = dxy_sim(start, end, slot)
         uid_list.append(uid)
-        n_seeing_pred_list.append(prey_seeing)
-        n_seeing_pred_back_list.append(prey_seeing_back)
-        eaten_list.append(eaten)
+        prey_list.append(to_prey)
+        predator_list.append(to_predator)
     df = pl.from_dict(
         {
             "unique_id": uid_list,
-            "Num. Obs. Pred": n_seeing_pred_list,
-            "Num. Obs. Back": n_seeing_pred_back_list,
-            "Eaten": eaten_list,
+            "Prey Sim.": prey_list,
+            "Predator Sim.": predator_list,
         }
     )
     return df.join(
@@ -88,21 +100,10 @@ def compute_dxy_sim(
     )
 
 
-def main(
-    logd: Path,
-) -> None:
+def main(logd: Path, n_max_preys: int = 450) -> None:
     agent_state, stepdf = load(logd)
-    avgd_df = classify_agent_states(
-        agent_state,
-        stepdf,
-        sensor_deg_in,
-        sensor_deg_out,
-        sensor_distance,
-        mouth_deg_in,
-        mouth_deg_out,
-        eaten_distance,
-    )
-    avgd_df.write_parquet(logd / "avg-n-observing-pred.parquet")
+    avgd_df = compute_dxy_sim(agent_state, stepdf, n_max_preys)
+    avgd_df.write_parquet(logd / "avg-movement-sim.parquet")
 
 
 if __name__ == "__main__":
