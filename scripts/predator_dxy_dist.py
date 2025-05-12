@@ -20,7 +20,7 @@ def load_agent_state(dirpath: Path, n_states: int) -> AgentState:
     all_is_active = []
     for i in range(n_states):
         npzfile = np.load(dirpath / f"state-{i + 1}.npz")
-        all_xy.append(npzfile["circle_axy"].astype(np.float32))
+        all_xy.append(npzfile["circle_axy"].astype(np.float32)[1:])
         all_is_active.append(npzfile["circle_is_active"].astype(bool))
     return AgentState(
         xy=np.concatenate(all_xy),
