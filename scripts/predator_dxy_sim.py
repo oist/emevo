@@ -15,7 +15,7 @@ class AgentState:
     is_active: NDArray
 
 
-def load_agent_state(dirpath: Path, n_states: int = 10) -> AgentState:
+def load_agent_state(dirpath: Path, n_states: int) -> AgentState:
     all_xy = []
     all_is_active = []
     for i in range(n_states):
@@ -28,9 +28,9 @@ def load_agent_state(dirpath: Path, n_states: int = 10) -> AgentState:
     )
 
 
-def load(logd: Path) -> tuple[AgentState, pl.DataFrame]:
-    ldf = load_log(logd).with_columns(pl.col("step").alias("Step"))
-    agent_state = load_agent_state(logd)
+def load(logd: Path, n_states: int = 10) -> tuple[AgentState, pl.DataFrame]:
+    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
+    agent_state = load_agent_state(logd, n_states)
     stepdf = (
         ldf.group_by("unique_id")
         .agg(
@@ -48,12 +48,12 @@ def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray) -> NDArray:
     return np.mean(norm * mask)  # (1,)
 
 
-def compute_dxy_sim(
+def compute_dxy_dist(
     agent_state: AgentState,
     stepdf: pl.DataFrame,
     n_max_preys: int,
 ) -> pl.DataFrame:
-    def dxy_sim(start: int, end: int, slot: int) -> tuple[NDArray, NDArray]:
+    def dxy_dist(start: int, end: int, slot: int) -> tuple[NDArray, NDArray]:
         xy_selected = agent_state.xy[start:end, slot]
         prey_xy = agent_state.xy[start:end, :n_max_preys]
         predator_xy = agent_state.xy[start:end, n_max_preys:]
@@ -83,15 +83,15 @@ def compute_dxy_sim(
             continue
         if end - start < 2:
             continue
-        to_prey, to_predator = dxy_sim(start, end, slot)
+        to_prey, to_predator = dxy_dist(start, end, slot)
         uid_list.append(uid)
         prey_list.append(to_prey)
         predator_list.append(to_predator)
     df = pl.from_dict(
         {
             "unique_id": uid_list,
-            "Prey Sim.": prey_list,
-            "Predator Sim.": predator_list,
+            "Prey Dist.": prey_list,
+            "Predator Dist.": predator_list,
         }
     )
     return df.join(
@@ -100,9 +100,9 @@ def compute_dxy_sim(
     )
 
 
-def main(logd: Path, n_max_preys: int = 450) -> None:
-    agent_state, stepdf = load(logd)
-    avgd_df = compute_dxy_sim(agent_state, stepdf, n_max_preys)
+def main(logd: Path, n_states: int = 10, n_max_preys: int = 450) -> None:
+    agent_state, stepdf = load(logd, n_states)
+    avgd_df = compute_dxy_dist(agent_state, stepdf, n_max_preys)
     avgd_df.write_parquet(logd / "avg-movement-sim.parquet")
 
 
