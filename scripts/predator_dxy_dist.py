@@ -20,7 +20,7 @@ def load_agent_state(dirpath: Path, n_states: int) -> AgentState:
     all_is_active = []
     for i in range(n_states):
         npzfile = np.load(dirpath / f"state-{i + 1}.npz")
-        all_xy.append(npzfile["circle_axy"].astype(np.float32)[1:])
+        all_xy.append(npzfile["circle_axy"].astype(np.float32)[:, :, 1:])
         all_is_active.append(npzfile["circle_is_active"].astype(bool))
     return AgentState(
         xy=np.concatenate(all_xy),
@@ -54,9 +54,9 @@ def compute_dxy_dist(
     n_max_preys: int,
 ) -> pl.DataFrame:
     def dxy_dist(start: int, end: int, slot: int) -> tuple[NDArray, NDArray]:
-        xy_selected = agent_state.xy[start:end, slot]
-        prey_xy = agent_state.xy[start:end, :n_max_preys]
-        predator_xy = agent_state.xy[start:end, n_max_preys:]
+        xy_selected = agent_state.xy[start:end + 1, slot]
+        prey_xy = agent_state.xy[start:end + 1, :n_max_preys]
+        predator_xy = agent_state.xy[start:end + 1, n_max_preys:]
         # dxy
         dxy_self = xy_selected[1:] - xy_selected[:-1]  # (N - 1, 2)
         dxy_self_expanded = np.expand_dims(dxy_self, axis=1)
@@ -64,12 +64,12 @@ def compute_dxy_dist(
         dxy_predator = predator_xy[1:] - predator_xy[:-1]  # (N - 1, M2, 2)
         # mask
         prey_mask = np.logical_and(
-            agent_state.is_active[start + 1 : end, :n_max_preys],
-            agent_state.is_active[start : end - 1, :n_max_preys],
+            agent_state.is_active[start + 1 : end + 1, :n_max_preys],
+            agent_state.is_active[start : end, :n_max_preys],
         )
         predator_mask = np.logical_and(
-            agent_state.is_active[start + 1 : end, n_max_preys:],
-            agent_state.is_active[start : end - 1, n_max_preys:],
+            agent_state.is_active[start + 1 : end + 1, n_max_preys:],
+            agent_state.is_active[start : end, n_max_preys:],
         )
         to_prey = mean_masked_norm(dxy_self_expanded, dxy_prey, prey_mask)
         to_predator = mean_masked_norm(dxy_self_expanded, dxy_predator, predator_mask)
