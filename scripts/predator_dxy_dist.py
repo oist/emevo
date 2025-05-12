@@ -103,7 +103,7 @@ def compute_dxy_dist(
 def main(logd: Path, n_states: int = 10, n_max_preys: int = 450) -> None:
     agent_state, stepdf = load(logd, n_states)
     avgd_df = compute_dxy_dist(agent_state, stepdf, n_max_preys)
-    avgd_df.write_parquet(logd / "avg-movement-sim.parquet")
+    avgd_df.write_parquet(logd / "avg-movement-dist.parquet")
 
 
 if __name__ == "__main__":
