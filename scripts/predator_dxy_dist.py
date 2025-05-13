@@ -53,7 +53,7 @@ def masked_norm_impl(a: jax.Array, b: jax.Array, mask: jax.Array):
 
 def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray) -> float:
     size = a.shape[0]
-    for n in [10000, 20000, 40000, 80000, 160000, 320000, 640000]:
+    for n in [10000, 20000, 40000, 80000, 160000, 320000, 640000, 1280000]:
         if size < n:
             a = jnp.concatenate((a, jnp.zeros((n - size, *a.shape[1:]))), axis=0)
             b = jnp.concatenate((b, jnp.zeros((n - size, *b.shape[1:]))), axis=0)
