@@ -72,7 +72,7 @@ def check_eaten(
     uid_list = []
     eaten_list = []
     age_list = []
-    for uid, slot, start, end, last_energy in stepdf.iter_rows():
+    for uid, slot, start, end in stepdf.iter_rows():
         if slot >= N_MAX_PREYS:  # It's predator
             continue
         if end - start < 2:
