@@ -1,6 +1,8 @@
 import dataclasses
 from pathlib import Path
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import polars as pl
 import typer
@@ -43,20 +45,33 @@ def load(logd: Path, n_states: int = 10) -> tuple[AgentState, pl.DataFrame]:
     return agent_state, stepdf
 
 
-def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray) -> NDArray:
-    norm = np.sum(np.square(a - b), axis=-1)  # (N, M)
-    return np.mean(norm * mask)  # (1,)
+@jax.jit
+def masked_norm_impl(a: jax.Array, b: jax.Array, mask: jax.Array):
+    norm = jnp.sum(jnp.square(a - b), axis=-1)  # (N, M)
+    return jnp.sum(norm * mask) / jnp.sum(mask)
+
+
+def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray) -> float:
+    size = a.shape[0]
+    for n in [10000, 20000, 40000, 80000, 160000, 320000, 640000]:
+        if size < n:
+            a = jnp.concatenate((a, jnp.zeros((n - size, *a.shape[1:]))), axis=0)
+            b = jnp.concatenate((b, jnp.zeros((n - size, *b.shape[1:]))), axis=0)
+            mask = jnp.concatenate((mask, jnp.zeros((n - size, mask.shape[1]))), axis=0)
+            break
+    return masked_norm_impl(a, b, mask).item()
 
 
 def compute_dxy_dist(
     agent_state: AgentState,
     stepdf: pl.DataFrame,
     n_max_preys: int,
+    n_max_iter: int | None = None,  # For debugging
 ) -> pl.DataFrame:
     def dxy_dist(start: int, end: int, slot: int) -> tuple[NDArray, NDArray]:
-        xy_selected = agent_state.xy[start:end + 1, slot]
-        prey_xy = agent_state.xy[start:end + 1, :n_max_preys]
-        predator_xy = agent_state.xy[start:end + 1, n_max_preys:]
+        xy_selected = agent_state.xy[start : end + 1, slot]
+        prey_xy = agent_state.xy[start : end + 1, :n_max_preys]
+        predator_xy = agent_state.xy[start : end + 1, n_max_preys:]
         # dxy
         dxy_self = xy_selected[1:] - xy_selected[:-1]  # (N - 1, 2)
         dxy_self_expanded = np.expand_dims(dxy_self, axis=1)
@@ -65,11 +80,11 @@ def compute_dxy_dist(
         # mask
         prey_mask = np.logical_and(
             agent_state.is_active[start + 1 : end + 1, :n_max_preys],
-            agent_state.is_active[start : end, :n_max_preys],
+            agent_state.is_active[start:end, :n_max_preys],
         )
         predator_mask = np.logical_and(
             agent_state.is_active[start + 1 : end + 1, n_max_preys:],
-            agent_state.is_active[start : end, n_max_preys:],
+            agent_state.is_active[start:end, n_max_preys:],
         )
         to_prey = mean_masked_norm(dxy_self_expanded, dxy_prey, prey_mask)
         to_predator = mean_masked_norm(dxy_self_expanded, dxy_predator, predator_mask)
@@ -78,7 +93,9 @@ def compute_dxy_dist(
     uid_list = []
     prey_list = []
     predator_list = []
-    for uid, slot, start, end in stepdf.iter_rows():
+    for i, (uid, slot, start, end) in enumerate(stepdf.iter_rows()):
+        if n_max_iter is not None and n_max_iter < i:
+            break
         if slot >= n_max_preys:  # It's predator
             continue
         if end - start < 2:
