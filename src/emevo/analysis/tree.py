@@ -568,7 +568,7 @@ class TreeRange:
 
 def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, TreeRange]:
     @functools.cache
-    def n_children(index: int) -> None:
+    def n_children(index: int) -> int:
         total = 1
         for child_index in split_nodes[index].children:
             total += n_children(child_index)
@@ -592,7 +592,7 @@ def align_split_tree(split_nodes: dict[int, SplitNode]) -> dict[int, TreeRange]:
     ) -> None:
         nc = len(split_nodes[index].children)
         if nc == 0:
-            return 1
+            return
         nc_list = [n_children for index in split_nodes[index].children]
         assigned = assign_space(nc_list)
         if parent is not None:

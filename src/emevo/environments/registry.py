@@ -1,5 +1,4 @@
-""" Gym-like make/register system
-"""
+"""Gym-like make/register system"""
 
 from __future__ import annotations
 

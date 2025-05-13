@@ -61,18 +61,35 @@ class CBarRenderer:
 def vis_birth_2d(
     ax: Axes,
     birth_fn: bd.BirthFunction,
+    another_birth_fn: bd.BirthFunction | None,
     energy_max: float = 16,
     age: float = 100.0,
     initial: bool = True,
     color: str | tuple[float, float, float] = "xkcd:bluish purple",
+    another_color: str | tuple[float, float, float] = "xkcd:dark aqua",
     label: str | None = None,
+    another_label: str | None = None,
 ) -> Line2D:
     energy_max_int = int(energy_max)
     birthrate = birth_fn(
         age=jnp.ones(energy_max_int) * age,
         energy=jnp.arange(energy_max),
     )
-    lines = ax.plot(np.arange(energy_max_int), birthrate, color=color, label=label)
+    if another_birth_fn is None:
+        lines = ax.plot(np.arange(energy_max_int), birthrate, color=color, label=label)
+    else:
+        another_birthrate = another_birth_fn(
+            age=jnp.ones(energy_max_int) * age,
+            energy=jnp.arange(energy_max),
+        )
+        lines = ax.plot(np.arange(energy_max_int), birthrate, color=color, label=label)
+        ax.plot(
+            np.arange(energy_max_int),
+            another_birthrate,
+            color=another_color,
+            label=another_label,
+        )
+        ax.legend(fontsize=14.0, loc="center left", bbox_to_anchor=(0.8, 0.1))
     if initial:
         ax.grid(True, which="major")
         ax.set_xlabel("Energy $e$", fontsize=14)

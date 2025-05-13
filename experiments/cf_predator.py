@@ -81,7 +81,7 @@ class CfConfigWithPredator(CfConfig):
     predator_basic_ec: float = 0.0
     predator_digestive_rate: float = 0.9
     predator_eat_interval: int = 10
-    predator_mouth_range: str = "same"
+    predator_mouth_range: str | list[int] = "same"
 
 
 @dataclasses.dataclass
@@ -297,6 +297,7 @@ def run_evolution(
     debug_print: bool,
     headless: bool,
     sensor_agg_type: str = "mean",
+    skip_predator_mutation: bool = False,
     measure_time: bool = False,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -367,6 +368,11 @@ def run_evolution(
     prev_time = dt.datetime.now()
 
     all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
+
+    if skip_predator_mutation:
+        mutation_skip_threshold = env._n_max_preys  # type:ignore
+    else:
+        mutation_skip_threshold = 10000
     del key  # Don't reuse this key!
     for i, key_i in enumerate(all_keys):
         epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
@@ -463,6 +469,7 @@ def run_evolution(
             log_birth.log.parents,
             log_birth.log.unique_id,
             log_birth.slots,
+            skip_threshold=mutation_skip_threshold,
         )
         # Update profile
         for step, uid, parent, slot in zip(
@@ -535,6 +542,7 @@ def evolve(
     debug_print: bool = False,
     headless: bool = False,
     measure_time: bool = False,
+    skip_predator_mutation: bool = False,
     force_gpu: bool = True,
 ) -> None:
     if force_gpu and not is_cuda_ready():
@@ -618,6 +626,7 @@ def evolve(
         headless=headless,
         sensor_agg_type=sensor_agg_type,
         measure_time=measure_time,
+        skip_predator_mutation=skip_predator_mutation,
         debug_print=debug_vis or debug_print,
     )
 
@@ -681,7 +690,7 @@ def widget(
         jax.config.update("jax_default_device", jax.devices("cpu")[0])
 
     with cfconfig_path.open("r") as f:
-        cfconfig = toml.from_toml(CfConfig, f.read())
+        cfconfig = toml.from_toml(CfConfigWithPredator, f.read())
 
     # For speedup
     cfconfig.n_initial_agents = 1
@@ -724,6 +733,7 @@ def widget(
         profile_and_rewards=profile_and_rewards,
         cm_fixed_minmax=cm_fixed_minmax_dict,
         scale=scale,
+        show_prey_pred_info=True,
     )
 
 

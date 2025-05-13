@@ -11,7 +11,7 @@ import jax
 import jax.numpy as jnp
 from jax.typing import ArrayLike
 
-from emevo.env import Status, TimeStep, Visualizer
+from emevo.env import Status, TimeStep
 from emevo.environments.circle_foraging import (
     NOWHERE,
     CFObs,
@@ -25,7 +25,10 @@ from emevo.environments.circle_foraging import (
     nstep,
 )
 from emevo.environments.env_utils import FoodNumState, LocatingState
-from emevo.phyjax2d import Color, ShapeDict
+from emevo.phyjax2d import (
+    Color,
+    ShapeDict,
+)
 from emevo.phyjax2d import Space as Physics
 from emevo.phyjax2d import (
     StateDict,
@@ -100,6 +103,7 @@ class CircleForagingWithObstacle(CircleForaging):
         obstacle_damage: float = 10.0,
         n_obstacles: int = 4,
         obstacle_size: float = 20.0,
+        obstacle_schedule: list[tuple[int, int]] | None = None,
         **kwargs,
     ) -> None:
         self._obstacle_damage = obstacle_damage
@@ -118,6 +122,34 @@ class CircleForagingWithObstacle(CircleForaging):
         self._n_vert_blocks = n_vert_blocks
         self._hol_block_size = xlen / n_hol_blocks
         self._vert_block_size = ylen / n_vert_blocks
+        if obstacle_schedule is None:
+            # Use quite large value here so that index == 0
+            self._obstacle_schedule = jnp.array([2**30])
+            self._obstacle_damage_cand = [
+                jnp.ones(self._n_obstacles) * self._obstacle_damage
+            ]
+        else:
+            self._obstacle_schedule = jnp.array(
+                [threshold for threshold, _ in obstacle_schedule] + [2**30]
+            )
+            obstacle_damage_cand = []
+            for _, n_damage_array in obstacle_schedule:
+                cand = jnp.concatenate(
+                    (
+                        jnp.ones(n_damage_array) * self._obstacle_damage,
+                        jnp.zeros(self._n_obstacles - n_damage_array),
+                    ),
+                )
+                obstacle_damage_cand.append(cand)
+            # Sentinel
+            obstacle_damage_cand.append(
+                jnp.ones(self._n_obstacles) * self._obstacle_damage
+            )
+            self._obstacle_damage_cand = jnp.stack(obstacle_damage_cand)
+
+    def _activate_obstacles(self, step: jax.Array) -> jax.Array:
+        index = jnp.searchsorted(self._obstacle_schedule, step)
+        return self._obstacle_damage_cand[index]
 
     def step(
         self,
@@ -168,7 +200,7 @@ class CircleForagingWithObstacle(CircleForaging):
             seg2c.transpose(),
             shift=self._tactile_shift,
         )
-        obs_tactile, _ = get_tactile(
+        obs_tactile, obs_tactile_raw = get_tactile(
             self._n_tactile_bins,
             stated.circle,
             stated.static_triangle,
@@ -186,10 +218,8 @@ class CircleForagingWithObstacle(CircleForaging):
         energy_consumption = (
             self._force_energy_consumption * force_norm + self._basic_energy_consumption
         )
-        damage = (
-            jnp.max(obs_tactile.reshape(self.n_max_agents, -1), axis=-1)
-            * self._obstacle_damage
-        )
+        damage_array = self._activate_obstacles(state.step)
+        damage = jnp.einsum("abcd,b->a", obs_tactile_raw, damage_array)
         n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
         energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
         energy_delta = energy_gain - energy_consumption - damage

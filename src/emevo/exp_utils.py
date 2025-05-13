@@ -45,7 +45,7 @@ class CfConfig:
     food_loc_fn: str | tuple[Any, ...] = "gaussian"
     agent_loc_fn: str | tuple[Any, ...] = "uniform"
     food_energy_coef: tuple[float | tuple[float, ...], ...] = (1.0,)
-    food_color: tuple[tuple[int, int, int, int], ...] = ((254, 2, 162, 255),)
+    food_color: tuple[tuple[int, int, int, int], ...] = ((27, 121, 35, 255),)
     xlim: tuple[float, float] = (0.0, 200.0)
     ylim: tuple[float, float] = (0.0, 200.0)
     env_radius: float = 120.0
@@ -75,7 +75,7 @@ class CfConfig:
     n_physics_iter: int = 5
     max_place_attempts: int = 10
     observe_food_label: bool = False
-    mouth_range: str = "front"
+    mouth_range: str | list[int] = "front"
     n_tactile_bins: int = 6
     tactile_shift: float = 0.0
     foods_min_dist: float = 0.0

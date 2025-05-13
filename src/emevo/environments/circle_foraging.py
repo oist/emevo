@@ -63,8 +63,9 @@ from emevo.spaces import BoxSpace, NamedTupleSpace
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
-AGENT_COLOR: Color = Color(2, 204, 254)
-FOOD_COLOR: Color = Color(254, 2, 162)
+AGENT_COLOR: Color = Color(11, 95, 174)
+FOOD_COLOR: Color = Color(27, 121, 35)
+HEAD_COLOR: Color = Color(167, 37, 193)
 NOWHERE: float = 0.0
 N_OBJECTS: int = 3
 
@@ -152,6 +153,7 @@ class SensorRange(str, enum.Enum):
     NARROW = "narrow"
     WIDE = "wide"  # 120 deg
     WIDE_160D = "wide-160d"
+    WIDE_180D = "wide-180d"
     ALL = "all"
 
     def as_tuple(self) -> tuple[float, float]:
@@ -161,6 +163,8 @@ class SensorRange(str, enum.Enum):
             return -60.0, 60.0
         elif self == SensorRange.WIDE_160D:
             return -80.0, 80.0
+        elif self == SensorRange.WIDE_180D:
+            return -90.0, 90.0
         else:
             return -180.0, 180.0
 
@@ -466,8 +470,6 @@ _MOUTH_RANGE = Literal[
     "full",
     "front",
     "front-wide",
-    "front-shifted",
-    "front-shifted-wide",
     "right",
 ]
 
@@ -491,7 +493,7 @@ class CircleForaging(Env):
         env_shape: Literal["square", "circle"] = "square",
         obstacles: list[tuple[Vec2d, Vec2d]] | str = "none",
         newborn_loc: Literal["neighbor", "uniform"] = "neighbor",
-        mouth_range: _MOUTH_RANGE = "front",
+        mouth_range: _MOUTH_RANGE | list[int] = "front",
         neighbor_stddev: float = 40.0,
         n_agent_sensors: int = 16,
         n_tactile_bins: int = 6,
@@ -571,26 +573,10 @@ class CircleForaging(Env):
             # Leftx2 and rightx2 \\ //
             assert n_tactile_bins >= 4
             self._foraging_indices = 0, 1, n_tactile_bins - 2, n_tactile_bins - 1
-        elif mouth_range == "front-shifted":
-            # Left, center, and right \ | /
-            # This should be used with shifted > 0 because there's no center by default
-            assert n_tactile_bins >= 3
-            self._foraging_indices = 0, n_tactile_bins - 2, n_tactile_bins - 1
-        elif mouth_range == "front-shifted-wide":
-            # Left x 2, center, and right \\ | //
-            # This should be used with shifted > 0
-            assert n_tactile_bins >= 5
-            self._foraging_indices = (
-                0,
-                1,
-                n_tactile_bins - 3,
-                n_tactile_bins - 2,
-                n_tactile_bins - 1,
-            )
         elif mouth_range == "right":
             self._foraging_indices = (n_tactile_bins - 1,)
         else:
-            raise ValueError(f"Unsupported mouth_range {mouth_range}")
+            self._foraging_indices = tuple(mouth_range)
         # Energy
         self._force_energy_consumption = force_energy_consumption
         self._basic_energy_consumption = basic_energy_consumption
@@ -724,9 +710,9 @@ class CircleForaging(Env):
         self._sensor_obs = self._make_sensor_fn(observe_food_label)
 
         if observe_food_label:
-            assert self._n_food_sources > 1, (
-                "n_food_sources should be larager than 1 to include food label obs"
-            )
+            assert (
+                self._n_food_sources > 1
+            ), "n_food_sources should be larager than 1 to include food label obs"
 
             self._food_tactile = lambda labels, s1, s2, cmat: _food_tactile_with_labels(
                 self._n_tactile_bins,
@@ -1334,6 +1320,7 @@ class CircleForaging(Env):
             space=self._physics,
             stated=state.physics,
             sc_color=self._food_color,
+            head_color=np.array(HEAD_COLOR) / 255.0,
             figsize=figsize,
             backend=backend,
             sensor_fn=None if no_sensor else sensor_fn,  # type: ignore

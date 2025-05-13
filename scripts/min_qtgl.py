@@ -1,5 +1,4 @@
-"""To debug Qt OpenGL app?
-"""
+"""To debug Qt OpenGL app?"""
 
 from __future__ import annotations
 

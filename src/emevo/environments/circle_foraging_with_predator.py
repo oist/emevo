@@ -58,7 +58,7 @@ from emevo.phyjax2d import (
 from emevo.spaces import BoxSpace
 
 Self = Any
-PREDATOR_COLOR: Color = Color(6, 214, 160)
+PREDATOR_COLOR: Color = Color(135, 19, 21)
 
 
 def _init_uniqueid(
@@ -206,7 +206,7 @@ class CircleForagingWithPredator(CircleForaging):
         predator_basic_ec: float = 0.0,
         predator_digestive_rate: float = 0.9,
         predator_eat_interval: int = 10,
-        predator_mouth_range: Literal["same", "narrow"] = "same",
+        predator_mouth_range: Literal["same", "narrow"] | list[int] = "same",
         **kwargs,
     ) -> None:
         self._n_max_predators = n_max_predators
@@ -216,9 +216,9 @@ class CircleForagingWithPredator(CircleForaging):
         self._n_max_preys = kwargs["n_max_agents"] - n_max_predators
         self._predator_eat_interval = predator_eat_interval
         assert self._n_max_preys > 0, f"Too many predators: {n_max_predators}"
-        assert n_max_predators >= n_initial_predators, (
-            f"Too many initial predators: {n_initial_predators}"
-        )
+        assert (
+            n_max_predators >= n_initial_predators
+        ), f"Too many initial predators: {n_initial_predators}"
         super().__init__(**kwargs, _n_additional_objs=1)
 
         if predator_mouth_range == "same":
@@ -226,9 +226,7 @@ class CircleForagingWithPredator(CircleForaging):
         elif predator_mouth_range == "narrow":
             self._predator_foraging_indices = 0, self._n_tactile_bins - 1
         else:
-            raise ValueError(
-                f"Unsupported predator mouth range: {predator_mouth_range}"
-            )
+            self._predator_foraging_indices = tuple(predator_mouth_range)
 
         self._predator_coordinate = self._coordinate
         self._predator_init_energy = predator_init_energy
