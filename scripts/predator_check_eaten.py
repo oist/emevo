@@ -30,23 +30,22 @@ def load_agent_state(dirpath: Path, n_states: int = 10) -> AgentState:
     )
 
 
-def load(logd: Path) -> tuple[AgentState, pl.DataFrame]:
-    ldf = load_log(logd).with_columns(pl.col("step").alias("Step"))
-    agent_state = load_agent_state(logd)
+def load(logd: Path, n_states: int = 10) -> tuple[AgentState, pl.DataFrame]:
+    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
+    agent_state = load_agent_state(logd, n_states=n_states)
     stepdf = (
         ldf.group_by("unique_id")
         .agg(
             pl.col("slots").first(),
             pl.col("step").min().alias("start"),
             pl.col("step").max().alias("end"),
-            pl.col("energy").last().alias("last_energy"),
         )
         .collect()
     )
     return agent_state, stepdf
 
 
-def classify_death_cause(
+def check_eaten(
     agent_state: AgentState,
     stepdf: pl.DataFrame,
     mouth_deg_in: float = 40.0,
@@ -58,41 +57,35 @@ def classify_death_cause(
     mouth_rad_in = np.deg2rad(mouth_deg_in)
     mouth_rad_out = np.deg2rad(mouth_deg_out)
 
-    def death_cause(start: int, end: int, slot: int, last_energy: float) -> str:
-        axy_selected = agent_state.axy[start:end, slot]
-        predator_axy = agent_state.axy[start:end, N_MAX_PREYS:]
-        # For each xy, compute distance to predators
-        expanded_axy = np.expand_dims(axy_selected[:, 1:], axis=1)
-        xydiff = predator_axy[:, :, 1:] - expanded_axy
-        distances = np.linalg.norm(xydiff, axis=2)
+    def eaten(end: int, slot: int) -> bool:
+        axy_last = agent_state.axy[end, slot]  # (3,)
+        predator_axy_last = agent_state.axy[end, N_MAX_PREYS:]  # (M, 3)
+        # Compute the distances to all predators when the prey dies
+        xydiff = predator_axy_last[:, 1:] - np.expand_dims(axy_last[1:], axis=0)
+        distances = np.linalg.norm(xydiff, axis=1)
         # Compute angle
-        expanded_angle = np.expand_dims(axy_selected[:, 0], axis=1)
-        rel_angle_prey = (predator_axy[:, :, 0] - expanded_angle + pi2) % pi2
+        rel_angle = (predator_axy_last[:, 0] - axy_last[0] + pi2) % pi2
         # Eaten?
-        can_pred_eat_prey = (rel_angle_prey[-1] <= mouth_rad_in) | (
-            mouth_rad_out <= rel_angle_prey[-1]
-        )  # (N_PRED,)
-        eaten = np.max(can_pred_eat_prey[-1] & (distances[-1] < eaten_distance))
-        if eaten:
-            return "Eaten"
-        elif last_energy < 0.1:
-            return "Hunger"
-        else:
-            return "Age"
+        can_pred_eat_prey = (rel_angle <= mouth_rad_in) | (mouth_rad_out <= rel_angle)
+        return bool(np.max(can_pred_eat_prey & (distances < eaten_distance)))
 
     uid_list = []
-    death_cause_list = []
+    eaten_list = []
+    age_list = []
     for uid, slot, start, end, last_energy in stepdf.iter_rows():
         if slot >= N_MAX_PREYS:  # It's predator
             continue
         if end - start < 2:
             continue
         uid_list.append(uid)
-        death_cause_list.append(death_cause(start, end, slot, last_energy))
+        age = end - start + 1
+        eaten_list.append(eaten(end, slot))
+        age_list.append(age)
     df = pl.from_dict(
         {
             "unique_id": uid_list,
-            "Death Cause": death_cause_list,
+            "Eaten": eaten_list,
+            "Age": age_list,
         }
     )
     return df.join(
@@ -108,14 +101,14 @@ def main(
     eaten_distance: float = 25.0,
 ) -> None:
     agent_state, stepdf = load(logd)
-    avgd_df = classify_death_cause(
+    avgd_df = check_eaten(
         agent_state,
         stepdf,
         mouth_deg_in,
         mouth_deg_out,
         eaten_distance,
     )
-    avgd_df.write_parquet(logd / "death_cause.parquet")
+    avgd_df.write_parquet(logd / "eaten.parquet")
 
 
 if __name__ == "__main__":
