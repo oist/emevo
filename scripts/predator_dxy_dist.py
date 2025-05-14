@@ -1,8 +1,6 @@
 import dataclasses
 from pathlib import Path
 
-import jax
-import jax.numpy as jnp
 import numpy as np
 import polars as pl
 import typer
@@ -31,35 +29,35 @@ def load_agent_state(dirpath: Path, n_states: int) -> AgentState:
 
 
 def load(logd: Path, n_states: int = 10) -> tuple[AgentState, pl.DataFrame]:
-    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
     agent_state = load_agent_state(logd, n_states)
-    stepdf = (
-        ldf.group_by("unique_id")
-        .agg(
-            pl.col("slots").first(),
-            pl.col("step").min().alias("start"),
-            pl.col("step").max().alias("end"),
+
+    eaten_path = logd / "eaten.parquet"
+    if eaten_path.exists():
+        stepdf = pl.read_parquet(eaten_path).select(
+            "unique_id",
+            "slots",
+            "start",
+            "end",
         )
-        .collect()
-    )
+    else:
+        ldf = load_log(logd, last_idx=n_states).with_columns(
+            pl.col("step").alias("Step")
+        )
+        stepdf = (
+            ldf.group_by("unique_id")
+            .agg(
+                pl.col("slots").first(),
+                pl.col("step").min().alias("start"),
+                pl.col("step").max().alias("end"),
+            )
+            .collect()
+        )
     return agent_state, stepdf
 
 
-@jax.jit
-def masked_norm_impl(a: jax.Array, b: jax.Array, mask: jax.Array):
-    norm = jnp.sum(jnp.square(a - b), axis=-1)  # (N, M)
-    return jnp.sum(norm * mask) / jnp.sum(mask)
-
-
-def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray) -> float:
-    size = a.shape[0]
-    for n in [10000, 20000, 40000, 80000, 160000, 320000, 640000, 1280000]:
-        if size < n:
-            a = jnp.concatenate((a, jnp.zeros((n - size, *a.shape[1:]))), axis=0)
-            b = jnp.concatenate((b, jnp.zeros((n - size, *b.shape[1:]))), axis=0)
-            mask = jnp.concatenate((mask, jnp.zeros((n - size, mask.shape[1]))), axis=0)
-            break
-    return masked_norm_impl(a, b, mask).item()
+def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray):
+    norm = np.sum(np.square(a - b), axis=-1)  # (N, M)
+    return np.sum(norm * mask) / np.sum(mask)
 
 
 def compute_dxy_dist(
@@ -96,8 +94,6 @@ def compute_dxy_dist(
     for i, (uid, slot, start, end) in enumerate(stepdf.iter_rows()):
         if n_max_iter is not None and n_max_iter < i:
             break
-        if slot >= n_max_preys:  # It's predator
-            continue
         if end - start < 2:
             continue
         to_prey, to_predator = dxy_dist(start, end, slot)
