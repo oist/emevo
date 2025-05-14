@@ -48,7 +48,6 @@ class AgentStateLoader:
                 xy = xy_next
                 is_active = is_active_next
             else:
-                print(self.cache.xy.shape, xy_next.shape)
                 xy = np.concatenate((self.cache.xy[start_index * self.size :], xy_next))
                 is_active = np.concatenate(
                     (self.cache.is_active[start_index * self.size :], is_active_next)
@@ -141,7 +140,6 @@ def compute_dxy_dist(
             is_active[start - offset + 1 : end - offset + 1, n_max_preys:],
             is_active[start - offset : end - offset, n_max_preys:],
         )
-        print(dxy_self_expanded.shape, dxy_prey.shape, prey_mask.shape)
         to_prey = mean_masked_norm(dxy_self_expanded, dxy_prey, prey_mask)
         to_predator = mean_masked_norm(dxy_self_expanded, dxy_predator, predator_mask)
         return to_prey, to_predator
