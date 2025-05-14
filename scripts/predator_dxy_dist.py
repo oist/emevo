@@ -176,7 +176,7 @@ def main(
     state_size: int = 1024000,
 ) -> None:
     agent_state, stepdf = load(logd, n_states, state_size)
-    avgd_df = compute_dxy_dist(agent_state, stepdf, n_max_preys, 20)
+    avgd_df = compute_dxy_dist(agent_state, stepdf, n_max_preys)
     avgd_df.write_parquet(logd / "avg-movement-dist.parquet")
 
 
