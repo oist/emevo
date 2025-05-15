@@ -44,14 +44,10 @@ class AgentStateLoader:
         self.current_end_index = end_index
         if self.current_start_index < start_index:
             # Drop
-            if start_index == end_index:
-                xy = xy_next
-                is_active = is_active_next
-            else:
-                xy = np.concatenate((self.cache.xy[start_index * self.size :], xy_next))
-                is_active = np.concatenate(
-                    (self.cache.is_active[start_index * self.size :], is_active_next)
-                )
+            diff = start_index - self.current_start_index
+            new_start = diff * self.size
+            xy = np.concatenate((self.cache.xy[new_start :], xy_next))
+            is_active = np.concatenate((self.cache.is_active[new_start :], is_active_next))
             self.current_start_index = start_index
             print("Extend and drop")
         else:
