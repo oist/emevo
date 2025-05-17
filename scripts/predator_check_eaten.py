@@ -87,6 +87,9 @@ def check_eaten(
             sensor_rad_out <= rel_angle_prey
         )
         eaten_and_in_sensor = was_eaten & is_pred_in_sensor
+        if bool(np.max(was_eaten)):
+            idx = np.nonzero(was_eaten)
+            print(f"Me: {axy_last} Other: {predator_axy_last[idx]}")
         return bool(np.max(was_eaten)), bool(np.max(eaten_and_in_sensor))
 
     uid_list = []
