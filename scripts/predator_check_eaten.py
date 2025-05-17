@@ -33,7 +33,9 @@ def load_agent_state(dirpath: Path, n_states: int = 10) -> AgentState:
 def load(logd: Path, n_states: int = 10) -> tuple[AgentState, pl.DataFrame]:
     agent_state = load_agent_state(logd, n_states=n_states)
     if (logd / "age.parquet").exists():
-        return agent_state, pl.read_parquet(logd / "age.parquet")
+        return agent_state, pl.read_parquet(logd / "age.parquet").select(
+            "unique_id", "slots", "start", "end"
+        )
     ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
     stepdf = (
         ldf.group_by("unique_id")
@@ -61,6 +63,7 @@ def check_eaten(
 
     def eaten(end: int, slot: int) -> bool:
         axy_last = agent_state.axy[end, slot]  # (3,)
+        print(axy_last)
         predator_axy_last = agent_state.axy[end, N_MAX_PREYS:]  # (M, 3)
         # Compute the distances to all predators when the prey dies
         xydiff = predator_axy_last[:, 1:] - np.expand_dims(axy_last[1:], axis=0)
@@ -98,11 +101,12 @@ def check_eaten(
 
 def main(
     logd: Path,
+    n_states: int = 10,
     mouth_deg_in: float = 40.0,
     mouth_deg_out: float = 340.0,
     eaten_distance: float = 25.0,
 ) -> None:
-    agent_state, stepdf = load(logd)
+    agent_state, stepdf = load(logd, n_states)
     avgd_df = check_eaten(
         agent_state,
         stepdf,
