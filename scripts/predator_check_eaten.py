@@ -109,6 +109,7 @@ def check_eaten(
         {
             "unique_id": uid_list,
             "Eaten": eaten_list,
+            "Eaten (in sensor)": in_sensor_list,
             "Age": age_list,
         }
     )
