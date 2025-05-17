@@ -52,30 +52,46 @@ def load(logd: Path, n_states: int = 10) -> tuple[AgentState, pl.DataFrame]:
 def check_eaten(
     agent_state: AgentState,
     stepdf: pl.DataFrame,
+    sensor_deg_in: float = 60.0,
+    sensor_deg_out: float = 300.0,
     mouth_deg_in: float = 40.0,
     mouth_deg_out: float = 340.0,
     eaten_distance: float = 25.0,
 ) -> pl.DataFrame:
     pi2 = np.pi * 2
 
+    sensor_rad_in = np.deg2rad(sensor_deg_in)
+    sensor_rad_out = np.deg2rad(sensor_deg_out)
+
     mouth_rad_in = np.deg2rad(mouth_deg_in)
     mouth_rad_out = np.deg2rad(mouth_deg_out)
 
-    def eaten(end: int, slot: int) -> bool:
+    def eaten(end: int, slot: int) -> tuple[bool, bool]:
         axy_last = agent_state.axy[end, slot]  # (3,)
-        print(axy_last)
         predator_axy_last = agent_state.axy[end, N_MAX_PREYS:]  # (M, 3)
         # Compute the distances to all predators when the prey dies
-        xydiff = predator_axy_last[:, 1:] - np.expand_dims(axy_last[1:], axis=0)
-        distances = np.linalg.norm(xydiff, axis=1)
-        # Compute angle
-        rel_angle = (predator_axy_last[:, 0] - axy_last[0] + pi2) % pi2
+        pred2prey = np.expand_dims(axy_last[1:], axis=0) - predator_axy_last[:, 1:]
+        distances = np.linalg.norm(pred2prey, axis=1)
+        # Compute relative angle
+        angle_pred2prey = np.arctan2(pred2prey[:, 1], pred2prey[:, 0])
+        rel_angle_pred = (angle_pred2prey - predator_axy_last[0] + pi2) % pi2
         # Eaten?
-        can_pred_eat_prey = (rel_angle <= mouth_rad_in) | (mouth_rad_out <= rel_angle)
-        return bool(np.max(can_pred_eat_prey & (distances < eaten_distance)))
+        can_pred_eat_prey = (rel_angle_pred <= mouth_rad_in) | (
+            mouth_rad_out <= rel_angle_pred
+        )
+        was_eaten = can_pred_eat_prey & (distances < eaten_distance)
+        # Compute relative angle
+        angle_prey2pred = np.arctan2(-pred2prey[:, 1], -pred2prey[:, 0])
+        rel_angle_prey = (angle_prey2pred - axy_last[0] + pi2) % pi2
+        is_pred_in_sensor = (rel_angle_prey <= sensor_rad_in) | (
+            sensor_rad_out <= rel_angle_prey
+        )
+        eaten_and_in_sensor = was_eaten & is_pred_in_sensor
+        return bool(np.max(was_eaten)), bool(np.max(eaten_and_in_sensor))
 
     uid_list = []
     eaten_list = []
+    in_sensor_list = []
     age_list = []
     for uid, slot, start, end in stepdf.iter_rows():
         if slot >= N_MAX_PREYS:  # It's predator
@@ -84,7 +100,9 @@ def check_eaten(
             continue
         uid_list.append(uid)
         age = end - start + 1
-        eaten_list.append(eaten(end, slot))
+        was_eaten, in_sensor = eaten(end, slot)
+        eaten_list.append(was_eaten)
+        in_sensor_list.append(in_sensor)
         age_list.append(age)
     df = pl.from_dict(
         {
@@ -102,6 +120,8 @@ def check_eaten(
 def main(
     logd: Path,
     n_states: int = 10,
+    sensor_deg_in: float = 60.0,
+    sensor_deg_out: float = 300.0,
     mouth_deg_in: float = 40.0,
     mouth_deg_out: float = 340.0,
     eaten_distance: float = 25.0,
@@ -110,6 +130,8 @@ def main(
     avgd_df = check_eaten(
         agent_state,
         stepdf,
+        sensor_deg_in,
+        sensor_deg_out,
         mouth_deg_in,
         mouth_deg_out,
         eaten_distance,
