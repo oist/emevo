@@ -31,8 +31,10 @@ def load_agent_state(dirpath: Path, n_states: int = 10) -> AgentState:
 
 
 def load(logd: Path, n_states: int = 10) -> tuple[AgentState, pl.DataFrame]:
-    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
     agent_state = load_agent_state(logd, n_states=n_states)
+    if (logd / "age.parquet").exists():
+        return agent_state, pl.read_parquet(logd / "age.parquet")
+    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
     stepdf = (
         ldf.group_by("unique_id")
         .agg(
