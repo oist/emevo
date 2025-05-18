@@ -74,13 +74,14 @@ def check_eaten(
         distances = np.linalg.norm(pred2prey, axis=1)
         # Compute relative angle
         angle_pred2prey = np.arctan2(pred2prey[:, 1], pred2prey[:, 0])
-        rel_angle_pred = (angle_pred2prey - predator_axy_last[0] + pi2) % pi2
+        rel_angle_pred = (angle_pred2prey - predator_axy_last[:, 0] + pi2) % pi2
         # Eaten?
-        can_pred_eat_prey = (rel_angle_pred <= mouth_rad_in) | (
+        in_mouth_range = (rel_angle_pred <= mouth_rad_in) | (
             mouth_rad_out <= rel_angle_pred
         )
+        can_pred_eat_prey = in_mouth_range & agent_state.is_active[end, N_MAX_PREYS:]
         was_eaten = can_pred_eat_prey & (distances < eaten_distance)
-        # Compute relative angle
+        # Compute relative angle (from prey)
         angle_prey2pred = np.arctan2(-pred2prey[:, 1], -pred2prey[:, 0])
         rel_angle_prey = (angle_prey2pred - axy_last[0] + pi2) % pi2
         is_pred_in_sensor = (rel_angle_prey <= sensor_rad_in) | (
@@ -108,6 +109,7 @@ def check_eaten(
         {
             "unique_id": uid_list,
             "Eaten": eaten_list,
+            "Eaten (in sensor)": in_sensor_list,
             "Age": age_list,
         }
     )

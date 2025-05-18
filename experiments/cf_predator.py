@@ -696,6 +696,7 @@ def widget(
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
+    print("Loaded phys state")
     env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
     end = phys_state.circle_axy.shape[0] if end is None else end
     if log_path is None:
