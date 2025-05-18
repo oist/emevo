@@ -322,6 +322,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         log_key = step // N_MAX_SCAN
         if log_key not in self._log_cached:
             log_key = step // N_MAX_SCAN
+            print("Loading log...")
             scanner = self._log_ds.scanner(
                 columns=["energy", "step", "slots", "unique_id"],
                 filter=(
