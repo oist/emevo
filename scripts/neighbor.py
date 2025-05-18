@@ -80,13 +80,15 @@ def get_state_loader(
 
 
 def load(
-    logd: Path, n_states: int = 10, state_size: int = 1024000
+    logd: Path,
+    n_states: int = 10,
+    state_size: int = 1024000,
 ) -> tuple[AgentStateLoader, pl.DataFrame]:
     state_loader = get_state_loader(logd, n_states, state_size)
 
-    eaten_path = logd / "eaten.parquet"
-    if eaten_path.exists():
-        stepdf = pl.read_parquet(eaten_path).select(
+    age_path = logd / "age.parquet"
+    if age_path.exists():
+        stepdf = pl.read_parquet(age_path).select(
             "unique_id",
             "slots",
             "start",
@@ -113,52 +115,41 @@ def mean_masked_norm(a: NDArray, b: NDArray, mask: NDArray):
     return np.sum(norm * mask) / np.sum(mask)
 
 
-def compute_dxy_dist(
+def compute_n_neighbors(
     state_loader: AgentStateLoader,
     stepdf: pl.DataFrame,
     n_max_preys: int,
+    threshold: float,
     n_max_iter: int | None = None,  # For debugging
 ) -> pl.DataFrame:
-    def dxy_dist(start: int, end: int, slot: int) -> tuple[NDArray, NDArray]:
+    def n_neighbors(start: int, end: int, slot: int) -> NDArray:
         xy, is_active, offset = state_loader.get(start, end)
-        xy_selected = xy[start - offset : end - offset + 1, slot]
-        prey_xy = xy[start - offset : end - offset + 1, :n_max_preys]
-        predator_xy = xy[start - offset : end - offset + 1, n_max_preys:]
-        # dxy
-        dxy_self = xy_selected[1:] - xy_selected[:-1]  # (N - 1, 2)
-        dxy_self_expanded = np.expand_dims(dxy_self, axis=1)
-        dxy_prey = prey_xy[1:] - prey_xy[:-1]  # (N - 1, M1, 2)
-        dxy_predator = predator_xy[1:] - predator_xy[:-1]  # (N - 1, M2, 2)
-        # mask
-        prey_mask = np.logical_and(
-            is_active[start - offset + 1 : end - offset + 1, :n_max_preys],
-            is_active[start - offset : end - offset, :n_max_preys],
+        xy_selected = xy[start - offset : end - offset + 1, slot]  # (N, 2)
+        prey_xy = xy[start - offset : end - offset + 1, :n_max_preys]  # (N, M, 2)
+        prey_is_active = is_active[start - offset : end - offset + 1, :n_max_preys]
+        distance = np.linalg.norm(
+            prey_xy - np.expand_dims(xy_selected, axis=1),
+            axis=-1,
         )
-        predator_mask = np.logical_and(
-            is_active[start - offset + 1 : end - offset + 1, n_max_preys:],
-            is_active[start - offset : end - offset, n_max_preys:],
-        )
-        to_prey = mean_masked_norm(dxy_self_expanded, dxy_prey, prey_mask)
-        to_predator = mean_masked_norm(dxy_self_expanded, dxy_predator, predator_mask)
-        return to_prey, to_predator
+        is_neighbor = (distance < threshold) & prey_is_active
+        return np.mean(np.sum(is_neighbor, axis=1))
 
     uid_list = []
-    prey_list = []
-    predator_list = []
+    neighbor_list = []
     for i, (uid, slot, start, end) in enumerate(stepdf.sort("start").iter_rows()):
         if n_max_iter is not None and n_max_iter < i:
             break
         if end - start < 2:
             continue
-        to_prey, to_predator = dxy_dist(start, end, slot)
+        if slot >= n_max_preys:
+            continue
+        n_avg_neighbors = n_neighbors(start, end, slot)
         uid_list.append(uid)
-        prey_list.append(to_prey)
-        predator_list.append(to_predator)
+        neighbor_list.append(n_avg_neighbors)
     df = pl.from_dict(
         {
             "unique_id": uid_list,
-            "Prey Dist.": prey_list,
-            "Predator Dist.": predator_list,
+            "Num. Neighbors": neighbor_list,
         }
     )
     return df.join(
@@ -171,11 +162,12 @@ def main(
     logd: Path,
     n_states: int = 10,
     n_max_preys: int = 450,
+    threshold: float = 50.0,
     state_size: int = 1024000,
 ) -> None:
     state_loader, stepdf = load(logd, n_states, state_size)
-    avgd_df = compute_dxy_dist(state_loader, stepdf, n_max_preys)
-    avgd_df.write_parquet(logd / "avg-movement-dist.parquet")
+    avgd_df = compute_n_neighbors(state_loader, stepdf, n_max_preys, threshold)
+    avgd_df.write_parquet(logd / "neighbor.parquet")
 
 
 if __name__ == "__main__":
