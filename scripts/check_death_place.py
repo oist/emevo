@@ -62,8 +62,6 @@ def check_death_place(agent_state: AgentState, stepdf: pl.DataFrame) -> pl.DataF
         _, x, y = agent_state.axy[end, slot]
         x_list.append(x)
         y_list.append(y)
-        if uid % 100 == 0:
-            break
     df = pl.from_dict(
         {
             "unique_id": uid_list,
