@@ -38,9 +38,9 @@ def load(
 ) -> tuple[AgentState, pl.DataFrame]:
     agent_state = load_agent_state(logd, n_states=n_states)
     if (logd / "age.parquet").exists():
-        return agent_state, pl.read_parquet(logd / "age.parquet").select(
-            "unique_id", "slots", "start", "end"
-        )
+        return agent_state, pl.read_parquet(logd / "age.parquet").filter(
+            pl.col("unique_id").is_in(unique_id)
+        ).select("unique_id", "slots", "start", "end")
     ldf = (
         load_log(logd, last_idx=n_states)
         .with_columns(pl.col("step").alias("Step"))
@@ -69,17 +69,18 @@ def pickup_traj(agent_state: AgentState, stepdf: pl.DataFrame) -> pl.DataFrame:
         if end - start < 2:
             continue
         uid_list.append(uid)
-        for i, (_, x, y) in enumerate(agent_state.axy[start:end, slot]):
-            x_list.append(x)
-            y_list.append(y)
-            uid_list.append(uid)
-            step_list.append(i + start)
+        x = agent_state.axy[start : end + 1, slot][:, :1]
+        y = agent_state.axy[start : end + 1, slot][:, :1]
+        x_list.append(x)
+        y_list.append(y)
+        uid_list.append([uid] * len(x))
+        step_list.append(np.arange(start, end))
     return pl.from_dict(
         {
             "unique_id": uid_list,
-            "x": x_list,
-            "y_id": y_list,
-            "step_id": step_list,
+            "x": np.concatenate(x_list),
+            "y_id": np.concatenate(y_list),
+            "step_id": np.concatenate(step_list),
         }
     )
 
