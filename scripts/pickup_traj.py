@@ -64,8 +64,6 @@ def pickup_traj(agent_state: AgentState, stepdf: pl.DataFrame) -> pl.DataFrame:
     x_list = []
     y_list = []
     for uid, slot, start, end in stepdf.iter_rows():
-        if slot >= N_MAX_PREYS:  # It's predator
-            continue
         if end - start < 2:
             continue
         uid_list.append(uid)
