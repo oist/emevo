@@ -7,7 +7,8 @@ from emevo.analysis.log_plotting import load_log
 
 
 def main(logd: Path, n_states: int = 10, bin_length: int = 1000) -> None:
-    age_df = ldf.with_columns(
+    logdf = load_log(logd, last_idx=n_states)
+    age_df = logdf.with_columns(
         (pl.col("step") - pl.col("step").min().over("unique_id")).alias("age")
     )
     balance_df = (
