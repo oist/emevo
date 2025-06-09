@@ -659,6 +659,7 @@ def replay(
         env_state,
         figsize=(cfconfig.xlim[1] * scale, cfconfig.ylim[1] * scale),
         backend=backend,
+        no_sensor=True,
     )
     if videopath is not None:
         visualizer = SaveVideoWrapper(visualizer, videopath)
