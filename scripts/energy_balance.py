@@ -10,7 +10,7 @@ def main(logd: Path, n_states: int = 10, bin_length: int = 1000) -> None:
     logdf = load_log(logd, last_idx=n_states)
     age_df = logdf.with_columns(
         (pl.col("step") - pl.col("step").min().over("unique_id")).alias("age"),
-        pl.col("energy").diff().alias("Energy Delta"),
+        pl.col("energy").diff().alias("energy_delta"),
     )
     age_ed_df = age_df.with_columns(
         pl.when(pl.col("age") == 0)
