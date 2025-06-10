@@ -28,7 +28,7 @@ def main(logd: Path, n_states: int = 10, bin_length: int = 1000) -> None:
             (pl.col("energy_gain") - pl.col("consumed_energy") - pl.col("energy_delta"))
             .mean()
             .alias("repr_energy_consumption"),
-            pl.col("reward").mean(),
+            pl.col("rewards").mean(),
         )
         .sort("unique_id", "age_bin")
         .collect()
