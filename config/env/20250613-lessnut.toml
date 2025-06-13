@@ -30,4 +30,4 @@ n_physics_iter = 5
 max_place_attempts = 10
 n_max_food_regen = 10
 # less nutrition
-food_energy_coef = 0.5
+food_energy_coef = [0.5]
