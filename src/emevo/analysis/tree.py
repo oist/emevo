@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import dataclasses
 import functools
+import json
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import Any, Literal
 from weakref import ReferenceType
 from weakref import ref as make_weakref
 
 import networkx as nx
 import numpy as np
+import serde
 from networkx.drawing.nx_agraph import graphviz_layout
 from numpy.typing import NDArray
 from pyarrow import Table
+from serde.json import from_json, to_json
 
 datafield = functools.partial(dataclasses.field, compare=False, hash=False, repr=False)
 
@@ -123,12 +127,26 @@ def _collect_descendants(node: Node, include_self: bool = False) -> set[int]:
     return ret
 
 
+@serde.serde
 @dataclasses.dataclass
 class SplitNode:
     size: int
     reward_mean: dict[str, float] | None = None
     children: set[int] = dataclasses.field(default_factory=set)
     parent: int | None = None
+
+
+def save_split_nodes(split_nodes: dict[int, SplitNode], path: Path) -> None:
+    json_nodes = to_json(split_nodes)
+    print(json_nodes)
+    with path.open(mode="w") as f:
+        json.dump(json_nodes, f)
+
+
+def load_split_nodes(path: Path) -> dict[int, SplitNode]:
+    with path.open(mode="r") as f:
+        json_nodes = json.load(f)
+    return from_json(dict[int, SplitNode], json_nodes)
 
 
 @functools.cache
@@ -274,6 +292,7 @@ class Tree:
         if method == "greedy":
             split_nodes = self._split_greedy(min_group_size, reward_keys)
         elif method in ["reward-mean", "reward-sum"]:
+            assert reward_keys is not None
             is_mean = "mean" in method
             split_nodes = self._split_reward_mean(
                 min_group_size,
@@ -429,9 +448,9 @@ class Tree:
                     max_effect_edge = edge
                 else:
                     failure_causes["Effect is too small"] += 1
-            assert (
-                max_effect_edge is not None
-            ), f"Couldn't find maxdiff_edge anymore (Reason: {failure_causes})"
+            assert max_effect_edge is not None, (
+                f"Couldn't find maxdiff_edge anymore (Reason: {failure_causes})"
+            )
             return max_effect, max_effect_edge
 
         for _ in range(n_trial):
