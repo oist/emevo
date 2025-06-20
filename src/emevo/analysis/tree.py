@@ -138,7 +138,6 @@ class SplitNode:
 
 def save_split_nodes(split_nodes: dict[int, SplitNode], path: Path) -> None:
     json_nodes = to_json(split_nodes)
-    print(json_nodes)
     with path.open(mode="w") as f:
         json.dump(json_nodes, f)
 
