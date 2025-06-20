@@ -90,6 +90,8 @@ def test_split_saveload(treedef: list[tuple[int, int]]) -> None:
     path = Path(tempfile.NamedTemporaryFile(suffix=".json", delete=True).name)
     save_split_nodes(sp1, path)
     sp2 = load_split_nodes(path)
+    assert len(sp1) == 4
+    assert len(sp2) == 4
     for key, value in sp1.items():
         assert value == sp2[key]
 
