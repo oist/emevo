@@ -178,10 +178,10 @@ def compute_reward_mean(
         for key, rmean in reward_mean.items():
             reward_mean_lists[key].append(rmean)
 
-    total_size = np.sum(size_list)
+    total_size = sum(size_list)
     rmean_dict = {}
     for key, rmean in reward_mean_lists.items():
-        rsum = np.sum([nc * rm for nc, rm in zip(size_list, rmean)])
+        rsum = sum([nc * rm for nc, rm in zip(size_list, rmean)])
         rmean_dict[key] = rsum / total_size
     return total_size, rmean_dict
 
@@ -455,7 +455,7 @@ class Tree:
 
         for _ in range(n_trial):
             frozen_split_edges = frozenset(split_edges)
-            maxe, edge = find_maxdiff_edge(frozen_split_edges)
+            _, edge = find_maxdiff_edge(frozen_split_edges)
             parent_root = self.nodes[find_group_root(edge.parent)]
             parent_size, parent_reward = compute_reward_mean(
                 parent_root,
