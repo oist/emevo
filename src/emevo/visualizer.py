@@ -70,6 +70,8 @@ class SaveVideoWrapper(VisWrapper[STATE]):
             self._container = av.open(self._path, mode="w")
             self._stream = self._container.add_stream(codec, **self._pyav_kwargs)
             self._stream.bit_rate = 8000000
+            self._stream.height, self._stream.width = image.shape[:2]
+
         # Encode frame
         frame = av.VideoFrame.from_ndarray(image[:, :, :3], format="rgb24")
         packet = self._stream.encode(frame)

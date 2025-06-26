@@ -1,10 +1,12 @@
 import operator
+import tempfile
 from pathlib import Path
 
 import pyarrow.parquet as pq
 import pytest
 
 from emevo.analysis import Tree
+from emevo.analysis.tree import load_split_nodes, save_split_nodes
 
 ASSET_DIR = Path(__file__).parent.joinpath("assets")
 
@@ -80,6 +82,20 @@ def test_split(treedef: list[tuple[int, int]]) -> None:
     assert len(sp2) == 2
     assert sp2[0].size == 4, sp2
     assert sp2[1].size == 6
+
+
+def test_split_saveload(treedef: list[tuple[int, int]]) -> None:
+    tree = Tree.from_iter(treedef)
+    sp1 = tree.split(min_group_size=3)
+    path = Path(tempfile.NamedTemporaryFile(suffix=".json", delete=True).name)
+    save_split_nodes(sp1, path)
+    sp2 = load_split_nodes(path)
+    assert len(sp1) == 4
+    assert len(sp2) == 4
+    for key, value in sp1.items():
+        assert value == sp2[key]
+
+    path.unlink()
 
 
 def test_split_by_rewards(treedef_with_rewards: list[tuple[int, int, dict]]) -> None:

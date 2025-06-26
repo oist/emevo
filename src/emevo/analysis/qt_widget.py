@@ -174,6 +174,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         profile_and_rewards: pa.Table | None = None,
         cm_fixed_minmax: dict[str, tuple[float, float]] | None = None,
         show_prey_pred_info: bool = False,
+        show_obstacle_info: bool = False,
         scale: float = 2.0,
         **kwargs,
     ) -> None:
@@ -230,6 +231,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         if show_prey_pred_info:
             rb5 = self._make_cbar("Prey Reward", CBarState.PREY_REWARD)
             rb6 = self._make_cbar("Predator Reward", CBarState.PREDATOR_REWARD)
+            radio_buttons += [rb5, rb6]
+        elif show_obstacle_info:
+            rb5 = self._make_cbar("Agent Reward", CBarState.PREY_REWARD)
+            rb6 = self._make_cbar("Obstacle Reward", CBarState.PREDATOR_REWARD)
             radio_buttons += [rb5, rb6]
         else:
             rb5 = self._make_cbar("2nd Food Reward", CBarState.FOOD_REWARD2)
@@ -322,6 +327,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         log_key = step // N_MAX_SCAN
         if log_key not in self._log_cached:
             log_key = step // N_MAX_SCAN
+            print("Loading log...")
             scanner = self._log_ds.scanner(
                 columns=["energy", "step", "slots", "unique_id"],
                 filter=(
@@ -394,6 +400,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                     self._get_rewards(uid),
                     "prey_sensor",
                     "prey_smell",
+                    "agent_sensor",
                 )
         elif self._cbar_state is CBarState.PREDATOR_REWARD:
             title = "Predator Reward"
@@ -404,6 +411,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                     self._get_rewards(uid),
                     "predator_sensor",
                     "predator_smell",
+                    "obstacle_sensor",
                 )
         else:
             warnings.warn(f"Invalid cbar state {self._cbar_state}", stacklevel=1)
