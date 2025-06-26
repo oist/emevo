@@ -615,6 +615,7 @@ def widget(
     cfconfig.n_initial_agents = 1
     cfconfig.apply_override(env_override)
     phys_state = SavedPhysicsState.load(physstate_path)
+    print("Loaded phys state")
     env = make("CircleForaging-v3", **dataclasses.asdict(cfconfig))
     npzfile = np.load(physstate_path.parent / "obstacles.npz")
     obstacle_axy = jnp.array(npzfile["obstacle_axy"])
@@ -665,6 +666,7 @@ def widget(
         cm_fixed_minmax=cm_fixed_minmax_dict,
         scale=scale,
         initialize_env_state=initialize_env_state,
+        show_obstacle_info=True,
     )
 
 
