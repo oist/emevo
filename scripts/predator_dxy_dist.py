@@ -80,7 +80,9 @@ def get_state_loader(
 
 
 def load(
-    logd: Path, n_states: int = 10, state_size: int = 1024000
+    logd: Path,
+    n_states: int = 10,
+    state_size: int = 1024000,
 ) -> tuple[AgentStateLoader, pl.DataFrame]:
     state_loader = get_state_loader(logd, n_states, state_size)
 
