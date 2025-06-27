@@ -323,9 +323,9 @@ def run_evolution(
         if debug_print:
             is_active = env_state.unique_id.is_active()
             popl = int(jnp.sum(is_active))
+            n_foods = int(jnp.sum(env_state.physics.static_circle.is_active))  # type: ignore
             avg_e = float(jnp.mean(env_state.status.energy[is_active]))
-            if popl > 0:
-                print(f"Population: {popl} Avg. Energy: {avg_e}")
+            print(f"Population: {popl} Avg. Energy: {avg_e} Num. Foods: {n_foods}")
 
         # Extinct?
         n_active = jnp.sum(env_state.unique_id.is_active())  # type: ignore
