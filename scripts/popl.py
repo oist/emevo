@@ -6,10 +6,8 @@ import typer
 from emevo.analysis.log_plotting import load_log
 
 
-def main(logd: Path, n_states: int = 10, span: int = 100) -> None:
-    ldf = load_log(logd, last_idx=n_states).with_columns(
-        (pl.col("step") // span * span).alias("Step")
-    )
+def main(logd: Path, n_states: int = 10) -> None:
+    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
     pop_df = ldf.group_by("Step").agg(pl.col("unique_id").len().alias("Population"))
     pop_df.collect().write_parquet(logd / "popl.parquet")
 
