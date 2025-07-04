@@ -86,6 +86,7 @@ ignore = ["B905"]
 dev-dependencies = [
     "black >= 24.10.0",
     "bqplot >= 0.12",
+    "itables >= 2.4",
     "ipykernel >= 6.29.5",
     "isort >= 5.13.2",
     "ipympl >= 0.9.4",
