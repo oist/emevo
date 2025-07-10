@@ -34,7 +34,7 @@ def load(logd: Path) -> tuple[NDArray, pl.DataFrame]:
 
 def compute_avg_moved(xy: NDArray, stepdf: pl.DataFrame) -> pl.DataFrame:
     def avgd(start: int, end: int, slot: int) -> NDArray:
-        xy_selected = xy[start:end, slot]
+        xy_selected = xy[start + 1:end, slot]
         xy0 = xy_selected[:-1]
         xy1 = xy_selected[1:]
         return np.mean(np.linalg.norm(xy0 - xy1, axis=1))
@@ -42,9 +42,9 @@ def compute_avg_moved(xy: NDArray, stepdf: pl.DataFrame) -> pl.DataFrame:
     uid_list = []
     avgd_list = []
     for uid, slot, start, end in stepdf.iter_rows():
-        avgd_ = avgd(start, end, slot)
         if end - start < 2:
             continue
+        avgd_ = avgd(start, end, slot)
         assert not np.isnan(avgd_), (start, end, slot)
         uid_list.append(uid)
         avgd_list.append(avgd_)
