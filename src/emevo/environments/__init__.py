@@ -29,5 +29,11 @@ register(
 register(
     "CircleForaging-v4",
     "emevo.environments.circle_foraging_with_predator.CFPredatorWithSmell",
-    "Phyjax2d circle foraging environment with predator",
+    "Phyjax2d circle foraging environment with predator and smell",
+)
+
+register(
+    "CircleForaging-v5",
+    "emevo.environments.circle_foraging_with_sodium.CircleForagingWithSodium",
+    "Phyjax2d circle foraging environment with sodium",
 )

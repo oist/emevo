@@ -22,6 +22,35 @@ class HazardFunction(Protocol):
         return jnp.exp(-self.cumulative(age, energy))
 
 
+class HazardFunctionWithSodium(Protocol):
+    def __call__(
+        self,
+        age: jax.Array,
+        energy: jax.Array,
+        sodium: jax.Array,
+    ) -> jax.Array:
+        """Hazard function h(t)"""
+        ...
+
+    def cumulative(
+        self,
+        age: jax.Array,
+        energy: jax.Array,
+        sodium: jax.Array,
+    ) -> jax.Array:
+        """Cumulative hazard function H(t) = ∫h(t)"""
+        ...
+
+    def survival(
+        self,
+        age: jax.Array,
+        energy: jax.Array,
+        sodium: jax.Array,
+    ) -> jax.Array:
+        """Survival Rate S(t) = exp(-H(t))"""
+        return jnp.exp(-self.cumulative(age, energy, sodium))
+
+
 @dataclasses.dataclass(frozen=True)
 class DeterministicHazard(HazardFunction):
     """
@@ -168,6 +197,44 @@ class SlopeELGHazard(EnergyLogisticHazard):
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         energy = self._energy_death_rate(energy) * age
+        ht = energy + self.alpha_age / self.beta * jnp.exp(self.beta * age)
+        h0 = self.alpha_age / self.beta
+        return ht - h0
+
+
+@dataclasses.dataclass(frozen=True)
+class SlopeELGHazardWithSodium:
+    alpha: float = 0.1
+    scale: float = 1.0
+    slope: float = 0.1
+    sodium_c: float = 0.5
+    alpha_age: float = 1e-6
+    beta: float = 1e-5
+
+    def _energy_death_rate(self, energy: jax.Array) -> jax.Array:
+        return self.scale * (
+            1.0 - 1.0 / (1.0 + self.alpha * jnp.exp(-energy * self.slope))
+        )
+
+    def __call__(
+        self,
+        age: jax.Array,
+        energy: jax.Array,
+        sodium: jax.Array,
+    ) -> jax.Array:
+        age = self.alpha_age * jnp.exp(self.beta * age)
+        energy = self._energy_death_rate(energy)
+        sodium = self._energy_death_rate(sodium)
+        return age + energy + self.sodium_c * sodium
+
+    def cumulative(
+        self,
+        age: jax.Array,
+        energy: jax.Array,
+        sodium: jax.Array,
+    ) -> jax.Array:
+        energy = self._energy_death_rate(energy) * age
+        sodium = self._energy_death_rate(sodium) * age
         ht = energy + self.alpha_age / self.beta * jnp.exp(self.beta * age)
         h0 = self.alpha_age / self.beta
         return ht - h0

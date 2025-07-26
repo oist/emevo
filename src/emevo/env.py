@@ -38,9 +38,13 @@ class Status:
         age = self.age.at[child_indices].set(0)
         shared_energy = self.energy * energy_share_ratio
         shared_energy_with_sentinel = jnp.concatenate((shared_energy, jnp.zeros(1)))
-        shared = shared_energy_with_sentinel[parent_indices]
-        energy = self.energy.at[child_indices].set(shared)
-        energy = energy.at[parent_indices].add(-shared)
+        shared_energy_selected = shared_energy_with_sentinel[parent_indices]
+        energy = (
+            self.energy.at[child_indices]
+            .set(shared_energy_selected)
+            .at[parent_indices]
+            .add(-shared_energy_selected)
+        )
         return replace(self, age=age, energy=energy)
 
     def deactivate(self, flag: jax.Array) -> Self:
