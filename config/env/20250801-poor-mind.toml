@@ -3,7 +3,7 @@ n_max_agents = 240
 n_max_foods = 160
 n_food_sources = 2
 observe_food_label = true
-food_energy_coef = [1.0]
+food_energy_coef = [1.0, 0.2]
 food_num_fn = [
     ["linear", 20, 0.2, 120],
     ["linear", 20, 0.2, 60],
