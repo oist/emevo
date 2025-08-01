@@ -3,14 +3,16 @@ n_max_agents = 240
 n_max_foods = 160
 n_food_sources = 2
 observe_food_label = true
-food_energy_coef = [1.0]
+food_energy_coef = [1.0, 2.0]
 food_num_fn = [
-    ["linear", 20, 0.2, 120],
+    ["linear", 20, 0.2, 60],
     ["linear", 20, 0.2, 60],
 ]
-food_loc_fn = ["uniform", "uniform"]
-food_color = [[222, 116, 253, 255], [200, 200, 200, 255]]
-foods_min_dist = 40.0
+food_loc_fn = [
+    ["uniform", [0.0, 240.0, 0.0, 480.0]],
+    ["uniform", [240.0, 480.0, 0.0, 480.0]]
+]
+food_color = [[27, 121, 35, 255], [234, 128, 30, 255]]
 agent_loc_fn = "uniform"
 xlim = [0.0, 480.0]
 ylim = [0.0, 480.0]
@@ -28,12 +30,9 @@ angular_damping = 0.6
 max_force = 80.0
 min_force = -20.0
 init_energy = 80.0
-init_sodium = 40.0
 energy_capacity = 400.0
 force_energy_consumption = 1e-5
 basic_energy_consumption = 5e-4
-force_sodium_consumption = 2e-6
-basic_sodium_consumption = 1e-4
 energy_share_ratio = 0.4
 n_velocity_iter = 6
 n_position_iter = 2
