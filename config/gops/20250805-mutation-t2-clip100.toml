@@ -1,0 +1,10 @@
+path = "emevo.genetic_ops.StudentTMutation"
+init_std = 0.1
+init_mean = 0.0
+
+[params]
+df = 2.0
+loc = 0.0
+scale = 0.4
+clip_min = -100.0
+clip_max = 100.0
