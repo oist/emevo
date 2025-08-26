@@ -3,21 +3,31 @@ from pathlib import Path
 import polars as pl
 import typer
 
-from emevo.analysis.log_plotting import load_log
+
+def log_iter(basepath: Path, n_states: int = 10):
+    for i in range(n_states):
+        idx = i + 1
+        logpath = basepath.joinpath(f"log-{idx}.parquet").expanduser()
+        if logpath.exists():
+            yield pl.scan_parquet(logpath)
 
 
 def main(logd: Path, predator_slot: int = 450, n_states: int = 10) -> None:
-    ldf = load_log(logd, last_idx=n_states).with_columns(
-        pl.col("step").alias("Step"),
-        pl.when(pl.col("slot") < predator_slot)
-        .then(pl.lit("prey"))
-        .otherwise(pl.lit("predator"))
-        .alias("Species"),
-    )
-    pop_df = ldf.group_by("Step", "Species").agg(
-        pl.count().alias("Population"),
-    )
-    pop_df.collect().write_parquet(logd / "popl.parquet")
+    popl_df_list = []
+    for log in log_iter(logd, n_states):
+        ldf = log.with_columns(
+            pl.col("step").alias("Step"),
+            pl.when(pl.col("slots") < predator_slot)
+            .then(pl.lit("prey"))
+            .otherwise(pl.lit("predator"))
+            .alias("Species"),
+        )
+        popl_df = ldf.group_by("Step", "Species").agg(
+            pl.len().alias("Population"),
+        )
+        popl_df_list.append(popl_df.collect())
+    df = pl.concat(popl_df_list)
+    df.write_parquet(logd / "popl.parquet")
 
 
 if __name__ == "__main__":
