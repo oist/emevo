@@ -101,7 +101,7 @@ def plot_bd_models(
         else:
             ax = fig.add_subplot(111, projection="3d")
         if simpletitle:
-            ax.set_title("Birth function", fontsize=16)
+            ax.set_title("Birth function $b(e)$", fontsize=16)
         else:
             ax.set_title(f"{type(birth_model).__name__} Birth function", fontsize=14)
         if birth2d:

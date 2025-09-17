@@ -191,8 +191,8 @@ def vis_hazard(
     initial: bool = True,
     shown_params: dict[str, float] | None = None,
 ) -> tuple[Poly3DCollection, Text | None]:
-    age_space = jnp.linspace(0, age_max, n_discr)
-    energy_space = jnp.linspace(energy_max, 0.0, n_discr)
+    age_space = jnp.linspace(age_max, 0.0, n_discr)
+    energy_space = jnp.linspace(0.0, energy_max, n_discr)
     if method == "hazard":
         hf = hazard_fn
     elif method == "cumulative hazard":
@@ -213,8 +213,12 @@ def vis_hazard(
         antialiased=True,
     )
     if initial:
-        ax.set_xlim((age_max, 0.0))
-        ax.set_ylim((0.0, energy_max))
+        ax.set_xlim((0.0, age_max))
+        ax.set_ylim((energy_max, 0.0))
+        ax.view_init(elev=20.0, azim=-60)
+        ax.tick_params(axis="x", pad=8)
+        ax.tick_params(axis="y", pad=8)
+
         if method == "survival":
             ax.set_zlim((0.0, 1.0))
         else:
@@ -225,7 +229,7 @@ def vis_hazard(
                 ticker.FuncFormatter(lambda x, _: f"{x:.0e}".replace("e-0", "e-"))
             )
 
-        ax.set_xlabel("Age $t$", fontsize=14)
+        ax.set_xlabel("Age $t$", fontsize=14, labelpad=10)
 
         def format_age(x: float, _pos) -> str:
             del _pos
@@ -237,7 +241,7 @@ def vis_hazard(
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_age))
         ax.xaxis.set_ticks(np.linspace(age_max, 0.0, 5))
         ax.yaxis.set_ticks(np.linspace(0.0, energy_max, 5))
-        ax.set_ylabel("Energy $e$", fontsize=14)
+        ax.set_ylabel("Energy $e$", fontsize=14, labelpad=10)
         if method == "hazard":
             ax.set_zlabel(
                 "Hazard (Death prob.)",
