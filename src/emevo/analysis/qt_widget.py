@@ -8,7 +8,6 @@ import sys
 import warnings
 from collections import deque
 from collections.abc import Iterable
-from typing import Callable
 
 import matplotlib as mpl
 import matplotlib.colors as mc
@@ -31,7 +30,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QPainter
 
 from emevo.analysis.mgl_widget import MglWidget
-from emevo.environments.circle_foraging import CircleForaging
+from emevo.environments.circle_foraging import AGENT_COLOR, CircleForaging
 from emevo.exp_utils import SavedPhysicsState
 from emevo.plotting import CBarRenderer
 
@@ -104,7 +103,7 @@ class BarChart(QtWidgets.QWidget):
             us_ind = name.index("_")
             if re.search(".*_[0-9]+$", name):
                 us_ind = name.index("_")
-                barset.setLabel(f"{name[0]}_{name[us_ind + 1: us_ind + 4]}")
+                barset.setLabel(f"{name[0]}_{name[us_ind + 1 : us_ind + 4]}")
             else:
                 barset.setLabel(f"{name[:us_ind]}_{name[us_ind + 1]}")
         return barset
@@ -220,6 +219,8 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         export_button.clicked.connect(self.exportData)
         # Original color checkbox
         self._orig_color_checkbox = QtWidgets.QCheckBox("Original Color")
+        # Selected color checkbox
+        self._select_color_checkbox = QtWidgets.QCheckBox("Change Selected Color")
         # Colorbar
         # Common
         rb1 = self._make_cbar("Energy", CBarState.ENERGY, True)
@@ -260,6 +261,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         buttons.addWidget(play_button)
         buttons.addWidget(export_button)
         buttons.addWidget(self._orig_color_checkbox)
+        buttons.addWidget(self._select_color_checkbox)
         left_control.addLayout(buttons)
         left_control.addWidget(self._slider_label)
         left_control.addWidget(self._slider)
@@ -292,6 +294,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         # Initial size
         self.resize(int(xlim * scale * 1.6), int(ylim * scale * 1.4))
         self._self_terminate = self_terminate
+        self._selected_slot = -1
 
     def _check_exit(self) -> None:
         if self._mgl_widget.exitable() and self._self_terminate:
@@ -345,7 +348,12 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
 
     def _get_colors(self, step_index: int) -> NDArray | None:
         if self._orig_color_checkbox.isChecked():
-            return None
+            if self._select_color_checkbox.isChecked() and self._selected_slot > -1:
+                colors = np.tile(np.array(AGENT_COLOR), (self._n_max_agents, 1))
+                colors[self._selected_slot] = 255, 192, 193, 255
+                return colors
+            else:
+                return None
         assert self._log_ds is not None
         log = self._get_log(self._step_offset + step_index)
         slots = np.array(log["slots"])
@@ -444,6 +452,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         if self._profile_and_rewards is None or selected_slot == -1:
             return
 
+        self._selected_slot = selected_slot
         log = self._get_log(self._step_offset + step_index)
         for slot, uid in zip(log["slots"], log["unique_id"]):
             if slot == selected_slot:
