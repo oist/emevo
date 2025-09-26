@@ -350,8 +350,8 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         if self._orig_color_checkbox.isChecked():
             if self._select_color_checkbox.isChecked() and self._selected_slot > -1:
                 colors = np.tile(np.array(AGENT_COLOR), (self._n_max_agents, 1))
-                colors[self._selected_slot] = 255, 192, 193, 255
-                return colors
+                colors[self._selected_slot] = 236, 0, 140, 255
+                return colors / 255
             else:
                 return None
         assert self._log_ds is not None
