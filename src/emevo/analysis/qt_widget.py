@@ -210,6 +210,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._slider.setMaximum(self._mgl_widget._end_index + step_offset - 1)
         self._slider.setValue(start + step_offset)
         self._slider_label = QtWidgets.QLabel(f"Step {start + step_offset}")
+        self._cd_label = QtWidgets.QLabel("0, 0")
         # Pause/Play
         pause_button = QtWidgets.QPushButton("⏸️")
         pause_button.clicked.connect(self._mgl_widget.pause)
@@ -221,7 +222,6 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._orig_color_checkbox = QtWidgets.QCheckBox("Original Color")
         # Selected color checkbox
         self._select_color_checkbox = QtWidgets.QCheckBox("Change Selected Color")
-        # Colorbar
         # Common
         rb1 = self._make_cbar("Energy", CBarState.ENERGY, True)
         rb2 = self._make_cbar("Num. Children", CBarState.N_CHILDREN)
@@ -263,7 +263,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         buttons.addWidget(self._orig_color_checkbox)
         buttons.addWidget(self._select_color_checkbox)
         left_control.addLayout(buttons)
-        left_control.addWidget(self._slider_label)
+        labels = QtWidgets.QHBoxLayout()
+        labels.addWidget(self._slider_label)
+        labels.addWidget(self._cd_label)
+        left_control.addLayout(labels)
         left_control.addWidget(self._slider)
         cbar_selector = QtWidgets.QGridLayout()
         for rb, row, col in zip(radio_buttons, [0, 1, 2, 0, 1, 2], [0, 0, 0, 1, 1, 1]):
@@ -287,6 +290,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         # Signals
         self._mgl_widget.selectionChanged.connect(self.updateRewards)
         self._mgl_widget.stepChanged.connect(self.updateStep)
+        self._mgl_widget.cdUpdated.connect(self.updateCd)
         self._slider.sliderMoved.connect(self._mgl_widget.sliderChanged)
         self._slider.sliderMoved.connect(self.updateSliderLabel)
         if profile_and_rewards is not None:
@@ -461,6 +465,10 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                     self._get_rewards(uid),
                 )
                 return
+
+    @Slot(float, float)
+    def updateCd(self, x: float, y: float) -> None:
+        self._cd_label.setText(f"{x:.2f}, {y:.2f}")
 
     def _make_cbar(
         self,

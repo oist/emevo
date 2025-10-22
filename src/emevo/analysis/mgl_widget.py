@@ -41,6 +41,7 @@ def _overlap(p: jax.Array, circle: Circle, state: State) -> jax.Array:
 class MglWidget(QOpenGLWidget):
     selectionChanged = Signal(int, int)
     stepChanged = Signal(int)
+    cdUpdated = Signal(float, float)
 
     def __init__(
         self,
@@ -108,6 +109,7 @@ class MglWidget(QOpenGLWidget):
         self._selected_slot = 0
         self._selected_food_slot = 0
 
+
     def _sensor_fn(self, stated: StateDict) -> tuple[jax.Array, jax.Array]:
         return self._env._get_selected_sensor(stated, self._selected_slot)
 
@@ -164,6 +166,7 @@ class MglWidget(QOpenGLWidget):
         if evt.button() != Qt.LeftButton:
             return
         position = self._scale_position(evt.position())
+        self.cdUpdated.emit(*position)
         sd = self._get_stated()
         posarray = jnp.array(position)
 
