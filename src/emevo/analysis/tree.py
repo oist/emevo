@@ -7,7 +7,7 @@ import functools
 import json
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 from weakref import ReferenceType
 from weakref import ref as make_weakref
 
@@ -134,6 +134,52 @@ class SplitNode:
     reward_mean: dict[str, float] | None = None
     children: set[int] = dataclasses.field(default_factory=set)
     parent: int | None = None
+
+
+def traverse_split_nodes(
+    split_nodes: dict[int, SplitNode],
+    visit_fn: Callable[[int], None],
+    preorder: bool = False,
+) -> None:
+    parents = set()
+
+    def find_parents(node_index: int) -> None:
+        node = split_nodes[node_index]
+        if node.parent is None:
+            parents.add(node_index)
+        else:
+            find_parents(node.parent)
+
+    for index in split_nodes.keys():
+        find_parents(index)
+
+    def visit_node(node_index: int) -> None:
+        node = split_nodes[node_index]
+
+        if preorder:
+            visit_fn(node_index)
+        for child in node.children:
+            visit_node(child)
+        if not preorder:
+            visit_fn(node_index)
+
+    for parent in parents:
+        visit_node(parent)
+
+
+def number_split_nodes(
+    split_nodes: dict[int, SplitNode],
+    preorder: bool = False,
+) -> dict[int, int]:
+    number = {}
+
+    def visit(nodeid: int) -> None:
+        length = len(number)
+        number[nodeid] = length
+
+    traverse_split_nodes(split_nodes, visit, preorder=preorder)
+
+    return number
 
 
 def save_split_nodes(split_nodes: dict[int, SplitNode], path: Path) -> None:

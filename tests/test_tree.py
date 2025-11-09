@@ -1,12 +1,18 @@
 import operator
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 import pyarrow.parquet as pq
 import pytest
 
 from emevo.analysis import Tree
-from emevo.analysis.tree import load_split_nodes, save_split_nodes
+from emevo.analysis.tree import (
+    load_split_nodes,
+    number_split_nodes,
+    save_split_nodes,
+    traverse_split_nodes,
+)
 
 ASSET_DIR = Path(__file__).parent.joinpath("assets")
 
@@ -82,6 +88,57 @@ def test_split(treedef: list[tuple[int, int]]) -> None:
     assert len(sp2) == 2
     assert sp2[0].size == 4, sp2
     assert sp2[1].size == 6
+
+
+def test_split_traverse(treedef: list[tuple[int, int]]) -> None:
+    tree = Tree.from_iter(treedef)
+    sp = tree.split(min_group_size=3)
+    #     0             0
+    #    / \           / \
+    #   1   2         1   2
+    #  /|\  |\         \
+    # 3 4 5 6 7         5
+    #     |\
+    #     8 9
+
+    def make_visit_fn() -> tuple[dict[int, int], Callable[[int], None]]:
+        number = {}
+
+        def visit(nodeid: int) -> None:
+            length = len(number)
+            number[nodeid] = length
+
+        return number, visit
+
+    d1, visit1 = make_visit_fn()
+    traverse_split_nodes(sp, visit1, preorder=True)
+    assert d1[0] == 0
+    assert d1[1] == 1
+    assert d1[5] == 2
+    assert d1[2] == 3
+
+    d2, visit2 = make_visit_fn()
+    traverse_split_nodes(sp, visit2, preorder=False)
+    assert d2[0] == 3
+    assert d2[1] == 1
+    assert d2[5] == 0
+    assert d2[2] == 2
+
+
+def test_number_split_nodes(treedef: list[tuple[int, int]]) -> None:
+    tree = Tree.from_iter(treedef)
+    sp = tree.split(min_group_size=3)
+    d1 = number_split_nodes(sp, True)
+    assert d1[0] == 0
+    assert d1[1] == 1
+    assert d1[5] == 2
+    assert d1[2] == 3
+
+    d2 = number_split_nodes(sp, False)
+    assert d2[0] == 3
+    assert d2[1] == 1
+    assert d2[5] == 0
+    assert d2[2] == 2
 
 
 def test_split_saveload(treedef: list[tuple[int, int]]) -> None:
