@@ -83,6 +83,10 @@ class CfConfigWithPredator(CfConfig):
     predator_eat_interval: int = 10
     predator_mouth_range: str | list[int] = "same"
 
+    @property
+    def n_max_preys(self) -> int:
+        return self.n_max_agents - self.n_max_predators
+
 
 @dataclasses.dataclass
 class PredatorProfile(SavedProfile):
@@ -522,6 +526,8 @@ def evolve(
     cfconfig_path: Path = DEFAULT_CFCONFIG,
     bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240916-sel-a4e7-d15.toml",
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
+    predator_gopsconfig_path: Path = PROJECT_ROOT
+    / "config/gops/20241010-mutation-t-2.toml",
     predator_bdconfig_path: Path = PROJECT_ROOT
     / "config/bd/20241229-predator-d100.toml",
     min_age_for_save: int = 0,
@@ -532,6 +538,7 @@ def evolve(
     predator_birth_override: str = "",
     predator_hazard_override: str = "",
     gops_params_override: str = "",
+    predator_gops_params_override: str = "",
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
     log_interval: int = 1000,
@@ -557,6 +564,8 @@ def evolve(
         gopsconfig = toml.from_toml(GopsConfig, f.read())
     with predator_bdconfig_path.open("r") as f:
         predator_bdconfig = toml.from_toml(BDConfig, f.read())
+    with gopsconfig_path.open("r") as f:
+        predator_gopsconfig = toml.from_toml(GopsConfig, f.read())
 
     # Apply overrides
     cfconfig.apply_override(env_override)
@@ -565,11 +574,17 @@ def evolve(
     predator_bdconfig.apply_birth_override(predator_birth_override)
     predator_bdconfig.apply_hazard_override(predator_hazard_override)
     gopsconfig.apply_params_override(gops_params_override)
+    predator_gopsconfig.apply_params_override(predator_gops_params_override)
 
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
     predator_birth_fn, predator_hazard_fn = predator_bdconfig.load_models()
-    mutation = gopsconfig.load_model()
+    # We combine two gops model here
+    mutation = gops.PPMutation(
+        cast(gops.Mutation, gopsconfig.load_model()),
+        cast(gops.Mutation, predator_gopsconfig.load_model()),
+        split=cfconfig.n_max_preys,
+    )
     # Make env
     env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))
