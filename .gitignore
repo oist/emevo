@@ -12,6 +12,7 @@
 .ipynb_checkpoints/
 analysis-notebooks/
 local-notebooks/
+analysis*/
 data/
 requirements/*.txt
 # This should be local
