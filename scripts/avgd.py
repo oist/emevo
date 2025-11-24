@@ -42,7 +42,7 @@ def compute_avg_moved(xy: NDArray, stepdf: pl.DataFrame) -> pl.DataFrame:
     uid_list = []
     avgd_list = []
     for uid, slot, start, end in stepdf.iter_rows():
-        if end - start < 2:
+        if end - start < 4:
             continue
         avgd_ = avgd(start, end, slot)
         assert not np.isnan(avgd_), (start, end, slot)

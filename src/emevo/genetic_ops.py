@@ -55,6 +55,19 @@ class Mutation(abc.ABC):
         )
         return result
 
+# For prey/predator
+@dataclasses.dataclass(frozen=True)
+class PPMutation(Mutation):
+    mutation1: Mutation
+    mutation2: Mutation
+    split: int
+
+    def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
+        k1, k2 = jax.random.split(prng_key)
+        a = self.mutation1._add_noise(k1, array[: self.split])
+        b = self.mutation2._add_noise(k2, array[self.split: ])
+        return jnp.concatenate((a, b))
+
 
 @dataclasses.dataclass(frozen=True)
 class UniformCrossover(Crossover):
@@ -159,6 +172,20 @@ class CauchyMutation(Mutation):
     def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
         cauchy = jax.random.cauchy(prng_key, shape=array.shape)
         res = array + self.loc + cauchy * self.scale
+        return _clip_minmax(res, self.clip_min, self.clip_max)
+
+
+@dataclasses.dataclass(frozen=True)
+class StudentTMutation(Mutation):
+    df: float = 1.0  # Equal to Cauthy
+    loc: float = 0.0
+    scale: float = 1.0
+    clip_min: float | None = None
+    clip_max: float | None = None
+
+    def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
+        t = jax.random.t(prng_key, self.df, shape=array.shape)
+        res = array + self.loc + t * self.scale
         return _clip_minmax(res, self.clip_min, self.clip_max)
 
 
