@@ -1,6 +1,7 @@
 import dataclasses
+import itertools
+from collections import defaultdict
 from pathlib import Path
-from typing import Annotated
 
 import numpy as np
 import polars as pl
@@ -31,19 +32,14 @@ def load_agent_state(dirpath: Path, n_states: int = 10) -> AgentState:
 
 def load(
     logd: Path,
-    unique_id: list[int],
     n_states: int = 10,
 ) -> tuple[AgentState, pl.DataFrame]:
     agent_state = load_agent_state(logd, n_states=n_states)
     if (logd / "age.parquet").exists():
-        return agent_state, pl.read_parquet(logd / "age.parquet").filter(
-            pl.col("unique_id").is_in(unique_id)
-        ).select("unique_id", "slots", "start", "end")
-    ldf = (
-        load_log(logd, last_idx=n_states)
-        .with_columns(pl.col("step").alias("Step"))
-        .filter(pl.col("unique_id").is_in(unique_id))
-    )
+        return agent_state, pl.read_parquet(logd / "age.parquet").select(
+            "unique_id", "slots", "start", "end"
+        )
+    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
     stepdf = (
         ldf.group_by("unique_id")
         .agg(
@@ -56,37 +52,50 @@ def load(
     return agent_state, stepdf
 
 
-def pickup_traj(agent_state: AgentState, stepdf: pl.DataFrame) -> pl.DataFrame:
+def assign_range(
+    agent_state: AgentState,
+    stepdf: pl.DataFrame,
+    x_grid: int,
+    y_grid: int,
+    max_x: int,
+    max_y: int,
+) -> pl.DataFrame:
     uid_list = []
-    step_list = []
-    x_list = []
-    y_list = []
+    t_list = []
+    range_dict = defaultdict(list)
+    bins_x = np.arange(0, max_x + 1, x_grid)
+    bins_y = np.arange(0, max_y + 1, y_grid)
     for uid, slot, start, end in stepdf.iter_rows():
         if end - start < 2:
-            continue
-        xy = agent_state.axy[start: end, slot][:, 1:]
-        x_list.append(xy[:, 0])
-        y_list.append(xy[:, 1])
-        uid_list += [uid] * xy.shape[0]
-        step_list.append(np.arange(start, end))
+            pass
+        # Skip time 0
+        xy = agent_state.axy[start:end, slot][1:, 1:]
+        t = xy.shape[0]
+        hist, _, _ = np.histogram2d(xy[:, 0], xy[:, 1], bins=[bins_x, bins_y])
+        for x, y in itertools.product(range(0, max_x, x_grid), range(0, max_y, y_grid)):
+            range_dict[f"(-{x + x_grid}, {y + y_grid})"].append(hist[x, y] / t)
+        uid_list.append(uid)
+        t_list.append(t)
     return pl.from_dict(
         {
             "unique_id": uid_list,
-            "x": np.concatenate(x_list),
-            "y": np.concatenate(y_list),
-            "step_id": np.concatenate(step_list),
+            "t": t_list,
+            **range_dict,
         }
     )
 
 
 def main(
     logd: Path,
-    unique_id: Annotated[list[int], typer.Argument(help="One or more unique IDs.")],
     n_states: int = 10,
+    x_grid: int = 60,
+    y_grid: int = 60,
+    max_x: int = 480,
+    max_y: int = 480,
 ) -> None:
-    agent_state, stepdf = load(logd, unique_id, n_states)
-    traj_df = pickup_traj(agent_state, stepdf)
-    traj_df.write_parquet(logd / "pickup-traj.parquet")
+    agent_state, stepdf = load(logd, n_states)
+    df = assign_range(agent_state, stepdf, x_grid, y_grid, max_x, max_y)
+    df.write_parquet(logd / "xyrange.parquet")
 
 
 if __name__ == "__main__":
