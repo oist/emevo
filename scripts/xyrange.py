@@ -66,11 +66,10 @@ def assign_range(
     bins_x = np.arange(0, max_x + 1, x_grid)
     bins_y = np.arange(0, max_y + 1, y_grid)
     for uid, slot, start, end in stepdf.iter_rows():
-        if end - start < 2:
-            pass
-        # Skip time 0
         xy = agent_state.axy[start:end, slot][1:, 1:]
         t = xy.shape[0]
+        if t < 1:
+            continue
         hist, _, _ = np.histogram2d(xy[:, 0], xy[:, 1], bins=[bins_x, bins_y])
         for x, y in itertools.product(range(max_x // x_grid), range(max_y // y_grid)):
             range_dict[f"({x + 1}, {y + 1})"].append(hist[x, y] / t)
