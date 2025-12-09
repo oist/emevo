@@ -560,6 +560,7 @@ def widget(
     log_path: Path | None = None,
     self_terminate: bool = False,
     profile_and_rewards_path: Path | None = None,
+    rgba_table_path: Path | None = None,
     cm_fixed_minmax: str = "",
     env_override: str = "",
     scale: float = 2.0,
@@ -600,6 +601,18 @@ def widget(
     else:
         cm_fixed_minmax_dict = {}
 
+    if rgba_table_path is None:
+        custom_color = None
+    else:
+        import pyarrow.parquet as pq
+
+        rgba_df = pq.read_table(rgba_table_path)
+        cols = rgba_df.to_pydict()
+        custom_color = dict(zip(
+            cols["unique_id"],
+            zip(cols["R"], cols["G"], cols["B"], cols["A"])
+        ))
+
     start_widget(
         CFEnvReplayWidget,
         xlim=int(cfconfig.xlim[1]),
@@ -613,6 +626,7 @@ def widget(
         self_terminate=self_terminate,
         profile_and_rewards=profile_and_rewards,
         cm_fixed_minmax=cm_fixed_minmax_dict,
+        custom_color=custom_color,
         scale=scale,
     )
 

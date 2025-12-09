@@ -172,6 +172,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         log_ds: ds.Dataset | None = None,
         profile_and_rewards: pa.Table | None = None,
         cm_fixed_minmax: dict[str, tuple[float, float]] | None = None,
+        custom_color: dict[int, tuple[int, int, int, int]] | None = None,
         show_prey_pred_info: bool = False,
         show_obstacle_info: bool = False,
         scale: float = 2.0,
@@ -218,10 +219,11 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         play_button.clicked.connect(self._mgl_widget.play)
         export_button = QtWidgets.QPushButton("📤")
         export_button.clicked.connect(self.exportData)
-        # Original color checkbox
+        # Color checkboxes
         self._orig_color_checkbox = QtWidgets.QCheckBox("Original Color")
-        # Selected color checkbox
         self._select_color_checkbox = QtWidgets.QCheckBox("Change Selected Color")
+        self._custom_color_checkbox = QtWidgets.QCheckBox("Custom Color")
+        self._predator_color_checkbox = QtWidgets.QCheckBox("Predator Original Color")
         # Common
         rb1 = self._make_cbar("Energy", CBarState.ENERGY, True)
         rb2 = self._make_cbar("Num. Children", CBarState.N_CHILDREN)
@@ -251,6 +253,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._food_cm = mpl.colormaps["plasma"]
         self._norm = mc.Normalize(vmin=0.0, vmax=1.0)
         self._cm_fixed_minmax = {} if cm_fixed_minmax is None else cm_fixed_minmax
+        self._custom_color = custom_color
         if profile_and_rewards is not None:
             self._profile_and_rewards = profile_and_rewards
             self._reward_widget = BarChart(self._get_rewards(1))  # type: ignore
@@ -260,8 +263,14 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         buttons.addWidget(pause_button)
         buttons.addWidget(play_button)
         buttons.addWidget(export_button)
-        buttons.addWidget(self._orig_color_checkbox)
-        buttons.addWidget(self._select_color_checkbox)
+        checkbox_col1 = QtWidgets.QVBoxLayout()
+        checkbox_col1.addWidget(self._orig_color_checkbox)
+        checkbox_col1.addWidget(self._select_color_checkbox)
+        checkbox_col2 = QtWidgets.QVBoxLayout()
+        checkbox_col2.addWidget(self._custom_color_checkbox)
+        checkbox_col2.addWidget(self._predator_color_checkbox)
+        buttons.addLayout(checkbox_col1)
+        buttons.addLayout(checkbox_col2)
         left_control.addLayout(buttons)
         labels = QtWidgets.QHBoxLayout()
         labels.addWidget(self._slider_label)
@@ -361,6 +370,11 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         assert self._log_ds is not None
         log = self._get_log(self._step_offset + step_index)
         slots = np.array(log["slots"])
+        if self._custom_color_checkbox.isChecked() and self._custom_color is not None:
+            colors = np.zeros((self._n_max_agents, 4))
+            for slot, uid in zip(log["slots"], log["unique_id"]):
+                colors[slot] = self._custom_color[uid]
+            return colors / 255
         if self._cbar_state is CBarState.ENERGY:
             title = "Energy"
             cm = self._energy_cm
