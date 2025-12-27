@@ -14,14 +14,26 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection
 from emevo.analysis import Tree
 
 
+def load_foodlog(pathlike: PathLike, last_idx: int = 10) -> pl.DataFrame:
+    return _load_log_internal(pathlike, last_idx, prefix="foodlog").collect()
+
+
 def load_log(pathlike: PathLike, last_idx: int = 10) -> pl.LazyFrame:
+    return _load_log_internal(pathlike, last_idx)
+
+
+def _load_log_internal(
+    pathlike: PathLike,
+    last_idx: int = 10,
+    prefix: str = "log",
+) -> pl.LazyFrame:
     if isinstance(pathlike, Path):
         path = pathlike
     else:
         path = Path(pathlike)
     parquets = []
     for idx in range(1, last_idx + 1):
-        logpath = path.joinpath(f"log-{idx}.parquet").expanduser()
+        logpath = path.joinpath(f"{prefix}-{idx}.parquet").expanduser()
         if logpath.exists():
             parquets.append(pl.scan_parquet(logpath))
     return pl.concat(parquets)
