@@ -218,6 +218,7 @@ def run_evolution(
     debug_vis_yoffset: float = 0.0,
     debug_vis_partial_range_x: float | None = None,
     debug_vis_partial_range_y: float | None = None,
+    debug_vis_no_sensor: bool = False,
     headless: bool,
 ) -> None:
     key, net_key, reset_key = jax.random.split(key, 3)
@@ -281,6 +282,7 @@ def run_evolution(
             backend="headless" if headless else "pyglet",
             partial_range_x=debug_vis_partial_range_x,
             partial_range_y=debug_vis_partial_range_y,
+            no_sensor=debug_vis_no_sensor,
         )
 
     else:
@@ -431,6 +433,7 @@ def evolve(
     debug_vis_yoffset: float = 0.0,
     debug_vis_partial_range_x: float | None = None,
     debug_vis_partial_range_y: float | None = None,
+    debug_vis_no_sensor: bool = False,
     debug_print: bool = False,
     headless: bool = False,
     force_gpu: bool = True,
@@ -505,6 +508,7 @@ def evolve(
         debug_vis_yoffset=debug_vis_yoffset,
         debug_vis_partial_range_x=debug_vis_partial_range_x,
         debug_vis_partial_range_y=debug_vis_partial_range_y,
+        debug_vis_no_sensor=debug_vis_no_sensor,
         headless=headless,
         debug_print=debug_vis or debug_print,
     )

@@ -299,6 +299,7 @@ def run_evolution(
     debug_vis: bool,
     debug_vis_scale: float,
     debug_print: bool,
+    debug_vis_no_sensor: bool,
     headless: bool,
     sensor_agg_type: str = "mean",
     skip_predator_mutation: bool = False,
@@ -353,6 +354,7 @@ def run_evolution(
             env_state,
             figsize=(xmax * debug_vis_scale, ymax * debug_vis_scale),
             backend="headless" if headless else "pyglet",
+            no_sensor=debug_vis_no_sensor,
         )
     else:
         visualizer = None
@@ -544,6 +546,7 @@ def evolve(
     debug_vis: bool = False,
     debug_vis_scale: float = 2.0,
     debug_print: bool = False,
+    debug_vis_no_sensor: bool = False,
     headless: bool = False,
     measure_time: bool = False,
     skip_predator_mutation: bool = False,
@@ -628,6 +631,7 @@ def evolve(
         save_interval=save_interval,
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
+        debug_vis_no_sensor=debug_vis_no_sensor,
         headless=headless,
         sensor_agg_type=sensor_agg_type,
         measure_time=measure_time,
