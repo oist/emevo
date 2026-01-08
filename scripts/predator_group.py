@@ -95,6 +95,8 @@ def find_groups(
     step_list = []
     uid_list = []
     group_list = []
+    x_list = []
+    y_list = []
 
     for i in range(start, end, interval):
         # list up all agents that exists at this time
@@ -139,19 +141,23 @@ def find_groups(
         # 5. Map the results back to the requested lists
         for local_idx, group_id in enumerate(labels):
             original_slot = valid_indices[local_idx]
-
+            xy = all_prey_xy[original_slot]
             # Extract unique_id from dfi for this specific slot
             u_id = dfi.filter(pl.col("slots") == original_slot)["unique_id"][0]
 
             step_list.append(i)
             uid_list.append(u_id)
             group_list.append(group_id)
+            x_list.append(xy[0])
+            y_list.append(xy[1])
 
     df = pl.from_dict(
         {
             "Step": step_list,
             "unique_id": uid_list,
             "group": group_list,
+            "x": x_list,
+            "y": y_list,
         }
     )
     return df
@@ -169,6 +175,8 @@ def main(
     state_loader, stepdf = load(logd, n_states, state_size)
     group_df = find_groups(state_loader, stepdf, start, interval, n_max_preys, end)
     group_df.write_parquet(logd / "group.parquet")
+    # For debug
+    # print(group_df.sort("group"))
 
 
 if __name__ == "__main__":
