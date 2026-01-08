@@ -95,6 +95,7 @@ def find_groups(
     step_list = []
     uid_list = []
     group_list = []
+    size_list = []
     x_list = []
     y_list = []
 
@@ -138,6 +139,9 @@ def find_groups(
             return_labels=True,
         )
 
+        unique_groups, counts = np.unique(labels, return_counts=True)
+        group_to_size = dict(zip(unique_groups, counts))
+
         # 5. Map the results back to the requested lists
         for local_idx, group_id in enumerate(labels):
             original_slot = valid_indices[local_idx]
@@ -148,6 +152,7 @@ def find_groups(
             step_list.append(i)
             uid_list.append(u_id)
             group_list.append(group_id)
+            size_list.append(group_to_size[group_id])
             x_list.append(xy[0])
             y_list.append(xy[1])
 
@@ -155,7 +160,8 @@ def find_groups(
         {
             "Step": step_list,
             "unique_id": uid_list,
-            "group": group_list,
+            "Group": group_list,
+            "Group Size": size_list,
             "x": x_list,
             "y": y_list,
         }
