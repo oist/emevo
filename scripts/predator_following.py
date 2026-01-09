@@ -7,7 +7,7 @@ import polars as pl
 import typer
 from numpy.lib.npyio import NpzFile
 from numpy.typing import NDArray
-from scipy.spatial.distance import cdist
+from scipy.spatial import KDTree
 
 from emevo.analysis.log_plotting import load_log
 
@@ -94,81 +94,80 @@ def find_following_prey(
     n_max_preys: int,
     end: int,
     neighbor: float = 50.0,
-    angle_threshold: float = np.pi / 4,  # 45 degrees
+    angle_threshold_deg: float = 45,
 ) -> pl.DataFrame:
     step_list = []
     prey_uid_list = []
-    predator_slot_list = []
+    cos_threshold = np.cos(np.radians(angle_threshold_deg))
 
     for i in range(start, end, interval):
+        # 1. Fast ID Lookup
         dfi = stepdf.filter((pl.col("start") < i) & (i < pl.col("end")))
+        if dfi.is_empty():
+            continue
+        slot_to_uid = dict(zip(dfi["slots"].to_list(), dfi["unique_id"].to_list()))
+
         angle, xy, is_active = state_loader.get(i)
 
-        # Split prey and predators
-        all_prey_xy = xy[:n_max_preys]
-        all_prey_active = is_active[:n_max_preys]
-        all_prey_angles = angle[:n_max_preys]
+        # 2. Filter Active Agents
+        valid_prey_slots = np.array(
+            [s for s in range(n_max_preys) if is_active[s] and s in slot_to_uid]
+        )
+        valid_pred_slots = np.where(is_active[n_max_preys:])[0]
 
-        all_predator_xy = xy[n_max_preys:]
-        all_predator_active = is_active[n_max_preys:]
-
-        active_slots_in_df = set(dfi["slots"].to_list())
-
-        # 1. Identify valid prey indices
-        valid_prey_indices = [
-            idx
-            for idx in range(n_max_preys)
-            if all_prey_active[idx] and idx in active_slots_in_df
-        ]
-
-        # 2. Identify valid predator indices (using offset for global indexing)
-        valid_pred_indices = [
-            idx for idx, active in enumerate(all_predator_active) if active
-        ]
-
-        if not valid_prey_indices or not valid_pred_indices:
+        if len(valid_prey_slots) == 0 or len(valid_pred_slots) == 0:
             continue
 
-        # 3. Compute Distance Matrix (Prey x Predators)
-        prey_coords = all_prey_xy[valid_prey_indices]
-        pred_coords = all_predator_xy[valid_pred_indices]
-        dist_mat = cdist(prey_coords, pred_coords)
+        # 3. Spatial Indexing with KDTree
+        prey_coords = xy[valid_prey_slots]
+        pred_coords = xy[n_max_preys + valid_pred_slots]
 
-        # 4. Check Following Condition
-        for p_idx, prey_slot in enumerate(valid_prey_indices):
-            prey_pos = prey_coords[p_idx]
-            prey_angle = all_prey_angles[prey_slot]
+        # Build tree for predators, query with prey
+        tree = KDTree(pred_coords)
+        # Returns list of lists: for each prey, local indices of nearby predators
+        nearby_indices = tree.query_ball_point(prey_coords, r=neighbor)
 
-            # Unit vector of prey heading
-            prey_dir = np.array([np.cos(prey_angle), np.sin(prey_angle)])
+        # 4. Heading Alignment Check
+        prey_angles = angle[valid_prey_slots]
+        # Pre-calculate prey heading unit vectors
+        prey_dirs = np.stack([np.cos(prey_angles), np.sin(prey_angles)], axis=1)
 
-            for target_idx, pred_slot_local in enumerate(valid_pred_indices):
-                dist = dist_mat[p_idx, target_idx]
+        for p_idx, p_neighbors in enumerate(nearby_indices):
+            if not p_neighbors:
+                continue
 
-                if dist < neighbor:
-                    # Vector from prey to predator
-                    vec_to_pred = pred_coords[target_idx] - prey_pos
-                    vec_to_pred_unit = vec_to_pred / (
-                        np.linalg.norm(vec_to_pred) + 1e-6
-                    )
+            p_pos = prey_coords[p_idx]
+            p_dir = prey_dirs[p_idx]
 
-                    # Dot product to find cosine of angle between heading and predator
-                    cos_sim = np.dot(prey_dir, vec_to_pred_unit)
+            # Sub-selection of nearby predators
+            targets_pos = pred_coords[p_neighbors]
 
-                    # If angle difference is within threshold (e.g., cos(45°))
-                    if cos_sim > np.cos(angle_threshold):
-                        u_id = dfi.filter(pl.col("slots") == prey_slot)["unique_id"][0]
+            # Vector from prey to predators
+            vecs_to_preds = targets_pos - p_pos
+            dists = np.linalg.norm(vecs_to_preds, axis=1)
 
-                        step_list.append(i)
-                        prey_uid_list.append(u_id)
-                        # predator index relative to the start of predator block
-                        predator_slot_list.append(n_max_preys + pred_slot_local)
+            # Avoid division by zero
+            valid_mask = dists > 1e-6
+            if not np.any(valid_mask):
+                continue
+
+            # Normalize vectors and calculate dot product
+            unit_vecs = vecs_to_preds[valid_mask] / dists[valid_mask, np.newaxis]
+            cos_sims = np.dot(unit_vecs, p_dir)
+
+            # Check angle threshold
+            is_following = cos_sims > cos_threshold
+
+            if np.any(is_following):
+                prey_slot = valid_prey_slots[p_idx]
+                uid = slot_to_uid[prey_slot]
+                step_list.append(i)
+                prey_uid_list.append(uid)
 
     return pl.DataFrame(
         {
             "Step": step_list,
             "prey_unique_id": prey_uid_list,
-            "followed_predator_slot": predator_slot_list,
         }
     )
 
@@ -180,7 +179,7 @@ def main(
     start: int = 9216000,
     interval: int = 1000,
     end: int = 10240000,
-    neighbor: int = 25,
+    neighbor: int = 30,
     state_size: int = 1024000,
 ) -> None:
     state_loader, stepdf = load(logd, n_states, state_size)
@@ -193,7 +192,9 @@ def main(
         neighbor=neighbor,
         end=end,
     )
-    group_df.write_parquet(logd / f"group-{start}-{interval}-{neighbor}.parquet")
+    group_df.write_parquet(
+        logd / f"following-{start}-{end}-{interval}-{neighbor}.parquet"
+    )
 
 
 if __name__ == "__main__":
