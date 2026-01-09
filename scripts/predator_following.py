@@ -134,7 +134,12 @@ def find_following_prey(
         prey_dirs = np.stack([np.cos(prey_angles), np.sin(prey_angles)], axis=1)
 
         for p_idx, p_neighbors in enumerate(nearby_indices):
-            if not p_neighbors:
+            prey_slot = valid_prey_slots[p_idx]
+            uid = slot_to_uid[prey_slot]
+            step_list.append(i)
+            uid_list.append(uid)
+            if len(p_neighbors) == 0:
+                is_following_list.append(False)
                 continue
 
             p_pos = prey_coords[p_idx]
@@ -155,10 +160,7 @@ def find_following_prey(
             # Normalize vectors and calculate dot product
             unit_vecs = vecs_to_preds[valid_mask] / dists[valid_mask, np.newaxis]
             cos_sims = np.dot(unit_vecs, p_dir)
-            prey_slot = valid_prey_slots[p_idx]
-            uid = slot_to_uid[prey_slot]
-            step_list.append(i)
-            uid_list.append(uid)
+
             # Check angle threshold
             is_following = cos_sims > cos_threshold
             is_following_list.append(bool(np.any(is_following)))
