@@ -109,8 +109,8 @@ def find_following_prey(
 
         angle, xy, is_active = state_loader.get(i)
         slot_to_uid = dict(zip(dfi["slots"].to_list(), dfi["unique_id"].to_list()))
-        is_in_valid_range = ((60 < xy[0]) & (xy[0] < 900)) & (
-            (60 < xy[1]) & (xy[1] < 900)
+        is_in_valid_range = ((60 < xy[:, 0]) & (xy[:, 0] < 900)) & (
+            (60 < xy[:, 1]) & (xy[:, 1] < 900)
         )
         is_valid = is_active & is_in_valid_range
 
@@ -185,6 +185,7 @@ def main(
     end: int = 10240000,
     neighbor: int = 30,
     state_size: int = 1024000,
+    angle_deg: float = 45.0,
 ) -> None:
     state_loader, stepdf = load(logd, n_states, state_size)
     group_df = find_following_prey(
@@ -195,6 +196,7 @@ def main(
         n_max_preys=n_max_preys,
         neighbor=neighbor,
         end=end,
+        angle_threshold_deg=angle_deg,
     )
     group_df.write_parquet(logd / f"following-{start}-{interval}-{neighbor}.parquet")
 
