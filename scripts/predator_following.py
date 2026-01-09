@@ -167,7 +167,7 @@ def find_following_prey(
     return pl.DataFrame(
         {
             "Step": step_list,
-            "prey_unique_id": prey_uid_list,
+            "unique_id": prey_uid_list,
         }
     )
 
@@ -192,9 +192,7 @@ def main(
         neighbor=neighbor,
         end=end,
     )
-    group_df.write_parquet(
-        logd / f"following-{start}-{interval}-{neighbor}.parquet"
-    )
+    group_df.write_parquet(logd / f"following-{start}-{interval}-{neighbor}.parquet")
 
 
 if __name__ == "__main__":
