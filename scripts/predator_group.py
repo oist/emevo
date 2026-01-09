@@ -90,7 +90,7 @@ def find_groups(
     start: int,
     interval: int,
     n_max_preys: int,
-    neighbor: int,
+    neighbor: float,
     end: int,
 ) -> pl.DataFrame:
     step_list = []
@@ -177,7 +177,7 @@ def main(
     start: int = 9216000,
     interval: int = 1000,
     end: int = 10240000,
-    neighbor: int = 25,
+    neighbor: float = 25.0,
     state_size: int = 1024000,
 ) -> None:
     state_loader, stepdf = load(logd, n_states, state_size)
