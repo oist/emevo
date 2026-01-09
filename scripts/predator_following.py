@@ -115,7 +115,9 @@ def find_following_prey(
         is_valid = is_active & is_in_valid_range
 
         # 2. Filter Active Agents
-        valid_prey_slots = np.where(is_valid[:n_max_preys])[0]
+        valid_prey_slots = np.array(
+            [s for s in range(n_max_preys) if is_valid[s] and s in slot_to_uid]
+        )
         valid_pred_slots = np.where(is_valid[n_max_preys:])[0]
 
         if len(valid_prey_slots) == 0 or len(valid_pred_slots) == 0:
