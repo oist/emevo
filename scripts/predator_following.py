@@ -108,7 +108,7 @@ def find_following_prey(
             continue
 
         angle, xy, is_active = state_loader.get(i)
-
+        slot_to_uid = dict(zip(dfi["slots"].to_list(), dfi["unique_id"].to_list()))
         is_in_valid_range = ((60 < xy[0]) & (xy[0] < 900)) & (
             (60 < xy[1]) & (xy[1] < 900)
         )
