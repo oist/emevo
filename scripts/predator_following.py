@@ -193,7 +193,7 @@ def main(
         end=end,
     )
     group_df.write_parquet(
-        logd / f"following-{start}-{end}-{interval}-{neighbor}.parquet"
+        logd / f"following-{start}-{interval}-{neighbor}.parquet"
     )
 
 
