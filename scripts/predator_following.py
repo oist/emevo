@@ -97,7 +97,8 @@ def find_following_prey(
     angle_threshold_deg: float = 45,
 ) -> pl.DataFrame:
     step_list = []
-    prey_uid_list = []
+    uid_list = []
+    is_following_list = []
     cos_threshold = np.cos(np.radians(angle_threshold_deg))
 
     for i in range(start, end, interval):
@@ -154,20 +155,19 @@ def find_following_prey(
             # Normalize vectors and calculate dot product
             unit_vecs = vecs_to_preds[valid_mask] / dists[valid_mask, np.newaxis]
             cos_sims = np.dot(unit_vecs, p_dir)
-
+            prey_slot = valid_prey_slots[p_idx]
+            uid = slot_to_uid[prey_slot]
+            step_list.append(i)
+            uid_list.append(uid)
             # Check angle threshold
             is_following = cos_sims > cos_threshold
-
-            if np.any(is_following):
-                prey_slot = valid_prey_slots[p_idx]
-                uid = slot_to_uid[prey_slot]
-                step_list.append(i)
-                prey_uid_list.append(uid)
+            is_following_list.append(bool(np.any(is_following)))
 
     return pl.DataFrame(
         {
             "Step": step_list,
-            "unique_id": prey_uid_list,
+            "unique_id": uid_list,
+            "is_following": is_following_list,
         }
     )
 
