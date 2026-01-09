@@ -90,6 +90,7 @@ def find_groups(
     start: int,
     interval: int,
     n_max_preys: int,
+    neighbor: int,
     end: int,
 ) -> pl.DataFrame:
     step_list = []
@@ -128,9 +129,9 @@ def find_groups(
         # pdist returns condensed distance vector, squareform converts to NxN matrix
         dist_mat = squareform(pdist(valid_xy))
 
-        # 3. Create an adjacency matrix where distance < 25
+        # 3. Create an adjacency matrix where distance < neighbor
         # This acts as the connectivity requirement for our "groups"
-        adj_matrix = dist_mat < 25
+        adj_matrix = dist_mat < neighbor
 
         # 4. Use connected components to label the groups (similar to Union-Find)
         _, labels = connected_components(
@@ -176,13 +177,20 @@ def main(
     start: int = 9216000,
     interval: int = 1000,
     end: int = 10240000,
+    neighbor: int = 25,
     state_size: int = 1024000,
 ) -> None:
     state_loader, stepdf = load(logd, n_states, state_size)
-    group_df = find_groups(state_loader, stepdf, start, interval, n_max_preys, end)
-    group_df.write_parquet(logd / "group.parquet")
-    # For debug
-    # print(group_df.sort("group"))
+    group_df = find_groups(
+        state_loader,
+        stepdf,
+        start,
+        interval,
+        n_max_preys,
+        neighbor,
+        end,
+    )
+    group_df.write_parquet(logd / f"group-{start}-{interval}-{neighbor}.parquet")
 
 
 if __name__ == "__main__":
