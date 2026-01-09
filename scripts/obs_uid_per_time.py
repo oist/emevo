@@ -8,10 +8,10 @@ from emevo.analysis.log_plotting import load_log
 REWARD_TYPES = [
     "Action Reward ($w_{act}$)",
     "Food Reward ($w_{food}$)",
-    "Predator Reward ($w_{pred}$)",
-    "Prey Reward ($w_{prey}$)",
+    "Agent Reward ($w_{agent}$)",
+    "Obs Reward ($w_{obs}$)",
 ]
-REWARD_KEYS = ["action", "food_1", "predator_sensor", "prey_sensor"]
+REWARD_KEYS = ["action", "food_1", "agent_sensor", "obs_sensor"]
 
 
 def main(
