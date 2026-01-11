@@ -103,6 +103,8 @@ class CircleForagingWithObstacle(CircleForaging):
         obstacle_damage: float = 10.0,
         n_obstacles: int = 4,
         obstacle_size: float = 20.0,
+        n_hol_blocks: int = 10,
+        n_vert_blocks: int = 10,
         obstacle_schedule: list[tuple[int, int]] | None = None,
         **kwargs,
     ) -> None:
@@ -112,8 +114,6 @@ class CircleForagingWithObstacle(CircleForaging):
         super().__init__(**kwargs, _n_additional_objs=1)
         xlim, ylim = self._coordinate.bbox()
         xlen, ylen = xlim[1] - xlim[0], ylim[1] - ylim[0]
-        n_hol_blocks = xlen // obstacle_size
-        n_vert_blocks = ylen // obstacle_size
         n_max_obstacles = n_hol_blocks * n_vert_blocks
         assert (
             n_obstacles <= n_max_obstacles
