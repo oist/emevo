@@ -93,7 +93,7 @@ def check_death_place(loader: AgentStateLoader, stepdf: pl.DataFrame) -> pl.Data
     uid_list = []
     x_list = []
     y_list = []
-    for uid, slot, start, end in stepdf.sort("start").iter_rows():
+    for uid, slot, start, end in stepdf.sort("end").iter_rows():
         if end - start < 2:
             continue
         uid_list.append(uid)
