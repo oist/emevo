@@ -304,6 +304,7 @@ def save_physstates(phys_states: list[SavedPhysicsState], path: Path) -> None:
 class LogMode(str, enum.Enum):
     NONE = "none"
     REWARD = "reward"
+    REWARD_AGENT = "reward-agent"
     REWARD_LOG = "reward-log"
     REWARD_LOG_STATE = "reward-log-state"
     FULL = "reward-log-state-agent"
