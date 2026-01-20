@@ -89,7 +89,8 @@ def reaction_to_predator(
         "unique_id": [],
         "act1": [],
         "act2": [],
-        "rotation": [],
+        "x": [],
+        "y": [],
         "relative_angle": [],
     }
     cos_threshold = np.cos(np.radians(angle_threshold_deg))
@@ -123,7 +124,7 @@ def reaction_to_predator(
         prey_dirs = np.stack([np.cos(prey_angles), np.sin(prey_angles)], axis=1)
 
         for p_idx, p_neighbors in enumerate(nearby_indices):
-            if not p_neighbors:
+            if len(p_neighbors) == 0:
                 continue
 
             p_pos = prey_coords[p_idx]
@@ -139,21 +140,13 @@ def reaction_to_predator(
             if not np.any(valid_dist_mask):
                 continue
 
-            # Filter vectors and distances to valid ones
-            filtered_vecs = vecs_to_preds[valid_dist_mask]
-            filtered_dists = dists[valid_dist_mask]
+            unit_vecs = vecs_to_preds[valid_dist_mask] / dists[valid_dist_mask, np.newaxis]
+            cos_sims = np.dot(unit_vecs, p_dir)
 
-            # Identify the closest predator within the neighborhood
-            closest_idx = np.argmin(filtered_dists)
-            closest_vec = filtered_vecs[closest_idx]
-            closest_dist = filtered_dists[closest_idx]
+            # Indices of predators that the prey is actually heading toward
+            heading_mask = cos_sims > cos_threshold
 
-            # Dot product check for 'heading toward' using the normalized closest vector
-            cos_sim_closest = np.dot(closest_vec / closest_dist, p_dir)
-
-            # Record reaction if heading toward ANY predator in the neighborhood
-            # (using cos_sim_closest here for the specific recorded relative_angle)
-            if cos_sim_closest > cos_threshold:
+            if np.any(heading_mask):
                 prey_slot = valid_prey_slots[p_idx]
                 uid = slot_to_uid[prey_slot]
                 logi = logdf.filter(
@@ -161,18 +154,23 @@ def reaction_to_predator(
                 ).collect()
                 act1 = logi["action_magnitude_1"].item()
                 act2 = logi["action_magnitude_2"].item()
-                # Calculate signed relative angle
-                # angle of vector to predator
-                target_angle = np.arctan2(closest_vec[1], closest_vec[0])
-                # difference: target - heading
-                rel_angle = target_angle - p_heading_angle
 
-                # Normalize angle to [-pi, pi]
+                # Among those being headed toward, find the closest
+                following_dists = dists[valid_dist_mask][heading_mask]
+                following_vecs = vecs_to_preds[valid_dist_mask][heading_mask]
+                closest_idx = np.argmin(following_dists)
+                closest_vec = following_vecs[closest_idx]
+                # Calculate signed relative angle for the closest followed predator
+                target_angle = np.arctan2(closest_vec[1], closest_vec[0])
+                rel_angle = target_angle - p_heading_angle
+                # Normalize to [-pi, pi]
                 rel_angle = (rel_angle + np.pi) % (2 * np.pi) - np.pi
                 results["Step"].append(i)
                 results["unique_id"].append(slot_to_uid[prey_slot])
                 results["act1"].append(act1)
                 results["act2"].append(act2)
+                results["x"].append(p_pos[0])
+                results["y"].append(p_pos[1])
                 results["relative_angle"].append(rel_angle)
 
     return pl.DataFrame(results)
@@ -181,26 +179,30 @@ def reaction_to_predator(
 def main(
     logd: Path,
     start: int = 0,
-    end: int = 1000000,
+    end: int = 10240000,
     interval: int = 100,
-    n_prey: int = 100,
+    n_max_preys: int = 450,
     neighbor: float = 60.0,
-    angle_deg: float = 45.0,
+    angle_deg: float = 60.0,
+    dry_run: bool = False,
 ) -> None:
     state_loader, stepdf, logdf = load(logd)
-
-    df = reaction_to_predator(
-        state_loader,
-        stepdf,
-        logdf,
-        start,
-        end,
-        interval,
-        n_prey,
-        neighbor,
-        angle_deg,
+    react_df = reaction_to_predator(
+        state_loader=state_loader,
+        stepdf=stepdf,
+        logdf=logdf,
+        start=start,
+        end=end,
+        interval=interval,
+        n_max_preys=n_max_preys,
+        neighbor=neighbor,
+        angle_threshold_deg=angle_deg,
     )
-    df.write_parquet(logd / f"reaction-{start}-{interval}-{neighbor}.parquet")
+    if dry_run:
+        with pl.Config(tbl_rows=-1, tbl_cols=-1):
+            print(react_df.sort("unique_id"))
+    else:
+        react_df.write_parquet(logd / f"reaction-{start}-{interval}-{neighbor}.parquet")
 
 
 if __name__ == "__main__":
