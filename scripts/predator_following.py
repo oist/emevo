@@ -89,36 +89,43 @@ def find_following_prey(
     uid_list = []
     is_following_list = []
     cos_threshold = np.cos(np.radians(angle_threshold_deg))
-
     for i in range(start, end, interval):
-        # 1. Fast ID Lookup
         dfi = stepdf.filter((pl.col("start") < i) & (i < pl.col("end")))
         if dfi.is_empty():
             continue
 
-        angle, xy, is_active = state_loader.get(i)
         slot_to_uid = dict(zip(dfi["slots"].to_list(), dfi["unique_id"].to_list()))
-        # 2. Filter Active Agents
-        valid_prey_slots = np.array(
-            [s for s in range(n_max_preys) if is_active[s] and s in slot_to_uid]
+
+        angle, xy, is_active = state_loader.get(i)
+
+        # 1. Filter valid slots
+        is_in_range = np.logical_and(
+            np.logical_and(60 < xy[:, 0], xy[:, 0] < 900),
+            np.logical_and(60 < xy[:, 1], xy[:, 1] < 900),
         )
-        valid_pred_slots = np.where(is_active[n_max_preys:])[0]
+        is_active_and_in_range = np.logical_and(is_in_range, is_active)
+        valid_prey_slots = np.array(
+            [
+                s
+                for s in range(n_max_preys)
+                if is_active_and_in_range[s] and s in slot_to_uid
+            ]
+        )
+        valid_pred_slots = np.where(is_active_and_in_range[n_max_preys:])[0]
 
         if len(valid_prey_slots) == 0 or len(valid_pred_slots) == 0:
             continue
 
-        # 3. Spatial Indexing with KDTree
+        # 2. Spatial lookup for nearest neighbors
         prey_coords = xy[valid_prey_slots]
         pred_coords = xy[n_max_preys + valid_pred_slots]
 
-        # Build tree for predators, query with prey
         tree = KDTree(pred_coords)
-        # Returns list of lists: for each prey, local indices of nearby predators
         nearby_indices = tree.query_ball_point(prey_coords, r=neighbor)
 
-        # 4. Heading Alignment Check
-        prey_angles = angle[valid_prey_slots]
-        # Pre-calculate prey heading unit vectors
+        # 3. Heading setup
+        prey_angles = angle[valid_prey_slots] + np.pi * 0.5
+        # angle=0 -> (0, 1)
         prey_dirs = np.stack([np.cos(prey_angles), np.sin(prey_angles)], axis=1)
 
         for p_idx, p_neighbors in enumerate(nearby_indices):
@@ -133,17 +140,18 @@ def find_following_prey(
             p_pos = prey_coords[p_idx]
             p_dir = prey_dirs[p_idx]
 
-            # Sub-selection of nearby predators
-            targets_pos = pred_coords[p_neighbors]
-
-            # Vector from prey to predators
-            vecs_to_preds = targets_pos - p_pos
+            # Vectors to all predators within 'neighbor' distance
+            vecs_to_preds = pred_coords[p_neighbors] - p_pos
             dists = np.linalg.norm(vecs_to_preds, axis=1)
 
-            # Avoid division by zero
-            valid_mask = dists > 1e-6
-            if not np.any(valid_mask):
+            # Mask out zero-distance errors
+            valid_dist_mask = dists > 1e-6
+            if not np.any(valid_dist_mask):
                 continue
+            unit_vecs = (
+                vecs_to_preds[valid_dist_mask] / dists[valid_dist_mask, np.newaxis]
+            )
+            cos_sims = np.dot(unit_vecs, p_dir)
 
             preds = (
                 logdf.filter((pl.col("unique_id") == uid) & (pl.col("Step") == i))
@@ -152,8 +160,6 @@ def find_following_prey(
                 .item()
             )
 
-            # Normalize vectors and calculate dot product
-            unit_vecs = vecs_to_preds[valid_mask] / dists[valid_mask, np.newaxis]
             cos_sims = np.dot(unit_vecs, p_dir)
 
             # Check angle threshold

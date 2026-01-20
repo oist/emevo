@@ -70,6 +70,7 @@ def load(
         )
         .collect()
     )
+    eaten_path = logd / "eaten.parquet"
     return state_loader, stepdf, ldf
 
 
@@ -104,10 +105,19 @@ def reaction_to_predator(
         angle, xy, is_active = state_loader.get(i)
 
         # 1. Filter valid slots
-        valid_prey_slots = np.array(
-            [s for s in range(n_max_preys) if is_active[s] and s in slot_to_uid]
+        is_in_range = np.logical_and(
+            np.logical_and(60 < xy[:, 0], xy[:, 0] < 900),
+            np.logical_and(60 < xy[:, 1], xy[:, 1] < 900),
         )
-        valid_pred_slots = np.where(is_active[n_max_preys:])[0]
+        is_active_and_in_range = np.logical_and(is_in_range, is_active)
+        valid_prey_slots = np.array(
+            [
+                s
+                for s in range(n_max_preys)
+                if is_active_and_in_range[s] and s in slot_to_uid
+            ]
+        )
+        valid_pred_slots = np.where(is_active_and_in_range[n_max_preys:])[0]
 
         if len(valid_prey_slots) == 0 or len(valid_pred_slots) == 0:
             continue
@@ -120,10 +130,13 @@ def reaction_to_predator(
         nearby_indices = tree.query_ball_point(prey_coords, r=neighbor)
 
         # 3. Heading setup
-        prey_angles = angle[valid_prey_slots]
+        prey_angles = angle[valid_prey_slots] + np.pi * 0.5
+        # angle=0 -> (0, 1)
         prey_dirs = np.stack([np.cos(prey_angles), np.sin(prey_angles)], axis=1)
 
         for p_idx, p_neighbors in enumerate(nearby_indices):
+            prey_slot = valid_prey_slots[p_idx]
+            uid = slot_to_uid[prey_slot]
             if len(p_neighbors) == 0:
                 continue
 
@@ -148,7 +161,6 @@ def reaction_to_predator(
 
             if np.any(heading_mask):
                 prey_slot = valid_prey_slots[p_idx]
-                uid = slot_to_uid[prey_slot]
                 logi = logdf.filter(
                     (pl.col("unique_id") == uid) & (pl.col("Step") == i)
                 ).collect()
@@ -174,6 +186,8 @@ def reaction_to_predator(
                 results["unique_id"].append(slot_to_uid[prey_slot])
                 results["act1"].append(act1)
                 results["act2"].append(act2)
+                results["x"].append(p_pos[0])
+                results["y"].append(p_pos[1])
                 results["relative_angle"].append(rel_angle)
 
     return pl.DataFrame(results)
