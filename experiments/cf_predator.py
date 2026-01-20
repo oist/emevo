@@ -179,7 +179,7 @@ def exec_rollout(
         log = Log(
             dead=jnp.where(dead, state_t.unique_id.unique_id, -1),  # type: ignore
             n_got_food=timestep.info["n_ate_food"],
-            action_magnitude=actions,
+            action_vector=actions,
             energy_gain=timestep.info["energy_gain"],
             consumed_energy=timestep.info["energy_consumption"],
             energy=state_t1db.status.energy,
@@ -738,10 +738,9 @@ def widget(
 
         rgba_df = pq.read_table(rgba_table_path)
         cols = rgba_df.to_pydict()
-        custom_color = dict(zip(
-            cols["unique_id"],
-            zip(cols["R"], cols["G"], cols["B"], cols["A"])
-        ))
+        custom_color = dict(
+            zip(cols["unique_id"], zip(cols["R"], cols["G"], cols["B"], cols["A"]))
+        )
 
     start_widget(
         CFEnvReplayWidget,

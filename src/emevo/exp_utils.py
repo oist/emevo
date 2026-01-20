@@ -158,7 +158,7 @@ class GopsConfig:
 class Log:
     dead: jax.Array
     n_got_food: jax.Array
-    action_magnitude: jax.Array
+    action_vector: jax.Array
     energy_gain: jax.Array
     consumed_energy: jax.Array
     energy: jax.Array
