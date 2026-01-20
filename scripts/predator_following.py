@@ -145,7 +145,7 @@ def find_following_prey(
             if not np.any(valid_mask):
                 continue
 
-            logi = (
+            preds = (
                 logdf.filter((pl.col("unique_id") == uid) & (pl.col("Step") == i))
                 .select("predator_sensor")
                 .collect()
@@ -158,7 +158,7 @@ def find_following_prey(
 
             # Check angle threshold
             is_following = cos_sims > cos_threshold
-            is_following_list.append(bool(np.any(is_following)) & (logi > 0))
+            is_following_list.append(bool(np.any(is_following)) & (preds > 0))
 
     return pl.DataFrame(
         {

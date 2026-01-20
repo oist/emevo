@@ -154,6 +154,11 @@ def reaction_to_predator(
                 ).collect()
                 act1 = logi["action_magnitude_1"].item()
                 act2 = logi["action_magnitude_2"].item()
+                preds = logi["predator_sensor"].item()
+
+                # if it's 0 predator is blocked by something so let's skip it
+                if preds < 1e-6:
+                    continue
 
                 # Among those being headed toward, find the closest
                 following_dists = dists[valid_dist_mask][heading_mask]
@@ -169,8 +174,6 @@ def reaction_to_predator(
                 results["unique_id"].append(slot_to_uid[prey_slot])
                 results["act1"].append(act1)
                 results["act2"].append(act2)
-                results["x"].append(p_pos[0])
-                results["y"].append(p_pos[1])
                 results["relative_angle"].append(rel_angle)
 
     return pl.DataFrame(results)
