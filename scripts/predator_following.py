@@ -58,37 +58,26 @@ def load(
     logd: Path,
     n_states: int = 10,
     state_size: int = 1024000,
-) -> tuple[AgentStateLoader, pl.DataFrame]:
+) -> tuple[AgentStateLoader, pl.DataFrame, pl.LazyFrame]:
     state_loader = get_state_loader(logd, n_states, state_size)
-
-    eaten_path = logd / "eaten.parquet"
-    if eaten_path.exists():
-        stepdf = pl.read_parquet(eaten_path).select(
-            "unique_id",
-            "slots",
-            "start",
-            "end",
+    ldf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step"))
+    stepdf = (
+        ldf.group_by("unique_id")
+        .agg(
+            pl.col("slots").first(),
+            pl.col("step").min().alias("start"),
+            pl.col("step").max().alias("end"),
         )
-    else:
-        ldf = load_log(logd, last_idx=n_states).with_columns(
-            pl.col("step").alias("Step")
-        )
-        stepdf = (
-            ldf.group_by("unique_id")
-            .agg(
-                pl.col("slots").first(),
-                pl.col("step").min().alias("start"),
-                pl.col("step").max().alias("end"),
-            )
-            .collect()
-        )
-    return state_loader, stepdf
+        .collect()
+    )
+    return state_loader, stepdf, ldf
 
 
 def find_following_prey(
     *,
     state_loader: AgentStateLoader,
     stepdf: pl.DataFrame,
+    logdf: pl.LazyFrame,
     start: int,
     interval: int,
     n_max_preys: int,
@@ -104,7 +93,6 @@ def find_following_prey(
     for i in range(start, end, interval):
         # 1. Fast ID Lookup
         dfi = stepdf.filter((pl.col("start") < i) & (i < pl.col("end")))
-        print(dfi)
         if dfi.is_empty():
             continue
 
@@ -134,7 +122,6 @@ def find_following_prey(
         prey_dirs = np.stack([np.cos(prey_angles), np.sin(prey_angles)], axis=1)
 
         for p_idx, p_neighbors in enumerate(nearby_indices):
-            print(p_idx, len(p_neighbors))
             prey_slot = valid_prey_slots[p_idx]
             uid = slot_to_uid[prey_slot]
             step_list.append(i)
@@ -158,13 +145,20 @@ def find_following_prey(
             if not np.any(valid_mask):
                 continue
 
+            logi = (
+                logdf.filter((pl.col("unique_id") == uid) & (pl.col("Step") == i))
+                .select("predator_sensor")
+                .collect()
+                .item()
+            )
+
             # Normalize vectors and calculate dot product
             unit_vecs = vecs_to_preds[valid_mask] / dists[valid_mask, np.newaxis]
             cos_sims = np.dot(unit_vecs, p_dir)
 
             # Check angle threshold
             is_following = cos_sims > cos_threshold
-            is_following_list.append(bool(np.any(is_following)))
+            is_following_list.append(bool(np.any(is_following)) & (logi > 0))
 
     return pl.DataFrame(
         {
@@ -187,10 +181,11 @@ def main(
     angle_deg: float = 60.0,
     dry_run: bool = False,
 ) -> None:
-    state_loader, stepdf = load(logd, n_states, state_size)
+    state_loader, stepdf, logdf = load(logd, n_states, state_size)
     group_df = find_following_prey(
         state_loader=state_loader,
         stepdf=stepdf,
+        logdf=logdf,
         start=start,
         interval=interval,
         n_max_preys=n_max_preys,
@@ -201,7 +196,9 @@ def main(
     if dry_run:
         print(group_df.filter(pl.col("is_following")))
     else:
-        group_df.write_parquet(logd / f"following-{start}-{interval}-{neighbor}.parquet")
+        group_df.write_parquet(
+            logd / f"following-{start}-{interval}-{neighbor}.parquet"
+        )
 
 
 if __name__ == "__main__":
