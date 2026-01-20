@@ -34,7 +34,7 @@ from emevo.environments.circle_foraging import AGENT_COLOR, CircleForaging
 from emevo.exp_utils import SavedPhysicsState
 from emevo.plotting import CBarRenderer
 
-N_MAX_SCAN: int = 10000
+SCAN_LENGTH: int = 10000
 N_MAX_CACHED_LOG: int = 100
 
 
@@ -340,24 +340,25 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
 
     def _get_log(self, step: int) -> dict[str, NDArray]:
         assert self._log_ds is not None
-        log_key = step // N_MAX_SCAN
+        log_key = step // SCAN_LENGTH
         if log_key not in self._log_cached:
-            log_key = step // N_MAX_SCAN
+            log_key = step // SCAN_LENGTH
             print("Loading log...")
             scanner = self._log_ds.scanner(
                 columns=["energy", "step", "slots", "unique_id"],
                 filter=(
-                    (step <= pc.field("step")) & (pc.field("step") <= step + N_MAX_SCAN)
+                    (step <= pc.field("step")) & (pc.field("step") < step + SCAN_LENGTH)
                 ),
             )
             table = scanner.to_table()
+
             if len(self._log_cached) > N_MAX_CACHED_LOG:
                 self._log_cached.clear()
             self._log_cached[log_key] = [
                 table.filter(pc.field("step") == i).to_pydict()
-                for i in reversed(range(step, step + N_MAX_SCAN))
+                for i in range(step, step + SCAN_LENGTH)
             ]
-        return self._log_cached[log_key][step % N_MAX_SCAN]
+        return self._log_cached[log_key][step % SCAN_LENGTH]
 
     def _get_colors(self, step_index: int) -> NDArray | None:
         if self._orig_color_checkbox.isChecked():
