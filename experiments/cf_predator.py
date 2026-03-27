@@ -530,6 +530,7 @@ def evolve(
     gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20241010-mutation-t-2.toml",
     predator_bdconfig_path: Path = PROJECT_ROOT
     / "config/bd/20241229-predator-d100.toml",
+    predator_gopsconfig_path: Path | None = None,
     min_age_for_save: int = 0,
     save_interval: int = 100000000,  # No saving by default
     env_override: str = "",
@@ -538,6 +539,7 @@ def evolve(
     predator_birth_override: str = "",
     predator_hazard_override: str = "",
     gops_params_override: str = "",
+    predator_gops_params_override: str = "",
     logdir: Path = Path("./log"),
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
     log_interval: int = 1000,
@@ -576,8 +578,22 @@ def evolve(
     # Load models
     birth_fn, hazard_fn = bdconfig.load_models()
     predator_birth_fn, predator_hazard_fn = predator_bdconfig.load_models()
-    # We combine two gops model here
-    mutation = gopsconfig.load_model()
+    # Prepare mutation
+    if predator_gopsconfig_path is None:
+        # Use the same mutation for prey and predators
+        mutation = cast(gops.Mutation, gopsconfig.load_model())
+    else:
+        # Combine two
+        with predator_gopsconfig_path.open("r") as f:
+            predator_gopsconfig = toml.from_toml(GopsConfig, f.read())
+        predator_gopsconfig.apply_params_override(predator_gops_params_override)
+        prey_mutation = cast(gops.Mutation, gopsconfig.load_model())
+        predator_mutation = cast(gops.Mutation, predator_gopsconfig.load_model())
+        mutation = gops.PPMutation(
+            prey_mutation,
+            predator_mutation,
+            cfconfig.n_max_preys,
+        )
     # Make env
     env = make("CircleForaging-v2", **dataclasses.asdict(cfconfig))
     key, reward_key = jax.random.split(jax.random.PRNGKey(seed))

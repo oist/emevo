@@ -187,17 +187,3 @@ class StudentTMutation(Mutation):
         t = jax.random.t(prng_key, self.df, shape=array.shape)
         res = array + self.loc + t * self.scale
         return _clip_minmax(res, self.clip_min, self.clip_max)
-
-
-@dataclasses.dataclass(frozen=True)
-class StudentTMutation(Mutation):
-    df: float = 1.0  # Equal to Cauthy
-    loc: float = 0.0
-    scale: float = 1.0
-    clip_min: float | None = None
-    clip_max: float | None = None
-
-    def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
-        t = jax.random.t(prng_key, self.df, shape=array.shape)
-        res = array + self.loc + t * self.scale
-        return _clip_minmax(res, self.clip_min, self.clip_max)
