@@ -868,6 +868,18 @@ class CircleForaging(Env):
                 )
             )
 
+    def observe(self, state: CFState[Status]) -> CFObs:
+        N = self.n_max_agents
+        sensor_obs = self._sensor_obs(stated=state.physics)  # type: ignore
+        return CFObs(
+            sensor=sensor_obs.reshape(-1, self._n_sensors, self._n_obj),
+            collision=jnp.zeros((N, self._n_obj, self._n_tactile_bins), dtype=bool),
+            angle=state.physics.circle.p.angle,
+            velocity=state.physics.circle.v.xy,
+            angular_velocity=state.physics.circle.v.angle,
+            energy=state.status.energy,
+        )
+
     def step(
         self,
         state: CFState[Status],
