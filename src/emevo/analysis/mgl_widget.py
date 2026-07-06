@@ -125,6 +125,11 @@ class MglWidget(QOpenGLWidget):
         else:
             return self._phys_state.set_by_index(self._index, self._env_state.physics)
 
+    def observe(self) -> jax.Array:
+        sd = self._phys_state.set_by_index(self._index, self._env_state.physics)
+        sensor = self._env._sensor_obs(stated=sd)  # type:ignore
+        return sensor.reshape(-1, self._env._n_sensors, self._env._n_obj)
+
     def _set_default_viewport(self) -> None:
         self._ctx.viewport = 0, 0, *self._figsize
         self._fbo.viewport = 0, 0, *self._figsize

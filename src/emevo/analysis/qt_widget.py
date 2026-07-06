@@ -212,13 +212,15 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         self._slider.setValue(start + step_offset)
         self._slider_label = QtWidgets.QLabel(f"Step {start + step_offset}")
         self._cd_label = QtWidgets.QLabel("0, 0")
-        # Pause/Play
+        # Pause/Play/Export/Observe
         pause_button = QtWidgets.QPushButton("⏸️")
         pause_button.clicked.connect(self._mgl_widget.pause)
         play_button = QtWidgets.QPushButton("▶️")
         play_button.clicked.connect(self._mgl_widget.play)
         export_button = QtWidgets.QPushButton("📤")
         export_button.clicked.connect(self.exportData)
+        observe_button = QtWidgets.QPushButton("👀")
+        observe_button.clicked.connect(self.observeEnv)
         # Color checkboxes
         self._orig_color_checkbox = QtWidgets.QCheckBox("Original Color")
         self._select_color_checkbox = QtWidgets.QCheckBox("Change Selected Color")
@@ -263,6 +265,7 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
         buttons.addWidget(pause_button)
         buttons.addWidget(play_button)
         buttons.addWidget(export_button)
+        buttons.addWidget(observe_button)
         checkbox_col1 = QtWidgets.QVBoxLayout()
         checkbox_col1.addWidget(self._orig_color_checkbox)
         checkbox_col1.addWidget(self._select_color_checkbox)
@@ -523,6 +526,24 @@ class CFEnvReplayWidget(QtWidgets.QWidget):
                 static_circle_is_active=np.array(stated.static_circle.is_active),
                 static_circle_label=np.array(stated.static_circle.label),
             )
+        else:
+            print(f"Invalid file extension: {selected_file}")
+
+    @Slot()
+    def observeEnv(self) -> None:
+        if self._selected_slot == -1 or not self._mgl_widget._paused:
+            return
+        sensor = self._mgl_widget.observe()[self._selected_slot]
+        selected_file, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save File",
+            "obs.npz",
+            "Binary (*.npz)",
+        )
+        if selected_file is None:
+            return
+        if selected_file.endswith(".npz"):
+            np.savez_compressed(selected_file, sensor=sensor)
         else:
             print(f"Invalid file extension: {selected_file}")
 
