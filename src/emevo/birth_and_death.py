@@ -301,6 +301,19 @@ class ConstantBirth(BirthFunction):
         return age * self.const
 
 
+@dataclasses.dataclass(frozen=True)
+class DeterministicBirth(BirthFunction):
+    threshold: float = 10.0
+
+    def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        del age
+        return (energy > self.threshold).astype(float)
+
+    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
+        """Birth function b(t)"""
+        return age * self(age, energy)
+
+
 def compute_cumulative_hazard(
     hazard: HazardFunction,
     *,
