@@ -12,17 +12,13 @@ from jax.nn.initializers import orthogonal
 from emevo.rl.prob_dist import DiagonalNormal
 
 
-def make_inormal(mean: jax.Array, logstd: jax.Array) -> DiagonalNormal:
-    return DiagonalNormal(loc=mean, log_scale=logstd)
-
-
 class Output(NamedTuple):
     mean: jax.Array
     logstd: jax.Array
     value: jax.Array
 
     def policy(self) -> DiagonalNormal:
-        return make_inormal(self.mean, self.logstd)
+        return DiagonalNormal(self.mean, self.logstd)
 
 
 class NormalPPONet(eqx.Module):
@@ -142,7 +138,7 @@ def make_batch(
     )
     value_targets = advantages + all_values[:-1]
     actions = rollout.actions
-    log_action_probs = make_inormal(rollout.means, rollout.logstds).log_prob(actions)
+    log_action_probs = DiagonalNormal(rollout.means, rollout.logstds).log_prob(actions)
     return Batch(
         observations=rollout.observations,
         actions=actions,
@@ -162,7 +158,7 @@ def loss_function(
 ) -> jax.Array:
     net_out = jax.vmap(network)(batch.observations)
     # Policy loss
-    policy_dist = make_inormal(net_out.mean, net_out.logstd)
+    policy_dist = DiagonalNormal(net_out.mean, net_out.logstd)
     log_prob = policy_dist.log_prob(batch.actions)
     policy_ratio = jnp.exp(log_prob - batch.log_action_probs)
     clipped_ratio = jnp.clip(
