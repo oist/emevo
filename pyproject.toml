@@ -10,19 +10,20 @@ license = {text = "Apache2"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Life",
     "Typing :: Typed",
 ]
-requires-python = ">= 3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     # Jax related
     "jax >= 0.7",
     "chex >= 0.1.82",
-    "distrax >= 0.1.9",
     "equinox >= 0.13",
     "optax >= 0.1",
     "phyjax2d >= 0.3.3",
@@ -57,7 +58,6 @@ bug-tracker = "https://github.com/oist/emevo/issues"
 
 [tool.setuptools]
 include-package-data = true
-license-files = ["LICENSE"]
 
 [tool.setuptools.dynamic]
 version = {attr = "emevo.__version__"}

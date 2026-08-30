@@ -3,17 +3,17 @@ from __future__ import annotations
 from typing import NamedTuple, cast
 
 import chex
-import distrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
 from jax.nn.initializers import orthogonal
 
+from emevo.rl.prob_dist import DiagonalNormal
 
-def make_inormal(mean: jax.Array, logstd: jax.Array) -> distrax.Distribution:
-    normal = distrax.LogStddevNormal(loc=mean, log_scale=logstd)
-    return distrax.Independent(normal, reinterpreted_batch_ndims=1)
+
+def make_inormal(mean: jax.Array, logstd: jax.Array) -> DiagonalNormal:
+    return DiagonalNormal(loc=mean, log_scale=logstd)
 
 
 class Output(NamedTuple):
@@ -21,7 +21,7 @@ class Output(NamedTuple):
     logstd: jax.Array
     value: jax.Array
 
-    def policy(self) -> distrax.Distribution:
+    def policy(self) -> DiagonalNormal:
         return make_inormal(self.mean, self.logstd)
 
 
