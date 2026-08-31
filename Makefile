@@ -1,4 +1,4 @@
-.PHONY: test lint
+.PHONY: test lint install-hooks
 
 CUDA_AVAILABLE := $(shell command -v nvcc >/dev/null 2>&1 && echo 1 || echo 0)
 PORT ?= 9998
@@ -39,3 +39,8 @@ endif
 
 
 all: test lint
+
+
+install-hooks:
+	git config core.hooksPath .githooks
+	@echo "Git hooks enabled from .githooks"
