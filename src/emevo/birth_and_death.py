@@ -131,24 +131,24 @@ class EnergyLogisticHazard(HazardFunction):
 
 
 @dataclasses.dataclass(frozen=True)
-class GompertzHazard(ConstantHazard):
+class GompertzHazard(HazardFunction):
     """
-    Hazard with exponentially increasing death rate.
-    α = α_const + α_energy * exp(-γenergy)
+    Hazard that only depends on age
     h(t) = α exp(βt)
     H(t) = α/β exp(βt)
     S(t) = exp(-H(t))
     """
-
+    alpha: float
     beta: float = 1e-5
 
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        return self._alpha(age, energy) * jnp.exp(self.beta * age)
+        del energy
+        return self.alpha * jnp.exp(self.beta * age)
 
     def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        alpha = self._alpha(age, energy)
-        ht = alpha / self.beta * jnp.exp(self.beta * age)
-        h0 = alpha / self.beta
+        del energy
+        ht = self.alpha / self.beta * jnp.exp(self.beta * age)
+        h0 = self.alpha / self.beta
         return ht - h0
 
 
