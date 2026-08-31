@@ -83,9 +83,8 @@ ignore = ["B905"]
 "smoke-tests/*.py" = ["B008", "UP006", "UP007"]
 "scripts/*.py" = ["UP006", "UP035", "UP007"]
 
-
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "black >= 24.10.0",
     "bqplot >= 0.12",
     "itables >= 2.4",
