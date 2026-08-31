@@ -1,4 +1,4 @@
-birth_fn = "emevo.birth_and_death.DeterministicBirth"
+birth_fn = "emevo.birth_and_death.HeavisideBirth"
 hazard_fn = "emevo.birth_and_death.SlopeELGHazard"
 
 [hazard_params]
