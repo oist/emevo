@@ -55,6 +55,7 @@ class Mutation(abc.ABC):
         )
         return result
 
+
 # For prey/predator
 @dataclasses.dataclass(frozen=True)
 class PPMutation(Mutation):
@@ -65,7 +66,7 @@ class PPMutation(Mutation):
     def _add_noise(self, prng_key: chex.PRNGKey, array: jax.Array) -> jax.Array:
         k1, k2 = jax.random.split(prng_key)
         a = self.mutation1._add_noise(k1, array[: self.split])
-        b = self.mutation2._add_noise(k2, array[self.split: ])
+        b = self.mutation2._add_noise(k2, array[self.split :])
         return jnp.concatenate((a, b))
 
 

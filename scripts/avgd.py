@@ -34,7 +34,7 @@ def load(logd: Path) -> tuple[NDArray, pl.DataFrame]:
 
 def compute_avg_moved(xy: NDArray, stepdf: pl.DataFrame) -> pl.DataFrame:
     def avgd(start: int, end: int, slot: int) -> NDArray:
-        xy_selected = xy[start + 1:end, slot]
+        xy_selected = xy[start + 1 : end, slot]
         xy0 = xy_selected[:-1]
         xy1 = xy_selected[1:]
         return np.mean(np.linalg.norm(xy0 - xy1, axis=1))

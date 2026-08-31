@@ -35,6 +35,7 @@ def main(dfile: Path) -> None:
                 .otherwise(PREDATOR_COLOR[index])
                 .alias(RGB[index])
             )
+
     else:
 
         def color_logic(index: int):

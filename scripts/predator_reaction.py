@@ -153,7 +153,9 @@ def reaction_to_predator(
             if not np.any(valid_dist_mask):
                 continue
 
-            unit_vecs = vecs_to_preds[valid_dist_mask] / dists[valid_dist_mask, np.newaxis]
+            unit_vecs = (
+                vecs_to_preds[valid_dist_mask] / dists[valid_dist_mask, np.newaxis]
+            )
             cos_sims = np.dot(unit_vecs, p_dir)
 
             # Indices of predators that the prey is actually heading toward

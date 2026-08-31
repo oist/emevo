@@ -7,7 +7,11 @@ from emevo.analysis.log_plotting import load_log
 
 
 def main(logd: Path, n_states: int = 10) -> None:
-    logdf = load_log(logd, last_idx=n_states).with_columns(pl.col("step").alias("Step")).sort("Step")
+    logdf = (
+        load_log(logd, last_idx=n_states)
+        .with_columns(pl.col("step").alias("Step"))
+        .sort("Step")
+    )
     df = (
         logdf.group_by("unique_id")
         .agg(pl.col("energy").first().alias("Initial Energy"))

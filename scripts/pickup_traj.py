@@ -64,7 +64,7 @@ def pickup_traj(agent_state: AgentState, stepdf: pl.DataFrame) -> pl.DataFrame:
     for uid, slot, start, end in stepdf.iter_rows():
         if end - start < 2:
             continue
-        xy = agent_state.axy[start: end, slot][:, 1:]
+        xy = agent_state.axy[start:end, slot][:, 1:]
         x_list.append(xy[:, 0])
         y_list.append(xy[:, 1])
         uid_list += [uid] * xy.shape[0]

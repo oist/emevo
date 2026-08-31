@@ -612,10 +612,9 @@ def widget(
 
         rgba_df = pq.read_table(rgba_table_path)
         cols = rgba_df.to_pydict()
-        custom_color = dict(zip(
-            cols["unique_id"],
-            zip(cols["R"], cols["G"], cols["B"], cols["A"])
-        ))
+        custom_color = dict(
+            zip(cols["unique_id"], zip(cols["R"], cols["G"], cols["B"], cols["A"]))
+        )
 
     start_widget(
         CFEnvReplayWidget,
