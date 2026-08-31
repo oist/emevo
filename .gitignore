@@ -21,3 +21,4 @@ pyrightconfig.json
 *.parquet
 *.npz
 uv.lock
+.python-version
