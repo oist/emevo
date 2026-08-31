@@ -265,10 +265,6 @@ class EnergyLogisticBirth(BirthFunction):
         del age
         return self.scale / (1.0 + self.alpha * jnp.exp(self.e0 - energy))
 
-    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        """Birth function b(t)"""
-        return age * self(age, energy)
-
 
 @dataclasses.dataclass(frozen=True)
 class SlopeELBirth(BirthFunction):
@@ -283,10 +279,6 @@ class SlopeELBirth(BirthFunction):
             1.0 + jnp.exp(self.delay - energy * self.slope)
         )
 
-    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        """Birth function b(t)"""
-        return age * self(age, energy)
-
 
 @dataclasses.dataclass(frozen=True)
 class ConstantBirth(BirthFunction):
@@ -295,10 +287,6 @@ class ConstantBirth(BirthFunction):
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         del age
         return jnp.ones_like(energy) * self.const
-
-    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        del energy
-        return age * self.const
 
 
 @dataclasses.dataclass(frozen=True)
@@ -309,9 +297,6 @@ class HeavisideBirth(BirthFunction):
     def __call__(self, age: jax.Array, energy: jax.Array) -> jax.Array:
         del age
         return self.scale * jnp.heaviside(energy - self.threshold, 0.0)
-
-    def cumulative(self, age: jax.Array, energy: jax.Array) -> jax.Array:
-        return self.scale * age * jnp.heaviside(energy - self.threshold, 0.0)
 
 
 def compute_cumulative_hazard(
