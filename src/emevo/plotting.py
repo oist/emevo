@@ -180,6 +180,63 @@ def show_params_text(
     return texts
 
 
+def vis_hazard_2d(
+    ax: Axes,
+    hazard_fn: bd.HazardFunction,
+    age_max: int = 10000,
+    hazard_max: float = 2e-4,
+    n_discr: int = 101,
+    method: Literal["hazard", "cumulative hazard", "survival"] = "hazard",
+    initial: bool = True,
+    shown_params: dict[str, float] | None = None,
+) -> tuple[Line2D, Text | None]:
+    """Plot a hazard function whose result depends only on age.
+
+    ``HazardFunction`` accepts both age and energy for a common interface. This
+    helper evaluates the function with energy fixed at zero.
+    """
+    age_space = jnp.linspace(0.0, age_max, n_discr)
+    energy = jnp.zeros_like(age_space)
+    if method == "hazard":
+        hf = hazard_fn
+    elif method == "cumulative hazard":
+        hf = hazard_fn.cumulative
+    elif method == "survival":
+        hf = hazard_fn.survival
+    else:
+        raise ValueError(f"Unsupported method {method}")
+
+    lines = ax.plot(
+        np.asarray(age_space),
+        np.asarray(hf(age_space, energy)),
+        color="xkcd:bluish purple",
+    )
+    if initial:
+        ax.grid(True, which="major")
+        ax.set_xlim((0.0, age_max))
+        ax.xaxis.set_major_formatter(ticker.FuncFormatter(_km_formatter))
+        ax.set_xlabel("Age $t$", fontsize=12)
+        if method == "survival":
+            ax.set_ylim((0.0, 1.0))
+            ax.set_ylabel("Survival prob.", fontsize=12)
+        else:
+            ax.set_ylim((0.0, hazard_max))
+            if method == "hazard":
+                ax.set_ylabel("Hazard (Death prob.)", fontsize=12)
+            else:
+                ax.set_ylabel(method.capitalize(), fontsize=12)
+    if shown_params is not None:
+        text = ax.text(
+            -0.1,
+            0.12,
+            "\n".join([f"{key}: {value:.2e}" for key, value in shown_params.items()]),
+            transform=ax.transAxes,
+        )
+    else:
+        text = None
+    return cast(Line2D, lines[0]), text
+
+
 def vis_hazard(
     ax: Axes3D,
     hazard_fn: bd.HazardFunction,
