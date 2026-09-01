@@ -6,5 +6,5 @@ alpha = 1e-7
 beta = 1.5e-5
 
 [birth_params]
-scale = 10.0
+scale = 0.01
 threshold = 20.0
