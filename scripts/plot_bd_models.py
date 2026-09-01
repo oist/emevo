@@ -15,6 +15,7 @@ from emevo.plotting import (
     vis_birth_2d,
     vis_expected_n_children,
     vis_hazard,
+    vis_hazard_2d,
     vis_lifetime,
     vis_survivorship,
 )
@@ -36,6 +37,7 @@ def plot_bd_models(
     noparam: bool = typer.Option(False, help="Don't show parameters"),
     nolifespan: bool = typer.Option(False, help="Don't show lifespan"),
     simpletitle: bool = typer.Option(False, help="Make title simple"),
+    hazard2d: bool = typer.Option(False, help="Make 2D plots for hazard and survival"),
     birth2d: bool = typer.Option(False, help="Make 2D plot for birth rate"),
     all2d: bool = typer.Option(
         False,
@@ -62,36 +64,54 @@ def plot_bd_models(
     if yes or typer.confirm("Plot hazard model?"):
         if horizontal:
             fig = plt.figure(figsize=(10, 6))
-            ax1 = fig.add_subplot(121, projection="3d")
-            ax2 = fig.add_subplot(122, projection="3d")
+            ax1 = fig.add_subplot(121, projection=None if hazard2d else "3d")
+            ax2 = fig.add_subplot(122, projection=None if hazard2d else "3d")
         else:
             fig = plt.figure(figsize=(5, 10))
-            ax1 = fig.add_subplot(211, projection="3d")
-            ax2 = fig.add_subplot(212, projection="3d")
+            ax1 = fig.add_subplot(211, projection=None if hazard2d else "3d")
+            ax2 = fig.add_subplot(212, projection=None if hazard2d else "3d")
         if simpletitle:
             ax1.set_title("Hazard function $h(t, e)$", fontsize=18)  # type: ignore
             ax2.set_title("Survival function $s_e(t)$", fontsize=18)  # type: ignore
         else:
             ax1.set_title(f"{type(hazard_model).__name__} Hazard function")  # type: ignore
             ax2.set_title(f"{type(hazard_model).__name__} Survival function")  # type: ignore
-        vis_hazard(
-            cast(Axes3D, ax1),
-            hazard_fn=hazard_model,
-            age_max=age_max,
-            energy_max=energy_max,
-            hazard_max=hazard_max,
-            n_discr=n_discr,
-            method="hazard",
-            shown_params=None if noparam else bd_config.hazard_params,
-        )
-        vis_hazard(
-            cast(Axes3D, ax2),
-            hazard_fn=hazard_model,
-            age_max=age_max,
-            energy_max=energy_max,
-            n_discr=n_discr,
-            method="survival",
-        )
+        if hazard2d:
+            vis_hazard_2d(
+                ax1,
+                hazard_fn=hazard_model,
+                age_max=age_max,
+                hazard_max=hazard_max,
+                n_discr=n_discr,
+                method="hazard",
+                shown_params=None if noparam else bd_config.hazard_params,
+            )
+            vis_hazard_2d(
+                ax2,
+                hazard_fn=hazard_model,
+                age_max=age_max,
+                n_discr=n_discr,
+                method="survival",
+            )
+        else:
+            vis_hazard(
+                cast(Axes3D, ax1),
+                hazard_fn=hazard_model,
+                age_max=age_max,
+                energy_max=energy_max,
+                hazard_max=hazard_max,
+                n_discr=n_discr,
+                method="hazard",
+                shown_params=None if noparam else bd_config.hazard_params,
+            )
+            vis_hazard(
+                cast(Axes3D, ax2),
+                hazard_fn=hazard_model,
+                age_max=age_max,
+                energy_max=energy_max,
+                n_discr=n_discr,
+                method="survival",
+            )
         plt.show()
 
     if yes or typer.confirm("Plot birth model?"):
