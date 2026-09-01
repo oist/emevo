@@ -1,0 +1,10 @@
+birth_fn = "emevo.birth_and_death.HeavisideBirth"
+hazard_fn = "emevo.birth_and_death.GompertzHazard"
+
+[hazard_params]
+alpha = 1e-7
+beta = 1.5e-5
+
+[birth_params]
+slope = 10.0
+threshold = 20.0
