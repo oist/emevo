@@ -1,4 +1,8 @@
-from scripts.clean_notebooks import clean_notebook
+"""
+Test clean_notebooks.
+"""
+
+from clean_notebooks import clean_notebook
 
 
 def test_clean_notebook_removes_execution_artifacts() -> None:
@@ -32,3 +36,7 @@ def test_clean_notebook_removes_execution_artifacts() -> None:
     assert cleaned["cells"][0]["metadata"] == {"keep": "value"}
     assert cleaned["cells"][1]["metadata"] == {"keep": "value"}
     assert cleaned["metadata"] == {"kernelspec": {"name": "python3"}}
+
+
+if __name__ == "__main__":
+    test_clean_notebook_removes_execution_artifacts()
