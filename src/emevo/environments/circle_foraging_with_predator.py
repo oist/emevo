@@ -56,6 +56,7 @@ from emevo.environments.env_utils import (
 )
 from emevo.environments.smell import CFObsWithSmell, _vmap_compute_smell
 from emevo.spaces import BoxSpace
+from emevo.tree_utils import compact_pytree_repr
 
 Self = Any
 PREDATOR_COLOR: Color = Color(135, 19, 21)
@@ -188,6 +189,7 @@ class _TactileInfo(NamedTuple):
     eaten_preys: jax.Array  # (N,)
 
 
+@compact_pytree_repr
 @chex.dataclass
 class CFPredatorState(CFState[Status]):
     n_born_predators: jax.Array
