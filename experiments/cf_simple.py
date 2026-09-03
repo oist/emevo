@@ -27,6 +27,7 @@ from emevo.eqx_utils import where as eqx_where
 from emevo.exp_utils import (
     BDConfig,
     CfConfig,
+    EvolutionSnapshot,
     FoodLog,
     GopsConfig,
     Log,
@@ -35,6 +36,7 @@ from emevo.exp_utils import (
     SavedPhysicsState,
     SavedProfile,
     is_cuda_ready,
+    load_snapshot,
 )
 from emevo.reward_extractor import ActFoodExtractor as RewardExtractor
 from emevo.rl import ppo_normal as ppo
@@ -211,6 +213,8 @@ def run_evolution(
     ymax: float,
     logger: Logger,
     save_interval: int,
+    snapshot_interval: int,
+    snapshot: EvolutionSnapshot | None,
     debug_vis: bool,
     debug_vis_scale: float,
     debug_print: bool,
@@ -221,7 +225,6 @@ def run_evolution(
     debug_vis_no_sensor: bool = False,
     headless: bool,
 ) -> None:
-    key, net_key, reset_key = jax.random.split(key, 3)
     obs_space = env.obs_space.flatten()
     input_size = int(np.prod(obs_space.shape))
     act_size = int(np.prod(env.act_space.shape))
@@ -234,7 +237,6 @@ def run_evolution(
             jax.random.split(key, env.n_max_agents),
         )
 
-    pponet = initialize_net(net_key)
     adam_init, adam_update = adam
 
     @eqx.filter_jit
@@ -261,9 +263,22 @@ def run_evolution(
         )
         return pponet, opt_state
 
-    opt_state = initialize_opt_state(pponet)
-    env_state, timestep = env.reset(reset_key)
-    obs = timestep.obs
+    if snapshot is None:
+        key, net_key, reset_key = jax.random.split(key, 3)
+        pponet = initialize_net(net_key)
+        opt_state = initialize_opt_state(pponet)
+        env_state, timestep = env.reset(reset_key)
+        obs = timestep.obs
+        start_epoch = 0
+    else:
+        key = snapshot.prng_key
+        pponet = snapshot.network
+        opt_state = snapshot.opt_state
+        env_state = snapshot.env_state
+        obs = snapshot.obs
+        reward_fn = snapshot.reward_fn
+        logger.restore_state(snapshot.logger_state)
+        start_epoch = snapshot.epoch
 
     if debug_vis:
         if debug_vis_partial_range_x is None:
@@ -288,15 +303,16 @@ def run_evolution(
     else:
         visualizer = None
 
-    for i, is_active in enumerate(env_state.unique_id.is_active()):
-        if is_active:
-            logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
-            logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
+    if snapshot is None:
+        for i, is_active in enumerate(env_state.unique_id.is_active()):
+            if is_active:
+                logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
+                logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
-    all_keys = jax.random.split(key, n_total_steps // n_rollout_steps)
-    del key  # Don't reuse this key!
     po = np.array([[-debug_vis_xoffset, -debug_vis_yoffset]])
-    for i, key_i in enumerate(all_keys):
+    n_epochs = n_total_steps // n_rollout_steps
+    for i in range(start_epoch, n_epochs):
+        key, key_i = jax.random.split(key)
         epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
         old_state = env_state
         # Use `with jax.disable_jit():` here for debugging
@@ -387,6 +403,20 @@ def run_evolution(
         logger.push_log(log_with_step.filter_active())
         logger.push_physstate(phys_state)
 
+        if snapshot_interval > 0 and (i + 1) % snapshot_interval == 0:
+            logger.save_snapshot(
+                EvolutionSnapshot(
+                    epoch=i + 1,
+                    env_state=env_state,
+                    obs=obs,
+                    opt_state=opt_state,
+                    network=pponet,
+                    reward_fn=reward_fn,
+                    logger_state=logger.get_state(),
+                    prng_key=key,
+                )
+            )
+
     # Save logs before exiting
     logger.finalize()
     is_active = env_state.unique_id.is_active()
@@ -427,6 +457,7 @@ def evolve(
     log_mode: LogMode = LogMode.REWARD_LOG_STATE,
     log_interval: int = 1000,
     savestate_interval: int = 1000,
+    snapshot_interval: int = 0,
     debug_vis: bool = False,
     debug_vis_scale: float = 2.0,
     debug_vis_xoffset: float = 0.0,
@@ -502,6 +533,8 @@ def evolve(
         ymax=cfconfig.ylim[1],
         logger=logger,
         save_interval=save_interval,
+        snapshot_interval=snapshot_interval,
+        snapshot=None,
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
         debug_vis_xoffset=debug_vis_xoffset,
@@ -511,6 +544,89 @@ def evolve(
         debug_vis_no_sensor=debug_vis_no_sensor,
         headless=headless,
         debug_print=debug_vis or debug_print,
+    )
+
+
+@app.command()
+def resume(
+    snapshot_path: Path,
+    adam_lr: float = 3e-4,
+    adam_eps: float = 1e-7,
+    gamma: float = 0.999,
+    gae_lambda: float = 0.95,
+    n_optim_epochs: int = 10,
+    minibatch_size: int = 256,
+    n_rollout_steps: int = 1024,
+    n_total_steps: int = 1024 * 10000,
+    entropy_weight: float = 0.001,
+    cfconfig_path: Path = DEFAULT_CFCONFIG,
+    bdconfig_path: Path = PROJECT_ROOT / "config/bd/20240318-mild-slope.toml",
+    gopsconfig_path: Path = PROJECT_ROOT / "config/gops/20240326-cauthy-002.toml",
+    min_age_for_save: int = 0,
+    save_interval: int = 100000000,
+    env_override: str = "",
+    birth_override: str = "",
+    hazard_override: str = "",
+    gops_params_override: str = "",
+    logdir: Path = Path("./log"),
+    log_mode: LogMode = LogMode.REWARD_LOG_STATE,
+    log_interval: int = 1000,
+    savestate_interval: int = 1000,
+    snapshot_interval: int = 0,
+    debug_print: bool = False,
+    force_gpu: bool = True,
+) -> None:
+    """Continue an evolution run from a trusted snapshot file."""
+    if force_gpu and not is_cuda_ready():
+        raise RuntimeError("Detected some problem in CUDA!")
+
+    with cfconfig_path.open("r") as f:
+        cfconfig = toml.from_toml(CfConfig, f.read())
+    with bdconfig_path.open("r") as f:
+        bdconfig = toml.from_toml(BDConfig, f.read())
+    with gopsconfig_path.open("r") as f:
+        gopsconfig = toml.from_toml(GopsConfig, f.read())
+
+    cfconfig.apply_override(env_override)
+    bdconfig.apply_birth_override(birth_override)
+    bdconfig.apply_hazard_override(hazard_override)
+    gopsconfig.apply_params_override(gops_params_override)
+    birth_fn, hazard_fn = bdconfig.load_models()
+    mutation = gopsconfig.load_model()
+    env = make("CircleForaging-v0", **dataclasses.asdict(cfconfig))
+    snapshot = load_snapshot(snapshot_path)
+    logger = Logger(
+        logdir=logdir,
+        mode=log_mode,
+        log_interval=log_interval,
+        savestate_interval=savestate_interval,
+        min_age_for_save=min_age_for_save,
+    )
+    run_evolution(
+        key=jax.random.PRNGKey(0),  # Replaced by the key stored in the snapshot.
+        env=env,
+        adam=optax.adam(adam_lr, eps=adam_eps),
+        gamma=gamma,
+        gae_lambda=gae_lambda,
+        n_optim_epochs=n_optim_epochs,
+        minibatch_size=minibatch_size,
+        n_rollout_steps=n_rollout_steps,
+        n_total_steps=n_total_steps,
+        entropy_weight=entropy_weight,
+        reward_fn=snapshot.reward_fn,
+        hazard_fn=hazard_fn,
+        birth_fn=birth_fn,
+        mutation=cast(gops.Mutation, mutation),
+        xmax=cfconfig.xlim[1],
+        ymax=cfconfig.ylim[1],
+        logger=logger,
+        save_interval=save_interval,
+        snapshot_interval=snapshot_interval,
+        snapshot=snapshot,
+        debug_vis=False,
+        debug_vis_scale=1.0,
+        debug_print=debug_print,
+        headless=True,
     )
 
 

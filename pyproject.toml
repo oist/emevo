@@ -13,13 +13,12 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Life",
     "Typing :: Typed",
 ]
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     # Jax related
     "jax >= 0.7",
@@ -27,6 +26,7 @@ dependencies = [
     "equinox >= 0.13",
     "optax >= 0.1",
     "phyjax2d >= 0.3.3",
+    "jaxon >= 1.2",
     # Other
     "pyarrow >= 9.0",
     "pyserde[toml] >= 0.14",

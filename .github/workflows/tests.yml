@@ -20,10 +20,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: Linux, python: '3.11', os: ubuntu-latest, nox: "tests"}
+          - {name: Linux, python: '3.12', os: ubuntu-latest, nox: "tests"}
           - {name: Windows, python: '3.12', os: windows-latest, nox: "tests"}
           - {name: Mac, python: '3.12', os: macos-latest, nox: "tests"}
-          - {name: Py312, python: '3.12', os: ubuntu-latest, nox: "tests"}
           - {name: Py313, python: '3.13', os: ubuntu-latest, nox: "tests"}
           - {name: Lint, python: '3.12', os: ubuntu-latest, nox: "lint"}
     steps:

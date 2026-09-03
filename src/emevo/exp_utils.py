@@ -18,6 +18,8 @@ import chex
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxon import load as jaxon_load
+from jaxon import save as jaxon_save
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -32,6 +34,50 @@ from emevo.eqx_utils import get_slice
 from emevo.reward_fn import RewardFn
 
 Self = Any
+
+SNAPSHOT_VERSION = 1
+
+
+@chex.dataclass
+class LoggerState:
+    """Mutable logger data required to continue writing the same log stream."""
+
+    reward_fn_dict: dict[int, RewardFn]
+    profile_dict: dict[int, SavedProfile]
+    log_list: list[dict[str, NDArray]]
+    foodlog_list: list[FoodLog]
+    physstate_list: list[SavedPhysicsState]
+    log_index: int
+    physstate_index: int
+
+
+@chex.dataclass
+class EvolutionSnapshot:
+    """A resumable evolution state captured at an epoch boundary."""
+
+    epoch: int
+    env_state: Any
+    obs: Any
+    opt_state: Any
+    network: eqx.Module
+    reward_fn: eqx.Module
+    logger_state: LoggerState
+    prng_key: chex.PRNGKey
+    _version: int = SNAPSHOT_VERSION
+
+
+def load_snapshot(path: Path) -> EvolutionSnapshot:
+    """Load a trusted snapshot saved by :meth:`Logger.save_snapshot`."""
+
+    snapshot = jaxon_load(path, allow_dill=True)
+    if not isinstance(snapshot, EvolutionSnapshot):
+        raise TypeError(f"{path} does not contain an EvolutionSnapshot")
+    if snapshot._version != SNAPSHOT_VERSION:
+        raise ValueError(
+            f"Unsupported snapshot version {snapshot._version}; "
+            f"expected {SNAPSHOT_VERSION}"
+        )
+    return snapshot
 
 
 @serde.serde
@@ -335,6 +381,33 @@ class Logger:
     )
     _log_index: int = dataclasses.field(default=1, init=False)
     _physstate_index: int = dataclasses.field(default=1, init=False)
+
+    def get_state(self) -> LoggerState:
+        return LoggerState(
+            reward_fn_dict=self.reward_fn_dict,
+            profile_dict=self.profile_dict,
+            log_list=self._log_list,
+            foodlog_list=self._foodlog_list,
+            physstate_list=self._physstate_list,
+            log_index=self._log_index,
+            physstate_index=self._physstate_index,
+        )
+
+    def restore_state(self, state: LoggerState) -> None:
+        self.reward_fn_dict = state.reward_fn_dict
+        self.profile_dict = state.profile_dict
+        self._log_list = state.log_list
+        self._foodlog_list = state.foodlog_list
+        self._physstate_list = state.physstate_list
+        self._log_index = state.log_index
+        self._physstate_index = state.physstate_index
+
+    def save_snapshot(self, snapshot: EvolutionSnapshot) -> Path:
+        """Save an epoch-indexed snapshot directly in this logger's directory."""
+
+        path = self.logdir / f"snapshot-{snapshot.epoch}.hdf5"
+        jaxon_save(path, snapshot, allow_dill=True)
+        return path
 
     def push_log(self, log: LogWithStep) -> None:
         if "log" not in self.mode.value:

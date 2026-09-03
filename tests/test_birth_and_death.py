@@ -49,7 +49,7 @@ def test_energylogistic_hazard() -> None:
 
 
 def test_gompertz_hazard() -> None:
-    hf = bd.GompertzHazard(alpha_const=1e-5, alpha_energy=1e-6, gamma=1.0, beta=1e-5)
+    hf = bd.GompertzHazard(alpha=1e-5, beta=1e-5)
     age = jnp.array([10.0, 110.0, 10.0, 110.0])
     energy = jnp.array([0.0, 0.0, 20.0, 20.0])
     hazard = hf(age, energy)
@@ -57,10 +57,10 @@ def test_gompertz_hazard() -> None:
         hazard,
         jnp.array(
             [
-                (1e-5 + 1e-6 * jnp.exp(0.0)) * jnp.exp(1e-5 * 10.0),
-                (1e-5 + 1e-6 * jnp.exp(0.0)) * jnp.exp(1e-5 * 110.0),
-                (1e-5 + 1e-6 * jnp.exp(-20.0)) * jnp.exp(1e-5 * 10.0),
-                (1e-5 + 1e-6 * jnp.exp(-20.0)) * jnp.exp(1e-5 * 110.0),
+                1e-5 * jnp.exp(1e-5 * 10.0),
+                1e-5 * jnp.exp(1e-5 * 110.0),
+                1e-5 * jnp.exp(1e-5 * 10.0),
+                1e-5 * jnp.exp(1e-5 * 110.0),
             ]
         ),
     )

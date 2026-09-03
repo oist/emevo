@@ -52,6 +52,7 @@ def test_vis_hazard_2d_update() -> None:
 def test_vis_hazard_2d_rejects_unknown_method() -> None:
     hazard_fn = bd.GompertzHazard(alpha=1e-5)
     fig, ax = plt.subplots()
+
     with pytest.raises(ValueError, match="Unsupported method unknown"):
         vis_hazard_2d(ax, hazard_fn, method="unknown")
     plt.close(fig)
