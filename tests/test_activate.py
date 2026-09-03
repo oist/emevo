@@ -68,3 +68,25 @@ def test_activate(key: chex.PRNGKey) -> None:
         .set(INIT_ENERGY * ENERGY_SHARE_RATIO)
     )
     chex.assert_trees_all_close(state.status.energy, expected_energy)
+
+
+def test_force_energy_consumption_is_normalized(key: chex.PRNGKey) -> None:
+    env = make(
+        "CircleForaging-v0",
+        n_max_agents=N_MAX_AGENTS,
+        n_initial_agents=N_INIT_AGENTS,
+        min_force=-2.0,
+        max_force=4.0,
+        force_energy_consumption=0.3,
+        basic_energy_consumption=0.1,
+    )
+    env = typing.cast(CircleForaging, env)
+    state, _ = env.reset(key)
+    action = jnp.full((N_MAX_AGENTS, 2), 4.0)
+
+    _, timestep = env.step(state, action)
+
+    chex.assert_trees_all_close(
+        timestep.info["energy_consumption"],
+        jnp.full(N_MAX_AGENTS, 0.4),
+    )

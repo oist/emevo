@@ -236,6 +236,7 @@ class CircleForagingWithPredator(CircleForaging):
         self._predator_basic_ec = predator_basic_ec
         self._predator_digestive_rate = predator_digestive_rate
         predator_act_ratio = (predator_radius**2) / (self._agent_radius**2)
+        self._predator_max_force_norm = self._max_force_norm * predator_act_ratio
         self._act_ratio = (
             jnp.ones((self.n_max_agents, 1))
             .at[self._n_max_preys :]
@@ -429,7 +430,9 @@ class CircleForagingWithPredator(CircleForaging):
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         # energy_delta = food - coef * |force| for prey
         prey_energy_consumption = (
-            self._force_energy_consumption * force_norm[: self._n_max_preys]
+            self._force_energy_consumption
+            * force_norm[: self._n_max_preys]
+            / self._max_force_norm
             + self._basic_energy_consumption
         )
         prey_energy_gain = jnp.sum(
@@ -438,7 +441,9 @@ class CircleForagingWithPredator(CircleForaging):
         prey_energy_delta = prey_energy_gain - prey_energy_consumption
         # energy_delta = food - coef * |force| for predator
         predator_energy_consumption = (
-            self._predator_force_ec * force_norm[self._n_max_preys :]
+            self._predator_force_ec
+            * force_norm[self._n_max_preys :]
+            / self._predator_max_force_norm
             + self._predator_basic_ec
         )
         prey_energies = state.status.energy[: self._n_max_preys]
@@ -1019,7 +1024,9 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         # energy_delta = food - coef * |force| for prey
         prey_energy_consumption = (
-            self._force_energy_consumption * force_norm[: self._n_max_preys]
+            self._force_energy_consumption
+            * force_norm[: self._n_max_preys]
+            / self._max_force_norm
             + self._basic_energy_consumption
         )
         prey_energy_gain = jnp.sum(
@@ -1028,7 +1035,9 @@ class CFPredatorWithSmell(CircleForagingWithPredator):
         prey_energy_delta = prey_energy_gain - prey_energy_consumption
         # energy_delta = food - coef * |force| for predator
         predator_energy_consumption = (
-            self._predator_force_ec * force_norm[self._n_max_preys :]
+            self._predator_force_ec
+            * force_norm[self._n_max_preys :]
+            / self._predator_max_force_norm
             + self._predator_basic_ec
         )
         prey_energies = state.status.energy[: self._n_max_preys]

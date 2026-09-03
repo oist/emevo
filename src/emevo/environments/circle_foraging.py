@@ -582,6 +582,9 @@ class CircleForaging(Env):
             self._foraging_indices = tuple(mouth_range)
         # Energy
         self._force_energy_consumption = force_energy_consumption
+        self._max_force_norm = np.sqrt(2.0) * max(abs(min_force), abs(max_force))
+        if self._max_force_norm == 0.0:
+            raise ValueError("min_force and max_force cannot both be zero")
         self._basic_energy_consumption = basic_energy_consumption
         self._init_energy = init_energy
         self._energy_capacity = energy_capacity
@@ -940,7 +943,8 @@ class CircleForaging(Env):
         # energy_delta = food - coef * |force|
         force_norm = jnp.sqrt(f1_raw**2 + f2_raw**2).ravel()
         energy_consumption = (
-            self._force_energy_consumption * force_norm + self._basic_energy_consumption
+            self._force_energy_consumption * force_norm / self._max_force_norm
+            + self._basic_energy_consumption
         )
         n_ate = jnp.sum(food_tactile[:, :, self._foraging_indices], axis=-1)
         energy_gain = jnp.sum(n_ate * self._food_energy_coef, axis=1)
