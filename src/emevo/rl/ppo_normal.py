@@ -10,6 +10,7 @@ import optax
 from jax.nn.initializers import orthogonal
 
 from emevo.rl.prob_dist import DiagonalNormal
+from emevo.tree_utils import compact_pytree_repr
 
 
 class Output(NamedTuple):
@@ -66,6 +67,7 @@ class NormalPPONet(eqx.Module):
         return self.value_head(x)
 
 
+@compact_pytree_repr
 @chex.dataclass
 class Rollout:
     """Rollout buffer that stores the entire history of one rollout"""
@@ -79,6 +81,7 @@ class Rollout:
     logstds: jax.Array
 
 
+@compact_pytree_repr
 @chex.dataclass
 class Batch:
     """Batch for PPO, indexable to get a minibatch."""

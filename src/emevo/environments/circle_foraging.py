@@ -60,6 +60,7 @@ from emevo.environments.env_utils import (
     place_multi,
 )
 from emevo.spaces import BoxSpace, NamedTupleSpace
+from emevo.tree_utils import compact_pytree_repr
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0
@@ -70,6 +71,7 @@ NOWHERE: float = 0.0
 N_OBJECTS: int = 3
 
 
+@compact_pytree_repr
 class CFObs(NamedTuple):
     """Observation of an agent."""
 
@@ -97,6 +99,7 @@ class CFObs(NamedTuple):
 S = TypeVar("S", bound=Status)
 
 
+@compact_pytree_repr
 @chex.dataclass
 class CFState(Generic[S]):
     physics: StateDict

@@ -32,6 +32,7 @@ from emevo import genetic_ops as gops
 from emevo.environments.circle_foraging import SensorRange
 from emevo.eqx_utils import get_slice
 from emevo.reward_fn import RewardFn
+from emevo.tree_utils import compact_pytree_repr
 
 Self = Any
 
@@ -51,6 +52,7 @@ class LoggerState:
     physstate_index: int
 
 
+@compact_pytree_repr
 @chex.dataclass
 class EvolutionSnapshot:
     """A resumable evolution state captured at an epoch boundary."""
@@ -277,6 +279,7 @@ class SavedProfile:
 _XY_SAVE_DTYPE = np.float16
 
 
+@compact_pytree_repr
 @chex.dataclass
 class SavedPhysicsState:
     circle_axy: jax.Array
