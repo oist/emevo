@@ -135,7 +135,7 @@ def _clip_minmax(
 
 @dataclasses.dataclass(frozen=True)
 class GaussianMutation(Mutation):
-    std_dev: float
+    stddev: float
     clip_min: float | None = None
     clip_max: float | None = None
 
