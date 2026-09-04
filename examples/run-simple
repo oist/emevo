@@ -1,0 +1,18 @@
+#!/bin/bash
+
+TMPDIR=$(mktemp -d)
+echo "Running in $TMPDIR"
+
+uv run emevo/experiments/cf_simple.py \
+    evolve \
+    --seed=1 \
+    --n-total-steps=1024000 \
+    --act-reward-coef=0.01 \
+    --cfconfig-path=config/env/20260904-uniform.toml \
+    --bdconfig-path=config/bd/20260831-hs-gompertz.toml \
+    --gopsconfig-path=config/gops/20260902-gaussian.toml \
+    --min-age-for-save=204800 \
+    --save-interval=200 \
+    --log-mode=reward-log-state-agent \
+    --force-gpu \
+    --logdir=$TMPDIR
