@@ -13,6 +13,7 @@ uv run emevo/experiments/cf_simple.py \
     --gopsconfig-path=config/gops/20260902-gaussian.toml \
     --min-age-for-save=204800 \
     --save-interval=200 \
+    --snapshot-interval=10 \
     --log-mode=reward-log-state-agent \
     --force-gpu \
     --logdir=$TMPDIR
