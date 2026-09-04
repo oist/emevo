@@ -3,7 +3,7 @@
 TMPDIR=$(mktemp -d)
 echo "Running in $TMPDIR"
 
-uv run emevo/experiments/cf_simple.py \
+if uv run experiments/cf_simple.py \
     evolve \
     --seed=1 \
     --n-total-steps=1024000 \
@@ -16,4 +16,11 @@ uv run emevo/experiments/cf_simple.py \
     --snapshot-interval=10 \
     --log-mode=reward-log-state-agent \
     --force-gpu \
-    --logdir=$TMPDIR
+    --logdir="$TMPDIR"
+then
+    :
+else
+    status=$?
+    rm -rf -- "$TMPDIR"
+    exit "$status"
+fi
