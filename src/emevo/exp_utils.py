@@ -36,7 +36,7 @@ from emevo.tree_utils import compact_pytree_repr
 
 Self = Any
 
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
 
 
 @chex.dataclass
@@ -63,7 +63,6 @@ class EvolutionSnapshot:
     opt_state: Any
     network: eqx.Module
     reward_fn: eqx.Module
-    logger_state: LoggerState
     prng_key: chex.PRNGKey
     _version: int = SNAPSHOT_VERSION
 

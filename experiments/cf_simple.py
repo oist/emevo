@@ -277,7 +277,6 @@ def run_evolution(
         env_state = snapshot.env_state
         obs = snapshot.obs
         reward_fn = snapshot.reward_fn
-        logger.restore_state(snapshot.logger_state)
         start_epoch = snapshot.epoch
 
     if debug_vis:
@@ -412,7 +411,6 @@ def run_evolution(
                     opt_state=opt_state,
                     network=pponet,
                     reward_fn=reward_fn,
-                    logger_state=logger.get_state(),
                     prng_key=key,
                 )
             )

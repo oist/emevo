@@ -49,8 +49,6 @@ def reset_env(key: chex.PRNGKey) -> tuple[CircleForaging, CFState, CFObs]:
 
 def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
     logger = Logger(tmp_path, LogMode.NONE, 10, 10, 0)
-    logger._log_index = 3
-    logger._physstate_index = 4
     snapshot = EvolutionSnapshot(
         epoch=12,
         env_state={"position": jnp.array([1.0, 2.0])},
@@ -58,7 +56,6 @@ def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
         opt_state={"count": jnp.array(5)},
         network=DummyModule(jnp.array([6.0])),
         reward_fn=DummyModule(jnp.array([7.0])),
-        logger_state=logger.get_state(),
         prng_key=jnp.array([8, 9], dtype=jnp.uint32),
     )
 
@@ -74,8 +71,6 @@ def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
     np.testing.assert_array_equal(restored.reward_fn.weight, [7.0])
     np.testing.assert_array_equal(restored.network.activation(jnp.array([0.0])), [0.0])
     np.testing.assert_array_equal(restored.prng_key, [8, 9])
-    assert restored.logger_state.log_index == 3
-    assert restored.logger_state.physstate_index == 4
 
 
 def test_logger_restore_state(tmp_path: Path) -> None:
@@ -103,7 +98,6 @@ def test_circle_foraging_snapshot_roundtrip(
         opt_state={"count": jnp.array(1)},
         network=DummyModule(jnp.array([2.0])),
         reward_fn=DummyModule(jnp.array([3.0])),
-        logger_state=logger.get_state(),
         prng_key=key,
     )
 
