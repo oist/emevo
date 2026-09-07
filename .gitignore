@@ -8,6 +8,7 @@
 **/*.egg-info/
 **/.mypy_cache/
 **/analysis*/
+**/sandbox/
 .virtual_documents/
 .ipynb_checkpoints/
 analysis-notebooks/
