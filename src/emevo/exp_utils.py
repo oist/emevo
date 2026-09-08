@@ -36,20 +36,15 @@ from emevo.tree_utils import compact_pytree_repr
 
 Self = Any
 
-SNAPSHOT_VERSION = 2
+SNAPSHOT_VERSION = 3
 
 
 @chex.dataclass
 class LoggerState:
-    """Mutable logger data required to continue writing the same log stream."""
+    """Agent reward functions and profiles retained across snapshots."""
 
     reward_fn_dict: dict[int, RewardFn]
     profile_dict: dict[int, SavedProfile]
-    log_list: list[dict[str, NDArray]]
-    foodlog_list: list[FoodLog]
-    physstate_list: list[SavedPhysicsState]
-    log_index: int
-    physstate_index: int
 
 
 @compact_pytree_repr
@@ -64,6 +59,7 @@ class EvolutionSnapshot:
     network: eqx.Module
     reward_fn: eqx.Module
     prng_key: chex.PRNGKey
+    logger_state: LoggerState
     _version: int = SNAPSHOT_VERSION
 
 
@@ -140,7 +136,6 @@ def _load_cls(cls_path: str) -> type:
         return getattr(importlib.import_module(mod), cls)
     except (AttributeError, ModuleNotFoundError, ValueError) as err:
         raise ImportError(f"{cls_path} is not a valid class path") from err
-
 
 @serde.serde(type_check=serde.disabled)
 @dataclasses.dataclass
@@ -372,6 +367,7 @@ class Logger:
     dropped_keys: list[str] = dataclasses.field(default_factory=_default_dropped_keys)
     reward_fn_dict: dict[int, RewardFn] = dataclasses.field(default_factory=dict)
     profile_dict: dict[int, SavedProfile] = dataclasses.field(default_factory=dict)
+    log_prefix: str = ""
     _log_list: list[dict[str, NDArray]] = dataclasses.field(
         default_factory=list,
         init=False,
@@ -384,30 +380,25 @@ class Logger:
     _log_index: int = dataclasses.field(default=1, init=False)
     _physstate_index: int = dataclasses.field(default=1, init=False)
 
+    def _log_path(self, filename: str) -> Path:
+        if len(self.log_prefix) > 0:
+            filename = f"{self.log_prefix}-{filename}"
+        return self.logdir / filename
+
     def get_state(self) -> LoggerState:
         return LoggerState(
             reward_fn_dict=self.reward_fn_dict,
             profile_dict=self.profile_dict,
-            log_list=self._log_list,
-            foodlog_list=self._foodlog_list,
-            physstate_list=self._physstate_list,
-            log_index=self._log_index,
-            physstate_index=self._physstate_index,
         )
 
     def restore_state(self, state: LoggerState) -> None:
         self.reward_fn_dict = state.reward_fn_dict
         self.profile_dict = state.profile_dict
-        self._log_list = state.log_list
-        self._foodlog_list = state.foodlog_list
-        self._physstate_list = state.physstate_list
-        self._log_index = state.log_index
-        self._physstate_index = state.physstate_index
 
     def save_snapshot(self, snapshot: EvolutionSnapshot) -> Path:
         """Save an epoch-indexed snapshot directly in this logger's directory."""
 
-        path = self.logdir / f"snapshot-{snapshot.epoch}.hdf5"
+        path = self._log_path(f"snapshot-{snapshot.epoch}.hdf5")
         jaxon_save(path, snapshot, allow_dill=True)
         return path
 
@@ -444,7 +435,7 @@ class Logger:
 
         pq.write_table(
             pa.Table.from_pydict(log_dict),
-            self.logdir.joinpath(f"log-{self._log_index}.parquet"),
+            self._log_path(f"log-{self._log_index}.parquet"),
             compression="zstd",
         )
         self._log_index += 1
@@ -476,7 +467,7 @@ class Logger:
         # Don't change log_index here
         pq.write_table(
             pa.Table.from_pydict(log_dict),
-            self.logdir.joinpath(f"foodlog-{self._log_index}.parquet"),
+            self._log_path(f"foodlog-{self._log_index}.parquet"),
             compression="zstd",
         )
         self._foodlog_list.clear()
@@ -497,7 +488,7 @@ class Logger:
 
         save_physstates(
             self._physstate_list,
-            self.logdir.joinpath(f"state-{self._physstate_index}.npz"),
+            self._log_path(f"state-{self._physstate_index}.npz"),
         )
         self._physstate_index += 1
         self._physstate_list.clear()
@@ -517,7 +508,7 @@ class Logger:
             if age < self.min_age_for_save:
                 continue
             sliced_net = get_slice(net, slot)
-            modelpath = self.logdir.joinpath(f"{prefix}-{uid}-age{age}.eqx")
+            modelpath = self._log_path(f"{prefix}-{uid}-age{age}.eqx")
             eqx.tree_serialise_leaves(modelpath, sliced_net)
 
     def save_profile_and_rewards(self) -> None:
@@ -526,7 +517,7 @@ class Logger:
             for k, v in self.reward_fn_dict.items()
         ]
         table = pa.Table.from_pylist(profile_and_rewards)
-        pq.write_table(table, self.logdir.joinpath("profile_and_rewards.parquet"))
+        pq.write_table(table, self._log_path("profile_and_rewards.parquet"))
 
     def finalize(self) -> None:
         if "reward" in self.mode.value:

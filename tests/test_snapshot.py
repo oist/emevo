@@ -16,6 +16,7 @@ from emevo.exp_utils import (
     EvolutionSnapshot,
     LogMode,
     Logger,
+    SavedProfile,
     load_snapshot,
 )
 
@@ -49,6 +50,8 @@ def reset_env(key: chex.PRNGKey) -> tuple[CircleForaging, CFState, CFObs]:
 
 def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
     logger = Logger(tmp_path, LogMode.NONE, 10, 10, 0)
+    logger.reward_fn_dict[1] = DummyModule(jnp.array([4.0]))  # type: ignore[assignment]
+    logger.profile_dict[1] = SavedProfile(0, 0, 1)
     snapshot = EvolutionSnapshot(
         epoch=12,
         env_state={"position": jnp.array([1.0, 2.0])},
@@ -57,12 +60,19 @@ def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
         network=DummyModule(jnp.array([6.0])),
         reward_fn=DummyModule(jnp.array([7.0])),
         prng_key=jnp.array([8, 9], dtype=jnp.uint32),
+        logger_state=logger.get_state(),
     )
 
     path = logger.save_snapshot(snapshot)
     assert path == tmp_path / "snapshot-12.hdf5"
     restored = load_snapshot(path)
 
+    resumed_logger = Logger(tmp_path, LogMode.NONE, 10, 10, 0)
+    resumed_logger.restore_state(restored.logger_state)
+    assert resumed_logger.profile_dict == {1: SavedProfile(0, 0, 1)}
+    restored_reward = resumed_logger.reward_fn_dict[1]
+    assert isinstance(restored_reward, DummyModule)
+    np.testing.assert_array_equal(restored_reward.weight, [4.0])
     assert restored.epoch == 12
     np.testing.assert_array_equal(restored.env_state["position"], [1.0, 2.0])
     assert isinstance(restored.network, DummyModule)
@@ -76,13 +86,17 @@ def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
 def test_logger_restore_state(tmp_path: Path) -> None:
     source = Logger(tmp_path, LogMode.NONE, 10, 10, 0)
     source.reward_fn_dict[1] = {"value": 2}  # type: ignore[assignment]
+    source.profile_dict[1] = SavedProfile(0, 0, 1)
     source._log_index = 7
+    source._log_list.append({"value": np.array([1])})
 
     restored = Logger(tmp_path, LogMode.NONE, 10, 10, 0)
     restored.restore_state(source.get_state())
 
     assert restored.reward_fn_dict == {1: {"value": 2}}
-    assert restored._log_index == 7
+    assert restored.profile_dict == {1: SavedProfile(0, 0, 1)}
+    assert restored._log_index == 1
+    assert restored._log_list == []
 
 
 def test_circle_foraging_snapshot_roundtrip(
@@ -99,6 +113,7 @@ def test_circle_foraging_snapshot_roundtrip(
         network=DummyModule(jnp.array([2.0])),
         reward_fn=DummyModule(jnp.array([3.0])),
         prng_key=key,
+        logger_state=logger.get_state(),
     )
 
     restored = load_snapshot(logger.save_snapshot(snapshot))

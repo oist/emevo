@@ -278,6 +278,7 @@ def run_evolution(
         obs = snapshot.obs
         reward_fn = snapshot.reward_fn
         start_epoch = snapshot.epoch
+        logger.restore_state(snapshot.logger_state)
 
     if debug_vis:
         if debug_vis_partial_range_x is None:
@@ -412,6 +413,7 @@ def run_evolution(
                     network=pponet,
                     reward_fn=reward_fn,
                     prng_key=key,
+                    logger_state=logger.get_state(),
                 )
             )
 
@@ -599,6 +601,7 @@ def resume(
         log_interval=log_interval,
         savestate_interval=savestate_interval,
         min_age_for_save=min_age_for_save,
+        log_prefix="resumed",
     )
     run_evolution(
         key=jax.random.PRNGKey(0),  # Replaced by the key stored in the snapshot.
