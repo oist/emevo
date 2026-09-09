@@ -218,8 +218,6 @@ def run_evolution(
     debug_vis: bool,
     debug_vis_scale: float,
     debug_print: bool,
-    debug_vis_xoffset: float = 0.0,
-    debug_vis_yoffset: float = 0.0,
     debug_vis_partial_range_x: float | None = None,
     debug_vis_partial_range_y: float | None = None,
     debug_vis_no_sensor: bool = False,
@@ -264,14 +262,15 @@ def run_evolution(
         return pponet, opt_state
 
     if snapshot is None:
-        key, net_key, reset_key = jax.random.split(key, 3)
+        main_key, net_key, reset_key = jax.random.split(key, 3)
         pponet = initialize_net(net_key)
         opt_state = initialize_opt_state(pponet)
         env_state, timestep = env.reset(reset_key)
         obs = timestep.obs
         start_epoch = 0
+        del net_key, reset_key
     else:
-        key = snapshot.prng_key
+        main_key = snapshot.prng_key
         pponet = snapshot.network
         opt_state = snapshot.opt_state
         env_state = snapshot.env_state
@@ -279,6 +278,8 @@ def run_evolution(
         reward_fn = snapshot.reward_fn
         start_epoch = snapshot.epoch
         logger.restore_state(snapshot.logger_state)
+
+    del key
 
     if debug_vis:
         if debug_vis_partial_range_x is None:
@@ -309,11 +310,9 @@ def run_evolution(
                 logger.reward_fn_dict[i + 1] = get_slice(reward_fn, i)
                 logger.profile_dict[i + 1] = SavedProfile(0, 0, i + 1)
 
-    po = np.array([[-debug_vis_xoffset, -debug_vis_yoffset]])
     n_epochs = n_total_steps // n_rollout_steps
     for i in range(start_epoch, n_epochs):
-        key, key_i = jax.random.split(key)
-        epoch_key, mutation_key, init_key = jax.random.split(key_i, 3)
+        main_key, epoch_key, mutation_key, init_key = jax.random.split(main_key, 4)
         old_state = env_state
         # Use `with jax.disable_jit():` here for debugging
         env_state, obs, log, foodlog, phys_state, opt_state, pponet = epoch(
@@ -411,7 +410,7 @@ def run_evolution(
                 opt_state=opt_state,
                 network=pponet,
                 reward_fn=reward_fn,
-                prng_key=key,
+                prng_key=main_key,
             )
 
     # Save logs before exiting
@@ -457,8 +456,6 @@ def evolve(
     snapshot_interval: int = 0,
     debug_vis: bool = False,
     debug_vis_scale: float = 2.0,
-    debug_vis_xoffset: float = 0.0,
-    debug_vis_yoffset: float = 0.0,
     debug_vis_partial_range_x: float | None = None,
     debug_vis_partial_range_y: float | None = None,
     debug_vis_no_sensor: bool = False,
@@ -534,8 +531,6 @@ def evolve(
         snapshot=None,
         debug_vis=debug_vis,
         debug_vis_scale=debug_vis_scale,
-        debug_vis_xoffset=debug_vis_xoffset,
-        debug_vis_yoffset=debug_vis_yoffset,
         debug_vis_partial_range_x=debug_vis_partial_range_x,
         debug_vis_partial_range_y=debug_vis_partial_range_y,
         debug_vis_no_sensor=debug_vis_no_sensor,
