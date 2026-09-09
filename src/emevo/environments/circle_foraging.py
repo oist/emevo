@@ -1079,7 +1079,9 @@ class CircleForaging(Env):
         return replace(state, physics=physics, unique_id=unique_id, status=status)
 
     def reset(self, key: chex.PRNGKey) -> tuple[CFState[Status], TimeStep[CFObs]]:
-        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
+        state_key, physics_key = jax.random.split(key)
+        del key
+        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(physics_key)
         N = self.n_max_agents
         n_agents = jnp.sum(physics.circle.is_active)
         unique_id = init_uniqueid(int(n_agents), N)
@@ -1090,7 +1092,7 @@ class CircleForaging(Env):
             agent_loc=agent_loc,
             food_loc=food_loc,
             food_num=food_num,
-            key=key,
+            key=state_key,
             step=jnp.array(0, dtype=jnp.int32),
             unique_id=unique_id,
             status=status,
@@ -1111,7 +1113,7 @@ class CircleForaging(Env):
 
     def _initialize_physics_state(
         self,
-        key: chex.PRNGKey,
+        main_key: chex.PRNGKey,
     ) -> tuple[StateDict, LocatingState, list[LocatingState], list[FoodNumState]]:
         stated = self._physics.shaped.zeros_state()
         assert stated.circle is not None
@@ -1125,7 +1127,7 @@ class CircleForaging(Env):
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
 
-        key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
+        main_key, *agent_keys = jax.random.split(main_key, self._n_initial_agents + 1)
         n_agents = 0
         agentloc_state = self._initial_agentloc_state
         is_active = []
@@ -1162,7 +1164,7 @@ class CircleForaging(Env):
         stated = stated.nested_replace("static_circle.is_active", is_active_s)
 
         if self._random_angle:
-            key, angle_key = jax.random.split(key)
+            main_key, angle_key = jax.random.split(main_key)
             angle = jax.random.uniform(
                 angle_key,
                 shape=stated.circle.p.angle.shape,
@@ -1173,7 +1175,7 @@ class CircleForaging(Env):
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, food_key_i in enumerate(jax.random.split(key, self._n_food_sources)):
+        for i, food_key_i in enumerate(jax.random.split(main_key, self._n_food_sources)):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],

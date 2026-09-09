@@ -634,7 +634,9 @@ class CircleForagingWithPredator(CircleForaging):
             age=jnp.zeros(self.n_max_agents, dtype=jnp.int32),
             energy=jnp.concatenate((prey_energy, predator_energy), axis=0),
         )
-        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(key)
+        state_key, physics_key = jax.random.split(key)
+        del key
+        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(physics_key)
         is_active = physics.circle.is_active
         n_preys = jnp.sum(is_active[: self._n_max_preys])
         n_predators = jnp.sum(is_active[self._n_max_preys :])
@@ -650,7 +652,7 @@ class CircleForagingWithPredator(CircleForaging):
             agent_loc=agent_loc,
             food_loc=food_loc,
             food_num=food_num,
-            key=key,
+            key=state_key,
             step=jnp.array(0, dtype=jnp.int32),
             unique_id=unique_id,
             status=status,
@@ -800,7 +802,7 @@ class CircleForagingWithPredator(CircleForaging):
 
     def _initialize_physics_state(
         self,
-        key: chex.PRNGKey,
+        main_key: chex.PRNGKey,
     ) -> tuple[StateDict, LocatingState, list[LocatingState], list[FoodNumState]]:
         # Set segment
         stated = self._physics.shaped.zeros_state()
@@ -821,7 +823,7 @@ class CircleForagingWithPredator(CircleForaging):
             jnp.ones_like(stated.static_circle.p.xy) * NOWHERE,
         )
 
-        key, *agent_keys = jax.random.split(key, self._n_initial_agents + 1)
+        main_key, *agent_keys = jax.random.split(main_key, self._n_initial_agents + 1)
         agentloc_state = self._initial_agentloc_state
         is_active_preys = []
         for i, key in enumerate(agent_keys):
@@ -844,7 +846,7 @@ class CircleForagingWithPredator(CircleForaging):
             diff = self._n_initial_agents - n_preys
             warnings.warn(f"Failed to place {diff} preys!", stacklevel=1)
 
-        key, *predator_keys = jax.random.split(key, self._n_initial_predators + 1)
+        main_key, *predator_keys = jax.random.split(main_key, self._n_initial_predators + 1)
         is_active_predators = []
         for i, key in enumerate(predator_keys):
             xy, ok = self._init_predator(
@@ -885,7 +887,7 @@ class CircleForagingWithPredator(CircleForaging):
         stated = stated.nested_replace("static_circle.is_active", is_active_s)
 
         if self._random_angle:
-            key, angle_key = jax.random.split(key)
+            main_key, angle_key = jax.random.split(main_key)
             angle = jax.random.uniform(
                 angle_key,
                 shape=stated.circle.p.angle.shape,
@@ -896,8 +898,7 @@ class CircleForagingWithPredator(CircleForaging):
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        foodkeys = jax.random.split(key, self._n_food_sources)
-        del key
+        foodkeys = jax.random.split(main_key, self._n_food_sources)
         for i, foodkey in enumerate(foodkeys):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
