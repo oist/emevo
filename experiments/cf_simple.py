@@ -405,16 +405,13 @@ def run_evolution(
 
         if snapshot_interval > 0 and (i + 1) % snapshot_interval == 0:
             logger.save_snapshot(
-                EvolutionSnapshot(
-                    epoch=i + 1,
-                    env_state=env_state,
-                    obs=obs,
-                    opt_state=opt_state,
-                    network=pponet,
-                    reward_fn=reward_fn,
-                    prng_key=key,
-                    logger_state=logger.get_state(),
-                )
+                epoch=i + 1,
+                env_state=env_state,
+                obs=obs,
+                opt_state=opt_state,
+                network=pponet,
+                reward_fn=reward_fn,
+                prng_key=key,
             )
 
     # Save logs before exiting

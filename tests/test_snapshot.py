@@ -13,7 +13,6 @@ from emevo import make
 from emevo.environments.circle_foraging import CFObs, CFState, CircleForaging
 
 from emevo.exp_utils import (
-    EvolutionSnapshot,
     LogMode,
     Logger,
     SavedProfile,
@@ -52,7 +51,7 @@ def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
     logger = Logger(tmp_path, LogMode.NONE, 10, 10, 0)
     logger.reward_fn_dict[1] = DummyModule(jnp.array([4.0]))  # type: ignore[assignment]
     logger.profile_dict[1] = SavedProfile(0, 0, 1)
-    snapshot = EvolutionSnapshot(
+    path = logger.save_snapshot(
         epoch=12,
         env_state={"position": jnp.array([1.0, 2.0])},
         obs=jnp.array([3.0]),
@@ -60,10 +59,8 @@ def test_snapshot_roundtrip_with_dummy_data(tmp_path: Path) -> None:
         network=DummyModule(jnp.array([6.0])),
         reward_fn=DummyModule(jnp.array([7.0])),
         prng_key=jnp.array([8, 9], dtype=jnp.uint32),
-        logger_state=logger.get_state(),
     )
 
-    path = logger.save_snapshot(snapshot)
     assert path == tmp_path / "snapshot-12.hdf5"
     restored = load_snapshot(path)
 
@@ -105,7 +102,7 @@ def test_circle_foraging_snapshot_roundtrip(
 ) -> None:
     _, env_state, obs = reset_env(key)
     logger = Logger(tmp_path, LogMode.NONE, 10, 10, 0)
-    snapshot = EvolutionSnapshot(
+    path = logger.save_snapshot(
         epoch=3,
         env_state=env_state,
         obs=obs,
@@ -113,10 +110,9 @@ def test_circle_foraging_snapshot_roundtrip(
         network=DummyModule(jnp.array([2.0])),
         reward_fn=DummyModule(jnp.array([3.0])),
         prng_key=key,
-        logger_state=logger.get_state(),
     )
 
-    restored = load_snapshot(logger.save_snapshot(snapshot))
+    restored = load_snapshot(path)
 
     assert isinstance(restored.env_state, CFState)
     assert isinstance(restored.obs, CFObs)

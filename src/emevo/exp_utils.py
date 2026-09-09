@@ -395,10 +395,29 @@ class Logger:
         self.reward_fn_dict = state.reward_fn_dict
         self.profile_dict = state.profile_dict
 
-    def save_snapshot(self, snapshot: EvolutionSnapshot) -> Path:
-        """Save an epoch-indexed snapshot directly in this logger's directory."""
+    def save_snapshot(
+        self,
+        epoch: int,
+        env_state: Any,
+        obs: Any,
+        opt_state: Any,
+        network: eqx.Module,
+        reward_fn: eqx.Module,
+        prng_key: chex.PRNGKey,
+    ) -> Path:
+        """Save evolution state and this logger's agent data at an epoch boundary."""
 
-        path = self._log_path(f"snapshot-{snapshot.epoch}.hdf5")
+        snapshot = EvolutionSnapshot(
+            epoch=epoch,
+            env_state=env_state,
+            obs=obs,
+            opt_state=opt_state,
+            network=network,
+            reward_fn=reward_fn,
+            prng_key=prng_key,
+            logger_state=self.get_state(),
+        )
+        path = self._log_path(f"snapshot-{epoch}.hdf5")
         jaxon_save(path, snapshot, allow_dill=True)
         return path
 
