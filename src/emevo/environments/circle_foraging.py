@@ -34,6 +34,7 @@ from phyjax2d import (
     segment_raycast,
 )
 from phyjax2d import step as physics_step
+from phyjax2d.tree_utils import compact_pytree_repr
 
 from emevo.env import (
     Env,
@@ -60,7 +61,6 @@ from emevo.environments.env_utils import (
     place_multi,
 )
 from emevo.spaces import BoxSpace, NamedTupleSpace
-from emevo.tree_utils import compact_pytree_repr
 
 MAX_ANGULAR_VELOCITY: float = float(np.pi)
 MAX_VELOCITY: float = 10.0

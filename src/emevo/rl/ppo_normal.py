@@ -8,9 +8,9 @@ import jax
 import jax.numpy as jnp
 import optax
 from jax.nn.initializers import orthogonal
+from phyjax2d.tree_utils import compact_pytree_repr
 
 from emevo.rl.prob_dist import DiagonalNormal
-from emevo.tree_utils import compact_pytree_repr
 
 
 class Output(NamedTuple):

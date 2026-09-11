@@ -1,7 +1,7 @@
 import jax.numpy as jnp
+from phyjax2d.tree_utils import compact_pytree_repr
 
 from emevo.environments.circle_foraging import CFObs
-from emevo.tree_utils import compact_pytree_repr
 
 
 @compact_pytree_repr

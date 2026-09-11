@@ -25,7 +25,7 @@ dependencies = [
     "chex >= 0.1.82",
     "equinox >= 0.13",
     "optax >= 0.1",
-    "phyjax2d >= 0.3.3",
+    "phyjax2d >= 0.4",
     "jaxon >= 1.2",
     # Other
     "pyarrow >= 9.0",

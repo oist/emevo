@@ -29,10 +29,11 @@ from phyjax2d import Position, StateDict
 
 from emevo import birth_and_death as bd
 from emevo import genetic_ops as gops
+from phyjax2d.tree_utils import compact_pytree_repr
+
 from emevo.environments.circle_foraging import SensorRange
 from emevo.eqx_utils import get_slice
 from emevo.reward_fn import RewardFn
-from emevo.tree_utils import compact_pytree_repr
 
 Self = Any
 

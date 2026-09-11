@@ -29,6 +29,7 @@ from phyjax2d import (
     make_square_segments,
     segment_raycast,
 )
+from phyjax2d.tree_utils import compact_pytree_repr
 
 from emevo.env import Status, TimeStep, UniqueID
 from emevo.environments.circle_foraging import (
@@ -56,7 +57,6 @@ from emevo.environments.env_utils import (
 )
 from emevo.environments.smell import CFObsWithSmell, _vmap_compute_smell
 from emevo.spaces import BoxSpace
-from emevo.tree_utils import compact_pytree_repr
 
 Self = Any
 PREDATOR_COLOR: Color = Color(135, 19, 21)
