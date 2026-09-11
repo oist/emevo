@@ -138,6 +138,7 @@ class GompertzHazard(HazardFunction):
     H(t) = α/β exp(βt)
     S(t) = exp(-H(t))
     """
+
     alpha: float
     beta: float = 1e-5
 

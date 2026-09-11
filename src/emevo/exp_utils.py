@@ -18,19 +18,18 @@ import chex
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jaxon import load as jaxon_load
-from jaxon import save as jaxon_save
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import serde
+from jaxon import load as jaxon_load
+from jaxon import save as jaxon_save
 from numpy.typing import NDArray
 from phyjax2d import Position, StateDict
+from phyjax2d.tree_utils import compact_pytree_repr
 
 from emevo import birth_and_death as bd
 from emevo import genetic_ops as gops
-from phyjax2d.tree_utils import compact_pytree_repr
-
 from emevo.environments.circle_foraging import SensorRange
 from emevo.eqx_utils import get_slice
 from emevo.reward_fn import RewardFn
@@ -137,6 +136,7 @@ def _load_cls(cls_path: str) -> type:
         return getattr(importlib.import_module(mod), cls)
     except (AttributeError, ModuleNotFoundError, ValueError) as err:
         raise ImportError(f"{cls_path} is not a valid class path") from err
+
 
 @serde.serde(type_check=serde.disabled)
 @dataclasses.dataclass

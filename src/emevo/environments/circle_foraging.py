@@ -1081,7 +1081,9 @@ class CircleForaging(Env):
     def reset(self, key: chex.PRNGKey) -> tuple[CFState[Status], TimeStep[CFObs]]:
         state_key, physics_key = jax.random.split(key)
         del key
-        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(physics_key)
+        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(
+            physics_key
+        )
         N = self.n_max_agents
         n_agents = jnp.sum(physics.circle.is_active)
         unique_id = init_uniqueid(int(n_agents), N)
@@ -1175,7 +1177,9 @@ class CircleForaging(Env):
         food_failed = 0
         foodloc_states = [s for s in self._initial_foodloc_states]
         foodnum_states = [s for s in self._initial_foodnum_states]
-        for i, food_key_i in enumerate(jax.random.split(main_key, self._n_food_sources)):
+        for i, food_key_i in enumerate(
+            jax.random.split(main_key, self._n_food_sources)
+        ):
             n_initial = self._food_num_fns[i].initial
             xy, ok = self._place_food_fns[i](
                 loc_state=foodloc_states[i],

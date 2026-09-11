@@ -636,7 +636,9 @@ class CircleForagingWithPredator(CircleForaging):
         )
         state_key, physics_key = jax.random.split(key)
         del key
-        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(physics_key)
+        physics, agent_loc, food_loc, food_num = self._initialize_physics_state(
+            physics_key
+        )
         is_active = physics.circle.is_active
         n_preys = jnp.sum(is_active[: self._n_max_preys])
         n_predators = jnp.sum(is_active[self._n_max_preys :])
@@ -846,7 +848,9 @@ class CircleForagingWithPredator(CircleForaging):
             diff = self._n_initial_agents - n_preys
             warnings.warn(f"Failed to place {diff} preys!", stacklevel=1)
 
-        main_key, *predator_keys = jax.random.split(main_key, self._n_initial_predators + 1)
+        main_key, *predator_keys = jax.random.split(
+            main_key, self._n_initial_predators + 1
+        )
         is_active_predators = []
         for i, key in enumerate(predator_keys):
             xy, ok = self._init_predator(

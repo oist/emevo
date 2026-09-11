@@ -9,9 +9,14 @@ import typer
 
 
 def main(
-    log_directory: Annotated[Path, typer.Argument(help="Directory containing the logs.")],
+    log_directory: Annotated[
+        Path, typer.Argument(help="Directory containing the logs.")
+    ],
     out_dir: Annotated[
-        Path, typer.Option("--out-dir", help="Output directory (default: current directory).")
+        Path,
+        typer.Option(
+            "--out-dir", help="Output directory (default: current directory)."
+        ),
     ] = Path("."),
 ) -> None:
     log_directory = log_directory.expanduser().resolve()

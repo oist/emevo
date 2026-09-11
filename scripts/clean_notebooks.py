@@ -53,13 +53,17 @@ def clean_staged_notebooks() -> int:
         if cleaned == staged:
             continue
 
-        object_id = subprocess.run(
-            ["git", "hash-object", "-w", "--stdin"],
-            input=cleaned,
-            check=True,
-            capture_output=True,
-            text=False,
-        ).stdout.decode().strip()
+        object_id = (
+            subprocess.run(
+                ["git", "hash-object", "-w", "--stdin"],
+                input=cleaned,
+                check=True,
+                capture_output=True,
+                text=False,
+            )
+            .stdout.decode()
+            .strip()
+        )
         mode = subprocess.run(
             ["git", "ls-files", "-s", "--", path],
             check=True,

@@ -11,10 +11,9 @@ import pytest
 
 from emevo import make
 from emevo.environments.circle_foraging import CFObs, CFState, CircleForaging
-
 from emevo.exp_utils import (
-    LogMode,
     Logger,
+    LogMode,
     SavedProfile,
     load_snapshot,
 )
